@@ -1,0 +1,15 @@
+{
+  "name": "eth-pipeline-integration-tests",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Integration tests for eth-pipeline — executable API documentation",
+  "scripts": {
+    "test": "node --test",
+    "test:watch": "node --test --watch"
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.0",
+    "typescript": "^6.0.3"
+  }
+}
