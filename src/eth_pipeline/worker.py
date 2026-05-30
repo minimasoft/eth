@@ -39,6 +39,7 @@ async def main() -> None:
             activities.extract_events_activity,
             activities.update_document_status_activity,
             activities.store_extraction_results_activity,
+            activities.resolve_entities_activity,
         ],
     )
 

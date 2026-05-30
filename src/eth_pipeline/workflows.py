@@ -15,6 +15,7 @@ from temporalio.common import RetryPolicy
 with workflow.unsafe.imports_passed_through():
     from eth_pipeline.activities import (  # noqa: TCH004
         extract_events_activity,
+        resolve_entities_activity,
         store_extraction_results_activity,
         update_document_status_activity,
     )
@@ -35,8 +36,10 @@ class DocumentProcessingWorkflow:
       2. Delegates raw-text event extraction to ``extract_events_activity``.
       3. Persists extracted events and verbatim references to SurrealDB
          via ``store_extraction_results_activity``.
-      4. Marks the document as ``processed`` (or ``failed`` on error).
-      5. Returns a summary dict.
+      4. Resolves verbatim references to canonical entities via
+         ``resolve_entities_activity``.
+      5. Marks the document as ``processed`` (or ``failed`` on error).
+      6. Returns a summary dict.
     """
 
     @workflow.run
@@ -87,6 +90,13 @@ class DocumentProcessingWorkflow:
                 store_extraction_results_activity,
                 args=[document_id, result],
                 start_to_close_timeout=timedelta(seconds=10),
+            )
+
+            # Step 3.5: Resolve verbatim references to canonical entities
+            await workflow.execute_activity(
+                resolve_entities_activity,
+                args=[document_id, result],
+                start_to_close_timeout=timedelta(seconds=30),
             )
 
             # Step 4: Return summary

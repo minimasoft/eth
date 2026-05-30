@@ -84,6 +84,365 @@ async def extract_events_activity(text: str) -> dict:
 
 
 @activity.defn
+async def resolve_entities_activity(document_id: str, result: dict) -> dict:
+    """Resolve verbatim references to canonical entities using LLM matching.
+
+    **Replay-safe**: First nullifies any prior ``canonical_entity`` and
+    ``resolution_confidence`` links on all references for this document, then
+    re-resolves from scratch.  This guarantees idempotency across retries.
+
+    References are grouped by ``reference_type`` with the following mapping::
+
+        espacio  → place   (resolved)
+        humanos  → person  (resolved)
+        objetos  → object  (resolved)
+        tiempo   → skipped (not resolved — temporal references lack a
+                  canonical entity category in this model)
+
+    For each present reference type, the activity:
+      1. Queries existing ``canonical_entity`` records of that type.
+      2. Calls ``OpenRouterProvider.resolve_references()`` (batched per type).
+      3. Applies results: creates new canonical entities when the LLM says
+         ``create_new``, links references to existing entities via
+         ``match_existing``, or creates tentative entities for ``uncertain``.
+      4. Updates each reference's ``canonical_entity`` and
+         ``resolution_confidence`` fields.
+
+    LLM failures for individual type batches are logged but do **not** block
+    resolution of other reference types.
+
+    Parameters
+    ----------
+    document_id:
+        SurrealDB record ID of the document (e.g. ``"abc123"``).
+    result:
+        LLM extraction result dict (top-level ``"events"`` array).  The
+        document's ``text_content`` is queried directly from SurrealDB for
+        the LLM context window.
+
+    Returns
+    -------
+    dict
+        ``{"document_id": ..., "resolved": N, "created": N, "skipped": N}``
+        on success, or ``{"error": ..., "document_id": ...}`` on failure.
+    """
+    params = _db_params()
+    doc_ref = f"document:{document_id}"
+    events = result.get("events", [])
+
+    activity.logger.info(
+        "resolve_entities_activity called [document_id=%s] [event_count=%d]",
+        document_id,
+        len(events),
+    )
+
+    if not events:
+        activity.logger.info(
+            "No events — nothing to resolve [document_id=%s]",
+            document_id,
+        )
+        return {"document_id": document_id, "resolved": 0, "created": 0, "skipped": 0}
+
+    try:
+        async with get_db(**params) as db:
+            # ------------------------------------------------------------------
+            # 1. Query all references for this document
+            # ------------------------------------------------------------------
+            refs_raw = await db.query(
+                "SELECT * FROM reference WHERE event IN "
+                "(SELECT id FROM event WHERE document = $doc_ref)",
+                {"doc_ref": doc_ref},
+            )
+            references = _extract_query_results(refs_raw)
+
+            if not references:
+                activity.logger.info(
+                    "No references found [document_id=%s]",
+                    document_id,
+                )
+                return {
+                    "document_id": document_id,
+                    "resolved": 0,
+                    "created": 0,
+                    "skipped": 0,
+                }
+
+            # ------------------------------------------------------------------
+            # 2. Nullify prior resolution links (replay safety)
+            # ------------------------------------------------------------------
+            activity.logger.info(
+                "Nullifying prior resolution links [document_id=%s] [ref_count=%d]",
+                document_id,
+                len(references),
+            )
+            await db.query(
+                "UPDATE reference SET canonical_entity = null, "
+                "resolution_confidence = null "
+                "WHERE event IN (SELECT id FROM event WHERE document = $doc_ref)",
+                {"doc_ref": doc_ref},
+            )
+
+            # ------------------------------------------------------------------
+            # 3. Group references by mapped entity type
+            # ------------------------------------------------------------------
+            type_map = {"espacio": "place", "humanos": "person", "objetos": "object"}
+            skip_types = {"tiempo"}
+
+            groups: dict[str, list[dict]] = {}
+            for ref in references:
+                ref_type = ref.get("reference_type", "")
+                if ref_type in skip_types:
+                    continue
+                mapped = type_map.get(ref_type)
+                if mapped:
+                    groups.setdefault(mapped, []).append(ref)
+
+            skipped_count = len(
+                [r for r in references if r.get("reference_type") in skip_types]
+            )
+
+            # ------------------------------------------------------------------
+            # Fetch document context for LLM prompts
+            # ------------------------------------------------------------------
+            doc_raw = await db.query(
+                f"SELECT text_content FROM {doc_ref}",
+            )
+            doc_rows = _extract_query_results(doc_raw)
+            document_context = doc_rows[0].get("text_content", "") if doc_rows else ""
+
+            # ------------------------------------------------------------------
+            # 4. Resolve each type group via LLM
+            # ------------------------------------------------------------------
+            api_key = os.environ.get("OPENROUTER_API_KEY")
+            if not api_key:
+                activity.logger.error(
+                    "OPENROUTER_API_KEY not set — cannot resolve entities "
+                    "[document_id=%s]",
+                    document_id,
+                )
+                return {
+                    "error": "OPENROUTER_API_KEY not set",
+                    "document_id": document_id,
+                }
+
+            model = os.environ.get("OPENROUTER_MODEL", DEFAULT_MODEL)
+            provider = OpenRouterProvider(api_key=api_key, model=model)
+
+            total_resolved = 0
+            total_created = 0
+
+            for entity_type, refs in groups.items():
+                if not refs:
+                    continue
+
+                # Query existing canonical entities of this type
+                existing_raw = await db.query(
+                    "SELECT * FROM canonical_entity WHERE entity_type = $type",
+                    {"type": entity_type},
+                )
+                existing_entities = _extract_query_results(existing_raw)
+
+                activity.logger.info(
+                    "Resolving %d %s references against %d existing entities "
+                    "[document_id=%s]",
+                    len(refs),
+                    entity_type,
+                    len(existing_entities),
+                    document_id,
+                )
+
+                # ---- LLM batch resolution ----
+                try:
+                    resolution = await provider.resolve_references(
+                        references=refs,
+                        existing_entities=existing_entities,
+                        document_context=document_context,
+                    )
+                except Exception as exc:
+                    activity.logger.error(
+                        "LLM resolution failed for %s references "
+                        "[document_id=%s]: %s",
+                        entity_type,
+                        document_id,
+                        exc,
+                    )
+                    continue
+
+                resolutions = resolution.get("resolutions", [])
+                if not resolutions:
+                    activity.logger.warning(
+                        "LLM returned empty resolutions for %s references "
+                        "[document_id=%s]",
+                        entity_type,
+                        document_id,
+                    )
+                    continue
+
+                # Build verbatim_text → [ref_id] lookup
+                verbatim_to_refs: dict[str, list[str]] = {}
+                for r in refs:
+                    vt = r.get("verbatim_text", "")
+                    rid = r.get("id")
+                    if vt and rid:
+                        verbatim_to_refs.setdefault(vt, []).append(rid)
+
+                # ---- Apply each resolution ----
+                for res in resolutions:
+                    ref_text = res.get("reference_verbatim", "")
+                    action = res.get("action", "uncertain")
+                    confidence = float(res.get("confidence", 0.5))
+                    matched_ids = verbatim_to_refs.get(ref_text, [])
+
+                    if not matched_ids:
+                        activity.logger.debug(
+                            "No matching reference for verbatim '%s' "
+                            "[document_id=%s]",
+                            ref_text,
+                            document_id,
+                        )
+                        continue
+
+                    if action == "create_new":
+                        ce_id = await _create_canonical_entity(
+                            db,
+                            res.get("new_entity_name", ref_text),
+                            res.get("new_entity_type", entity_type),
+                            res.get("new_entity_properties") or {},
+                        )
+                    elif action == "match_existing":
+                        ce_id = res.get("matched_entity_id")
+                    else:  # uncertain
+                        # Create a tentative entity for later human review
+                        ce_id = await _create_canonical_entity(
+                            db,
+                            res.get("new_entity_name", ref_text),
+                            res.get("new_entity_type", entity_type),
+                            res.get("new_entity_properties") or {},
+                        )
+
+                    if ce_id:
+                        total_created += 1 if action in ("create_new", "uncertain") else 0
+                        for rid in matched_ids:
+                            try:
+                                # SurrealDB Python SDK supports UPDATE with
+                                # variable binding for SET values even when
+                                # the target uses an f-string record ref.
+                                await db.query(
+                                    f"UPDATE {rid} SET "
+                                    f"canonical_entity = $ce, "
+                                    f"resolution_confidence = $conf",
+                                    {"ce": ce_id, "conf": confidence},
+                                )
+                                total_resolved += 1
+                            except Exception as exc:
+                                activity.logger.error(
+                                    "Failed to update reference %s with "
+                                    "canonical_entity %s: %s",
+                                    rid,
+                                    ce_id,
+                                    exc,
+                                )
+
+            activity.logger.info(
+                "resolve_entities_activity completed [document_id=%s] "
+                "[resolved=%d] [created=%d] [skipped=%d]",
+                document_id,
+                total_resolved,
+                total_created,
+                skipped_count,
+            )
+
+            return {
+                "document_id": document_id,
+                "resolved": total_resolved,
+                "created": total_created,
+                "skipped": skipped_count,
+            }
+
+    except ConnectionError as exc:
+        activity.logger.error(
+            "SurrealDB connection failed in resolve_entities_activity: %s",
+            exc,
+        )
+        return {"error": str(exc), "document_id": document_id}
+    except Exception as exc:
+        activity.logger.error(
+            "Unexpected error in resolve_entities_activity: %s",
+            exc,
+        )
+        return {"error": str(exc), "document_id": document_id}
+
+
+# ---------------------------------------------------------------------------
+# Internal helpers
+# ---------------------------------------------------------------------------
+
+
+def _extract_query_results(raw: list | dict | None) -> list[dict]:
+    """Extract result rows from a SurrealDB ``db.query()`` response.
+
+    SurrealDB ``query()`` returns a list of response statements, each being
+    a dict with a ``"result"`` key containing the actual rows.  This helper
+    normalises the various shapes into a flat list of row dicts.
+    """
+    if not raw:
+        return []
+    if isinstance(raw, dict):
+        rows = raw.get("result", [])
+        return rows if isinstance(rows, list) else [rows] if isinstance(rows, dict) else []
+    if isinstance(raw, list):
+        # Each element may be a dict with a "result" key, or already a list
+        flat: list[dict] = []
+        for item in raw:
+            if isinstance(item, dict) and "result" in item:
+                rows = item["result"]
+                if isinstance(rows, list):
+                    flat.extend(rows)
+                elif isinstance(rows, dict):
+                    flat.append(rows)
+            elif isinstance(item, list):
+                flat.extend(item)
+            elif isinstance(item, dict):
+                flat.append(item)
+        return flat
+    return []
+
+
+async def _create_canonical_entity(
+    db,
+    name: str,
+    entity_type: str,
+    properties: dict | None,
+) -> str | None:
+    """Create a ``canonical_entity`` record and return its SurrealDB record ID.
+
+    Returns ``None`` if creation fails or the result cannot be parsed.
+    """
+    data: dict = {
+        "name": name,
+        "entity_type": entity_type,
+        "properties": properties or {},
+    }
+    try:
+        created = await db.create("canonical_entity", data)
+        if isinstance(created, dict):
+            return created.get("id")
+        if isinstance(created, list) and created:
+            first = created[0]
+            if isinstance(first, dict):
+                return first.get("id")
+    except Exception as exc:
+        logger = activity.logger if hasattr(activity, "logger") else __import__("logging").getLogger(__name__)
+        logger.error(
+            "Failed to create canonical_entity [name=%s] [type=%s]: %s",
+            name,
+            entity_type,
+            exc,
+        )
+    return None
+
+
+@activity.defn
 async def update_document_status_activity(
     document_id: str,
     status: str,

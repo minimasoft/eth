@@ -135,6 +135,86 @@ class GraphQLRequest(BaseModel):
     """Optional operation name for the GraphQL request."""
 
 
+class MergeRequest(BaseModel):
+    """Request body for ``POST /entities/merge``.
+
+    Merges one canonical entity (source) into another (target) of the same
+    type. All references pointing to the source are re-pointed to the
+    target, and the source is soft-deleted via ``superseded_by``.
+    """
+
+    source_id: str
+    """Record ID (hex portion) of the source canonical entity to absorb."""
+
+    target_id: str
+    """Record ID (hex portion) of the target canonical entity (survivor)."""
+
+
+class MergeResponse(BaseModel):
+    """Response body for ``POST /entities/merge``."""
+
+    success: bool = True
+    """Whether the merge completed successfully."""
+
+    message: str
+    """Human-readable summary of the merge operation."""
+
+    source_id: str
+    """Record ID of the source entity that was absorbed."""
+
+    target_id: str
+    """Record ID of the target entity (survivor)."""
+
+    rewired_count: int
+    """Number of references that were re-pointed from source to target."""
+
+
+class SplitPartition(BaseModel):
+    """A single partition of references to split off into a new canonical entity."""
+
+    new_entity_name: str
+    """Name for the new canonical entity that will receive these references."""
+
+    reference_ids: list[str]
+    """List of reference record IDs (hex portions) to move to the new entity."""
+
+
+class SplitRequest(BaseModel):
+    """Request body for ``POST /entities/{entity_type}/{entity_id}/split``.
+
+    Partitions one or more groups of references from a source canonical entity
+    into new separate canonical entities.  Each partition creates one new entity.
+    """
+
+    partitions: list[SplitPartition]
+    """One or more partitions of references to split into new entities."""
+
+
+class SplitResponse(BaseModel):
+    """Response body for ``POST /entities/{entity_type}/{entity_id}/split``."""
+
+    success: bool = True
+    """Whether the split completed successfully."""
+
+    message: str
+    """Human-readable summary of the split operation."""
+
+    entity_type: str
+    """Type of the entities involved (place/person/object)."""
+
+    original_entity_id: str
+    """Record ID of the original entity that was split."""
+
+    new_entities: list[dict]
+    """List of ``{name, entity_id}`` for each created entity."""
+
+    partition_count: int
+    """Number of partitions (new entities created)."""
+
+    total_references_moved: int
+    """Total number of references moved to new entities."""
+
+
 class APIInfo(BaseModel):
     """Response body for ``GET /``."""
 
@@ -252,6 +332,8 @@ async def root() -> APIInfo:
             "/documents": "Submit a document for processing (POST)",
             "/documents/{document_id}": "Get document status (GET)",
             "/documents/{document_id}/events": "Clear extraction results (DELETE)",
+            "/entities/merge": "Merge two canonical entities of the same type (POST)",
+            "/entities/{entity_type}/{entity_id}/split": "Partition references across new canonical entities (POST)",
         },
     )
 
@@ -521,6 +603,552 @@ async def clear_document_events(document_id: str) -> EventsCleared:
         ) from exc
 
     return EventsCleared(document_id=document_id, status="pending", events_cleared=True)
+
+
+# =======================================================================
+# Merge entities endpoint
+# =======================================================================
+
+
+@app.post("/entities/merge", response_model=MergeResponse, status_code=200)
+async def merge_entities(request: MergeRequest) -> MergeResponse:
+    """Merge two canonical entities of the same type.
+
+    Merges the source canonical entity into the target canonical entity:
+    1.  Validates that source and target exist and are of the same type.
+    2.  Validates that neither entity has already been merged (no
+        ``superseded_by`` chain).
+    3.  Re-points all references from source to target with
+        ``resolution_confidence = 1.0``.
+    4.  Soft-deletes the source by setting its ``superseded_by`` to the
+        target's record ID.
+
+    Returns the number of references that were re-wired and a summary
+    message.
+    """
+    db: AsyncWsSurrealConnection | None = app.state.db
+
+    if db is None:
+        logger.error("POST /entities/merge rejected — SurrealDB unavailable")
+        raise HTTPException(
+            status_code=503,
+            detail="SurrealDB is not available. Please try again later.",
+        )
+
+    from surrealdb.data.types.record_id import RecordID
+
+    source_id_obj = RecordID("canonical_entity", request.source_id)
+    target_id_obj = RecordID("canonical_entity", request.target_id)
+
+    # 1. Self-merge check
+    if request.source_id == request.target_id:
+        logger.warning(
+            "Merge rejected — self-merge attempted for entity %s",
+            request.source_id,
+        )
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot merge an entity into itself.",
+        )
+
+    # 2. Fetch source entity
+    try:
+        source_result = await db.query(
+            "SELECT * FROM canonical_entity WHERE id = $source_id",
+            {"source_id": source_id_obj},
+        )
+    except Exception as exc:
+        logger.error(
+            "Failed to query source entity %s: %s",
+            request.source_id,
+            exc,
+        )
+        raise HTTPException(
+            status_code=502,
+            detail="Failed to query database.",
+        ) from exc
+
+    source_records: list[dict] = [
+        r for r in (source_result or []) if isinstance(r, dict)
+    ]
+    if not source_records:
+        logger.warning(
+            "Merge rejected — source entity %s not found",
+            request.source_id,
+        )
+        raise HTTPException(
+            status_code=404,
+            detail=f"Source canonical entity {request.source_id} not found.",
+        )
+
+    source_record = source_records[0]
+
+    # 3. Fetch target entity
+    try:
+        target_result = await db.query(
+            "SELECT * FROM canonical_entity WHERE id = $target_id",
+            {"target_id": target_id_obj},
+        )
+    except Exception as exc:
+        logger.error(
+            "Failed to query target entity %s: %s",
+            request.target_id,
+            exc,
+        )
+        raise HTTPException(
+            status_code=502,
+            detail="Failed to query database.",
+        ) from exc
+
+    target_records: list[dict] = [
+        r for r in (target_result or []) if isinstance(r, dict)
+    ]
+    if not target_records:
+        logger.warning(
+            "Merge rejected — target entity %s not found",
+            request.target_id,
+        )
+        raise HTTPException(
+            status_code=404,
+            detail=f"Target canonical entity {request.target_id} not found.",
+        )
+
+    target_record = target_records[0]
+
+    # 4. Cross-type check
+    source_type = source_record.get("entity_type")
+    target_type = target_record.get("entity_type")
+    if source_type != target_type:
+        logger.warning(
+            "Merge rejected — cross-type merge attempted: source=%s (%s), target=%s (%s)",
+            request.source_id,
+            source_type,
+            request.target_id,
+            target_type,
+        )
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot merge entities of different types: source is '{source_type}', target is '{target_type}'.",
+        )
+
+    # 5. Already-merged source check
+    if source_record.get("superseded_by") is not None:
+        logger.warning(
+            "Merge rejected — source entity %s is already merged (superseded_by=%s)",
+            request.source_id,
+            source_record["superseded_by"],
+        )
+        raise HTTPException(
+            status_code=400,
+            detail=f"Source canonical entity {request.source_id} has already been merged into another entity.",
+        )
+
+    # 6. Already-merged target check
+    if target_record.get("superseded_by") is not None:
+        logger.warning(
+            "Merge rejected — target entity %s is already merged (superseded_by=%s)",
+            request.target_id,
+            target_record["superseded_by"],
+        )
+        raise HTTPException(
+            status_code=400,
+            detail=f"Target canonical entity {request.target_id} has already been merged into another entity.",
+        )
+
+    # 7. Count and rewire references from source to target
+    target_rid = RecordID("canonical_entity", request.target_id)
+    source_rid = RecordID("canonical_entity", request.source_id)
+
+    try:
+        # Count references currently pointing to source
+        count_result = await db.query(
+            "SELECT count() as cnt FROM reference WHERE canonical_entity = $source_ref",
+            {"source_ref": source_rid},
+        )
+    except Exception as exc:
+        logger.error(
+            "Failed to count references for source entity %s: %s",
+            request.source_id,
+            exc,
+        )
+        raise HTTPException(
+            status_code=502,
+            detail="Failed to query database during reference count.",
+        ) from exc
+
+    # SurrealDB returns count as a dict with a nested value
+    count_records: list[dict] = [
+        r for r in (count_result or []) if isinstance(r, dict)
+    ]
+    rewired_count = 0
+    if count_records:
+        cnt_val = count_records[0].get("cnt")
+        if isinstance(cnt_val, dict):
+            rewired_count = int(cnt_val.get("value", 0))
+        elif cnt_val is not None:
+            rewired_count = int(cnt_val)
+
+    try:
+        # Update references: point from source to target (use RecordID for typed record fields)
+        await db.query(
+            "UPDATE reference SET canonical_entity = $target_ref, "
+            "resolution_confidence = 1.0, updated_at = time::now() "
+            "WHERE canonical_entity = $source_ref",
+            {"source_ref": source_rid, "target_ref": target_rid},
+        )
+
+        # Soft-delete source by setting superseded_by (use RecordID for typed record field)
+        await db.query(
+            f"UPDATE canonical_entity:{request.source_id} SET "
+            "superseded_by = $target_ref, updated_at = time::now()",
+            {"target_ref": target_rid},
+        )
+
+        logger.info(
+            "Merge complete: source=%s target=%s rewired=%d references",
+            request.source_id,
+            request.target_id,
+            rewired_count,
+        )
+    except Exception as exc:
+        logger.error(
+            "Failed to execute merge source=%s target=%s: %s",
+            request.source_id,
+            request.target_id,
+            exc,
+        )
+        raise HTTPException(
+            status_code=502,
+            detail="Failed to execute merge operation.",
+        ) from exc
+
+    return MergeResponse(
+        success=True,
+        message=f"Merged canonical entity {request.source_id} into {request.target_id}, rewired {rewired_count} references.",
+        source_id=request.source_id,
+        target_id=request.target_id,
+        rewired_count=rewired_count,
+    )
+
+
+# =======================================================================
+# Split entity endpoint
+# =======================================================================
+
+
+@app.post(
+    "/entities/{entity_type}/{entity_id}/split",
+    response_model=SplitResponse,
+    status_code=200,
+)
+async def split_entity(
+    entity_type: str,
+    entity_id: str,
+    request: SplitRequest,
+) -> SplitResponse:
+    """Split references from a canonical entity into new entities.
+
+    Partitions references belonging to an existing canonical entity into
+    one or more new canonical entities (grouped by partition).  Each
+    partition creates a new entity with ``properties.split_from`` pointing
+    to the original.
+
+    Validation pipeline:
+    1. SurrealDB available (503)
+    2. entity_type is one of place/person/object (400)
+    3. Source entity exists (404)
+    4. Partitions not empty (400)
+    5. No duplicate reference IDs across partitions (400)
+    6. Each reference exists and points to this entity (400)
+    """
+    db: AsyncWsSurrealConnection | None = app.state.db
+
+    if db is None:
+        logger.error(
+            "POST /entities/%s/%s/split rejected — SurrealDB unavailable",
+            entity_type,
+            entity_id,
+        )
+        raise HTTPException(
+            status_code=503,
+            detail="SurrealDB is not available. Please try again later.",
+        )
+
+    # 1. Validate entity_type is one of the known types
+    valid_types = {"place", "person", "object"}
+    if entity_type not in valid_types:
+        logger.warning(
+            "Split rejected — invalid entity_type '%s' (must be one of %s)",
+            entity_type,
+            sorted(valid_types),
+        )
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid entity type '{entity_type}'. Must be one of: {', '.join(sorted(valid_types))}.",
+        )
+
+    from surrealdb.data.types.record_id import RecordID
+
+    source_id_obj = RecordID("canonical_entity", entity_id)
+
+    # 2. Fetch source entity (must exist)
+    try:
+        source_result = await db.query(
+            "SELECT * FROM canonical_entity WHERE id = $source_id",
+            {"source_id": source_id_obj},
+        )
+    except Exception as exc:
+        logger.error(
+            "Failed to query source entity %s/%s: %s",
+            entity_type,
+            entity_id,
+            exc,
+        )
+        raise HTTPException(
+            status_code=502,
+            detail="Failed to query database.",
+        ) from exc
+
+    source_records: list[dict] = [
+        r for r in (source_result or []) if isinstance(r, dict)
+    ]
+    if not source_records:
+        logger.warning(
+            "Split rejected — entity %s/%s not found",
+            entity_type,
+            entity_id,
+        )
+        raise HTTPException(
+            status_code=404,
+            detail=f"Canonical entity {entity_id} of type '{entity_type}' not found.",
+        )
+
+    source_record = source_records[0]
+
+    # 3. Validate partitions not empty
+    if not request.partitions:
+        logger.warning(
+            "Split rejected — no partitions provided for entity %s",
+            entity_id,
+        )
+        raise HTTPException(
+            status_code=400,
+            detail="At least one partition is required.",
+        )
+
+    # 4. Validate all partitions have at least one reference_id
+    for i, partition in enumerate(request.partitions):
+        if not partition.reference_ids:
+            logger.warning(
+                "Split rejected — partition %d has no reference_ids for entity %s",
+                i,
+                entity_id,
+            )
+            raise HTTPException(
+                status_code=400,
+                detail=f"Partition {i} ('{partition.new_entity_name}') has no reference IDs.",
+            )
+
+    # 5. Check for duplicate reference IDs across all partitions
+    all_ref_ids: list[str] = []
+    for partition in request.partitions:
+        all_ref_ids.extend(partition.reference_ids)
+
+    if len(all_ref_ids) != len(set(all_ref_ids)):
+        logger.warning(
+            "Split rejected — duplicate reference IDs across partitions for entity %s",
+            entity_id,
+        )
+        raise HTTPException(
+            status_code=400,
+            detail="Duplicate reference IDs found across partitions. Each reference can only be moved once.",
+        )
+
+    # 6. Verify each reference exists and points to this entity
+    source_rid = RecordID("canonical_entity", entity_id)
+    for ref_id in all_ref_ids:
+        try:
+            ref_result = await db.query(
+                "SELECT * FROM reference WHERE id = $ref_id",
+                {"ref_id": RecordID("reference", ref_id)},
+            )
+        except Exception as exc:
+            logger.error(
+                "Failed to query reference %s: %s",
+                ref_id,
+                exc,
+            )
+            raise HTTPException(
+                status_code=502,
+                detail="Failed to query database.",
+            ) from exc
+
+        ref_records: list[dict] = [
+            r for r in (ref_result or []) if isinstance(r, dict)
+        ]
+        if not ref_records:
+            logger.warning(
+                "Split rejected — reference %s not found",
+                ref_id,
+            )
+            raise HTTPException(
+                status_code=400,
+                detail=f"Reference {ref_id} not found.",
+            )
+
+        ref_record = ref_records[0]
+        ref_canonical = ref_record.get("canonical_entity")
+
+        # Compare against source RecordID — handle both RecordID and string representations
+        ref_matches = False
+        if isinstance(ref_canonical, RecordID):
+            ref_matches = ref_canonical == source_rid
+        elif isinstance(ref_canonical, str):
+            ref_matches = ref_canonical == str(source_rid)
+
+        if not ref_matches:
+            logger.warning(
+                "Split rejected — reference %s does not point to entity %s (points to %s)",
+                ref_id,
+                entity_id,
+                ref_canonical_str,
+            )
+            raise HTTPException(
+                status_code=400,
+                detail=f"Reference {ref_id} does not belong to canonical entity {entity_id}.",
+            )
+
+    # 7. Group partitions by new_entity_name (same name = same new entity)
+    groups: dict[str, list[SplitPartition]] = {}
+    for partition in request.partitions:
+        name = partition.new_entity_name
+        if name not in groups:
+            groups[name] = []
+        groups[name].append(partition)
+
+    # 8. For each unique name: CREATE canonical_entity, then UPDATE references
+    new_entities_info: list[dict] = []
+    total_moved = 0
+
+    for new_name in groups:
+        merged_ref_ids: list[str] = []
+        for partition in groups[new_name]:
+            merged_ref_ids.extend(partition.reference_ids)
+
+        # 8a. Create the new canonical entity with split_from provenance
+        try:
+            create_result = await db.create(
+                "canonical_entity",
+                {
+                    "entity_type": entity_type,
+                    "name": new_name,
+                    "properties": {
+                        "split_from": str(source_rid),
+                    },
+                    "superseded_by": None,
+                },
+            )
+        except Exception as exc:
+            logger.error(
+                "Failed to create canonical_entity '%s' during split: %s",
+                new_name,
+                exc,
+            )
+            raise HTTPException(
+                status_code=502,
+                detail=f"Failed to create canonical entity '{new_name}'.",
+            ) from exc
+
+        # Parse the created entity ID from SurrealDB's create response
+        # create() can return RecordID or dict with id field
+        new_entity_id: str | None = None
+        if isinstance(create_result, RecordID):
+            new_entity_id = create_result.id
+        elif isinstance(create_result, dict):
+            created_id = create_result.get("id")
+            if isinstance(created_id, RecordID):
+                new_entity_id = created_id.id
+            elif isinstance(created_id, str):
+                # Parse "canonical_entity:xxx" to extract hex portion
+                if ":" in created_id:
+                    new_entity_id = created_id.split(":", 1)[1]
+                else:
+                    new_entity_id = created_id
+        elif isinstance(create_result, list) and len(create_result) > 0:
+            first = create_result[0]
+            if isinstance(first, dict):
+                created_id = first.get("id")
+                if isinstance(created_id, RecordID):
+                    new_entity_id = created_id.id
+                elif isinstance(created_id, str):
+                    if ":" in created_id:
+                        new_entity_id = created_id.split(":", 1)[1]
+                    else:
+                        new_entity_id = created_id
+
+        if new_entity_id is None:
+            logger.error(
+                "Could not parse created entity ID from response: %s",
+                str(create_result)[:300],
+            )
+            raise HTTPException(
+                status_code=502,
+                detail=f"Failed to parse created entity ID for '{new_name}'.",
+            )
+
+        new_entity_rid = RecordID("canonical_entity", new_entity_id)
+
+        # 8b. Update each reference in this group to point to the new entity
+        for ref_id in merged_ref_ids:
+            try:
+                await db.query(
+                    "UPDATE reference SET canonical_entity = $target_ref, "
+                    "resolution_confidence = 1.0, updated_at = time::now() "
+                    "WHERE id = $ref_id",
+                    {
+                        "target_ref": new_entity_rid,
+                        "ref_id": RecordID("reference", ref_id),
+                    },
+                )
+            except Exception as exc:
+                logger.error(
+                    "Failed to update reference %s for new entity '%s': %s",
+                    ref_id,
+                    new_name,
+                    exc,
+                )
+                raise HTTPException(
+                    status_code=502,
+                    detail=f"Failed to update reference {ref_id} for '{new_name}'.",
+                ) from exc
+
+        new_entities_info.append({
+            "name": new_name,
+            "entity_id": new_entity_id,
+        })
+        total_moved += len(merged_ref_ids)
+
+    logger.info(
+        "Split complete: entity=%s/%s partitions=%d total_moved=%d new_entities=%s",
+        entity_type,
+        entity_id,
+        len(request.partitions),
+        total_moved,
+        [e["name"] for e in new_entities_info],
+    )
+
+    return SplitResponse(
+        success=True,
+        message=(
+            f"Split canonical entity {entity_id} into {len(new_entities_info)} new "
+            f"entities, moved {total_moved} references."
+        ),
+        entity_type=entity_type,
+        original_entity_id=entity_id,
+        new_entities=new_entities_info,
+        partition_count=len(new_entities_info),
+        total_references_moved=total_moved,
+    )
 
 
 # =======================================================================
