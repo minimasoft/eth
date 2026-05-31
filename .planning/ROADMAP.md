@@ -65,7 +65,11 @@
   4. Uploaded document blob is retrievable from MinIO via `storage.py` client factory with path `doc/{id}.pdf`
   5. Document record shows `blob_format: "minio"` and `blob_path` reference (not base64-encoded blob)
 
-**Plans**: TBD
+**Plans**: 2 plans
+
+Plans:
+- [ ] 06-01-PLAN.md — MinIO Docker service, storage.py client factory, init_bucket.py script, schema update
+- [ ] 06-02-PLAN.md — POST /documents/upload endpoint, DocumentStatus model update
 
 ---
 
@@ -115,6 +119,6 @@
 | 3. GraphQL Proxy Fixes | — | Complete | 2026-05-31 |
 | 4. Merge/Split Endpoint Fixes | — | Complete | 2026-05-31 |
 | 5. Regression Verification | — | Complete | 2026-05-31 |
-| 6. MinIO Infrastructure + Blob Upload | 0/0 | Not started | - |
+| 6. MinIO Infrastructure + Blob Upload | 0/2 | Planning | - |
 | 7. PDF Text Extraction + Chunking | 0/0 | Not started | - |
 | 8. Full Workflow Integration + Tests | 0/0 | Not started | - |
