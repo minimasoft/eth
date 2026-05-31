@@ -67,6 +67,49 @@ DEFINE FIELD updated_at ON TABLE document TYPE datetime
     COMMENT 'Timestamp of the most recent update to this document record';
 
 -- ==========================================================================
+-- Table: document_chunk
+-- ==========================================================================
+-- Stores text chunks extracted from a document's content, with page-level
+-- provenance. Each chunk records its position in the chunk sequence, the
+-- page range it covers (1-based), and the character offset range in the
+-- full document text. Chunks are internal — the LLM extraction pipeline
+-- always receives the full reconstructed text from document.text_content.
+-- ==========================================================================
+
+DEFINE TABLE document_chunk SCHEMAFULL
+    COMMENT 'Text chunk from a document with page-level provenance (internal — LLM never sees individual chunks)';
+
+DEFINE FIELD chunk_index ON TABLE document_chunk TYPE int
+    ASSERT $value >= 0
+    COMMENT 'Zero-based index of this chunk in the document chunk sequence';
+
+DEFINE FIELD text ON TABLE document_chunk TYPE string
+    COMMENT 'The chunk text content';
+
+DEFINE FIELD page_start ON TABLE document_chunk TYPE int
+    ASSERT $value >= 1
+    COMMENT 'Page number (1-based) where this chunk begins in the source document';
+
+DEFINE FIELD page_end ON TABLE document_chunk TYPE int
+    ASSERT $value >= 1
+    COMMENT 'Page number (1-based, inclusive) where this chunk ends in the source document';
+
+DEFINE FIELD offset_start ON TABLE document_chunk TYPE int
+    ASSERT $value >= 0
+    COMMENT 'Character offset (0-based) where this chunk starts in the full document text_content';
+
+DEFINE FIELD offset_end ON TABLE document_chunk TYPE int
+    ASSERT $value >= 0
+    COMMENT 'Character offset (exclusive) where this chunk ends in the full document text_content';
+
+DEFINE FIELD document ON TABLE document_chunk TYPE record<document>
+    COMMENT 'Link to the source document that this chunk belongs to';
+
+DEFINE FIELD created_at ON TABLE document_chunk TYPE datetime
+    DEFAULT time::now() READONLY
+    COMMENT 'Timestamp when the chunk record was created (immutable after insertion)';
+
+-- ==========================================================================
 -- Table: event
 -- ==========================================================================
 -- Represents a single structured "event" extracted from a document by an LLM.
