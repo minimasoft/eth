@@ -9,11 +9,11 @@ Requirements for v2.0 Blob & Chunk Pipeline. Each maps to roadmap phases.
 
 ### MinIO Infrastructure
 
-- [ ] **BLOB-01**: MinIO Docker Compose service runs with healthcheck and configurable ports
-- [ ] **BLOB-02**: Bucket auto-initialized on startup via init container script
-- [ ] **BLOB-03**: Storage client factory (`storage.py`) mirrors `db.py` per-activity connection pattern
-- [ ] **BLOB-04**: Document blob upload via Temporal activity (`store_blob_activity`)
-- [ ] **BLOB-05**: `POST /documents/upload` endpoint accepts multipart file upload, returns document ID
+- [x] **BLOB-01**: MinIO Docker Compose service runs with healthcheck and configurable ports
+- [x] **BLOB-02**: Bucket auto-initialized on startup via init container script
+- [x] **BLOB-03**: Storage client factory (`storage.py`) mirrors `db.py` per-activity connection pattern
+- [x] **BLOB-04**: Document blob upload fields on schema (`blob_format`, `blob_path`)
+- [x] **BLOB-05**: `POST /documents/upload` endpoint accepts multipart file upload, returns document ID
 
 ### PDF Text Extraction
 
@@ -73,11 +73,11 @@ Explicitly excluded. Documented to prevent scope creep.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| BLOB-01 | Phase 6 | Pending |
-| BLOB-02 | Phase 6 | Pending |
-| BLOB-03 | Phase 6 | Pending |
-| BLOB-04 | Phase 6 | Pending |
-| BLOB-05 | Phase 6 | Pending |
+| BLOB-01 | Phase 6 | Complete |
+| BLOB-02 | Phase 6 | Complete |
+| BLOB-03 | Phase 6 | Complete |
+| BLOB-04 | Phase 6 | Complete |
+| BLOB-05 | Phase 6 | Complete |
 | EXTR-01 | Phase 7 | Pending |
 | EXTR-02 | Phase 7 | Pending |
 | EXTR-03 | Phase 7 | Pending |

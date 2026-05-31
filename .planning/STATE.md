@@ -2,15 +2,15 @@
 gsd_state_version: "1.0"
 milestone: v2.0
 milestone_name: Blob & Chunk Pipeline
-status: planning
-last_updated: "2026-05-31T23:24:00.000Z"
+status: in_progress
+last_updated: "2026-05-31T23:55:00.000Z"
 last_activity: 2026-05-31
 progress:
   total_phases: 3
   completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
-  percent: 0
+  total_plans: 2
+  completed_plans: 2
+  percent: 100
 ---
 
 # Project State
@@ -25,27 +25,27 @@ See: .planning/PROJECT.md (updated 2026-05-31)
 ## Current Position
 
 Phase: 6 of 8 (MinIO Infrastructure + Blob Upload)
-Plan: - of - in current phase
-Status: Ready to plan
-Last activity: 2026-05-31 — Roadmap created for v2.0, phases 6-8 defined
+Plan: 2 of 2 in current phase (COMPLETE)
+Status: Phase complete — both plans executed
+Last activity: 2026-05-31 — Phase 6 fully implemented
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 0
-- Average duration: N/A
-- Total execution time: N/A
+- Total plans completed: 2
+- Average duration: ~12.5 min
+- Total execution time: ~25 min
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| TBD | — | — | — |
+| 6. MinIO Infrastructure + Blob Upload | 2 | ~25 min | ~12.5 min |
 
 **Recent Trend:**
-- Last 5 plans: N/A
+- Last 5 plans: 06-02, 06-01
 - Trend: N/A
 
 *Updated after each plan completion*
@@ -57,7 +57,12 @@ Progress: [░░░░░░░░░░] 0%
 Decisions are logged in PROJECT.md Key Decisions table.
 Recent decisions affecting current work:
 
-- None yet for v2.0. Phase 6 (MinIO) follows established patterns: `storage.py` mirrors `db.py`, init bucket script mirrors `init_schema.py`.
+- MinIO healthcheck uses curl to /minio/health/live instead of mc (mc not bundled in minio/minio image)
+- storage.py provides both sync and async context managers (sync for scripts, async for FastAPI)
+- Blob path format: doc/{uuid}{ext} — extension derived from filename, defaults to .bin
+- Degraded mode: if MinIO fails, store blob as base64-encoded original_blob in SurrealDB
+- Failed MinIO storage after SurrealDB create failure: cleanup blob to avoid orphaned objects
+- MinIO credentials default to minioadmin:minioadmin in dev; documented in .env.example that production must use strong secrets
 
 ### Pending Todos
 
@@ -81,6 +86,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-05-31 23:23
-Stopped at: Milestone v2.0 started — requirements defined, research complete
+Last session: 2026-05-31 23:55
+Stopped at: Phase 6 fully implemented (MinIO + blob upload)
 Resume file: None
