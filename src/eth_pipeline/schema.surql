@@ -46,6 +46,14 @@ DEFINE FIELD filename ON TABLE document TYPE string
 DEFINE FIELD mime_type ON TABLE document TYPE string
     COMMENT 'MIME type of the source file (e.g. text/plain, application/pdf, text/markdown)';
 
+DEFINE FIELD blob_format ON TABLE document TYPE string | null
+    DEFAULT null
+    COMMENT 'Storage format of the original binary blob: "minio" (object-stored), null (inline base64 for legacy)';
+
+DEFINE FIELD blob_path ON TABLE document TYPE string | null
+    DEFAULT null
+    COMMENT 'S3 object path within the eth-documents bucket when blob_format="minio" (e.g. doc/{id}.pdf); null for legacy inline-stored documents';
+
 DEFINE FIELD error_message ON TABLE document TYPE string | null
     DEFAULT null
     COMMENT 'Human-readable error description when status is "failed" (null otherwise)';
