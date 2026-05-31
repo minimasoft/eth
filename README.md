@@ -64,6 +64,14 @@ Documents are ingested via HTTP, an LLM extracts structured events (space, time,
    }
    ```
 
+5. **(Optional) Run integration tests:**
+
+   ```bash
+   docker compose run --rm integration-tests
+   ```
+
+   This compiles and runs the TypeScript integration test suite against the running services (API health, document CRUD, GraphQL queries, entity merge/split). Requires the `api` service to be healthy.
+
 ## Architecture
 
 ```mermaid
