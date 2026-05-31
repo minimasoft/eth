@@ -21,6 +21,28 @@ services:
     restart: unless-stopped
     networks:
     - eth-pipeline
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    ports:
+    - 9000:9000
+    - 9001:9001
+    volumes:
+    - minio_data:/data
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+    healthcheck:
+      test:
+      - CMD-SHELL
+      - curl -f http://localhost:9000/minio/health/live || exit 1
+      interval: 5s
+      retries: 6
+      start_period: 10s
+      timeout: 5s
+    restart: unless-stopped
+    networks:
+    - eth-pipeline
   temporal-server:
     image: temporalio/temporal:latest
     command: server start-dev --ip 0.0.0.0
@@ -63,6 +85,22 @@ services:
       SURREAL_URL: http://surrealdb:8000
     depends_on:
       surrealdb:
+        condition: service_healthy
+    restart: 'no'
+    networks:
+    - eth-pipeline
+  bucket-init:
+    build: .
+    command: uv run python scripts/init_bucket.py
+    env_file: .env
+    environment:
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      MINIO_BUCKET: eth-documents
+      MINIO_SECURE: "false"
+    depends_on:
+      minio:
         condition: service_healthy
     restart: 'no'
     networks:
@@ -129,6 +167,7 @@ services:
       - eth-pipeline
 volumes:
   surrealdb_data: null
+  minio_data: null
 networks:
   eth-pipeline:
     driver: bridge
