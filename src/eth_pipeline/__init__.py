@@ -1,8 +1,8 @@
 """
-eth-pipeline: Ethereum document processing pipeline.
+eth-pipeline: Espacio Tiempo Humanos document processing pipeline.
 
 This package provides the core data models and orchestration for
-processing Ethereum documents, extracting structured events, and
+processing documents, extracting structured events, and
 storing verbatim references in SurrealDB via Temporal workflows.
 
 Services:

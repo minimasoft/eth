@@ -1,7 +1,7 @@
 [project]
 name = "eth-pipeline"
 version = "0.1.0"
-description = "Ethereum document processing pipeline with Temporal and SurrealDB"
+description = "Espacio Tiempo Humanos document processing pipeline with Temporal and SurrealDB"
 requires-python = ">=3.11"
 dependencies = [
     "temporalio>=1.10.0",
