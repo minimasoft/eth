@@ -76,17 +76,31 @@ def send_statement(url: str, headers: dict[str, str], statement: str) -> dict:
 def parse_statements(schema_text: str) -> list[str]:
     """Split schema text into individual SurrealQL statements by semicolons.
 
-    Filters out empty / whitespace-only chunks and single-line comments.
+    Respects single-quoted string literals — semicolons inside '...' are
+    NOT treated as statement separators. Filters out empty / whitespace-only
+    chunks and single-line comments.
     """
     statements: list[str] = []
-    for chunk in schema_text.split(";"):
-        chunk = chunk.strip()
-        if not chunk:
-            continue
-        # Skip pure-comment chunks
-        if all(line.strip().startswith("--") for line in chunk.splitlines() if line.strip()):
-            continue
-        statements.append(chunk)
+    buf: list[str] = []
+    in_string = False
+    for ch in schema_text:
+        if ch == "'":
+            in_string = not in_string
+        if ch == ";" and not in_string:
+            chunk = "".join(buf).strip()
+            buf = []
+            if not chunk:
+                continue
+            if all(line.strip().startswith("--") for line in chunk.splitlines() if line.strip()):
+                continue
+            statements.append(chunk)
+        else:
+            buf.append(ch)
+    # trailing content after last semicolon
+    if buf:
+        chunk = "".join(buf).strip()
+        if chunk and not all(line.strip().startswith("--") for line in chunk.splitlines() if line.strip()):
+            statements.append(chunk)
     return statements
 
 
