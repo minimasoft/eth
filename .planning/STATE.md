@@ -7,9 +7,9 @@ last_updated: "2026-05-31T23:55:00.000Z"
 last_activity: 2026-05-31
 progress:
   total_phases: 3
-  completed_phases: 0
-  total_plans: 2
-  completed_plans: 2
+  completed_phases: 1
+  total_plans: 4
+  completed_plans: 4
   percent: 100
 ---
 
@@ -20,33 +20,34 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-31)
 
 **Core value:** Every extracted event must be traceable to its exact source text in the original document, and every resolved entity must show its evidential references.
-**Current focus:** v2.0 Blob & Chunk Pipeline — Phase 6 (MinIO Infrastructure + Blob Upload)
+**Current focus:** v2.0 Blob & Chunk Pipeline — Phase 7 (PDF Text Extraction + Chunking)
 
 ## Current Position
 
-Phase: 6 of 8 (MinIO Infrastructure + Blob Upload)
+Phase: 7 of 8 (PDF Text Extraction + Chunking)
 Plan: 2 of 2 in current phase (COMPLETE)
 Status: Phase complete — both plans executed
-Last activity: 2026-05-31 — Phase 6 fully implemented
+Last activity: 2026-05-31 — Phase 7 fully implemented
 
 Progress: [██████████] 100%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 2
-- Average duration: ~12.5 min
-- Total execution time: ~25 min
+- Total plans completed: 4
+- Average duration: ~11 min
+- Total execution time: ~45 min
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 6. MinIO Infrastructure + Blob Upload | 2 | ~25 min | ~12.5 min |
+| 7. PDF Text Extraction + Chunking | 2 | ~22 min | ~11 min |
 
 **Recent Trend:**
-- Last 5 plans: 06-02, 06-01
-- Trend: N/A
+- Last 5 plans: 07-02, 07-01, 06-02, 06-01
+- Trend: Stable
 
 *Updated after each plan completion*
 
@@ -63,6 +64,10 @@ Recent decisions affecting current work:
 - Degraded mode: if MinIO fails, store blob as base64-encoded original_blob in SurrealDB
 - Failed MinIO storage after SurrealDB create failure: cleanup blob to avoid orphaned objects
 - MinIO credentials default to minioadmin:minioadmin in dev; documented in .env.example that production must use strong secrets
+- pypdfium2 is primary PDF extractor (BSD-3-Clause); pypdf is AGPL-mitigation fallback via USE_PYPDF env var
+- Chunks are non-overlapping (chunk_overlap=0) — reconstruction uses original text offsets, not concatenation
+- Document status progression: extracting_text → chunking → processed
+- store_chunks_activity uses delete-then-recreate for idempotency
 
 ### Pending Todos
 
@@ -87,5 +92,6 @@ Items acknowledged and carried forward from previous milestone close:
 ## Session Continuity
 
 Last session: 2026-05-31 23:55
-Stopped at: Phase 6 fully implemented (MinIO + blob upload)
+Stopped at: Phase 7 fully implemented (PDF text extraction + chunking)
 Resume file: None
+

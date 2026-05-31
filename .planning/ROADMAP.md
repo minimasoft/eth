@@ -10,7 +10,7 @@
 ## Phases
 
 - [x] **Phase 6: MinIO Infrastructure + Blob Upload** — MinIO Docker service, storage client, blob upload endpoint, bucket auto-init
-- [ ] **Phase 7: PDF Text Extraction + Chunking** — ContentExtractor protocol, PdfExtractor, DocumentChunker, chunk storage activities
+- [x] **Phase 7: PDF Text Extraction + Chunking** — ContentExtractor protocol, PdfExtractor, DocumentChunker, chunk storage activities
 - [ ] **Phase 8: Full Workflow Integration + Tests** — Workflow conditional branch, status tracking, reprocess safety, backward compat, integration tests
 
 <details>
@@ -91,8 +91,8 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 07-01-PLAN.md — Content extractors (ContentExtractor protocol, PdfExtractor, quality gate) + DocumentChunker with page-provenance tracking + dependencies
-- [ ] 07-02-PLAN.md — document_chunk SurrealDB schema + Temporal activities (extract_text, chunk_document, store_chunks) + worker registration
+- [x] 07-01-PLAN.md — Content extractors (ContentExtractor protocol, PdfExtractor, quality gate) + DocumentChunker with page-provenance tracking + dependencies
+- [x] 07-02-PLAN.md — document_chunk SurrealDB schema + Temporal activities (extract_text, chunk_document, store_chunks) + worker registration
 
 ---
 
@@ -124,5 +124,5 @@ Plans:
 | 4. Merge/Split Endpoint Fixes | — | Complete | 2026-05-31 |
 | 5. Regression Verification | — | Complete | 2026-05-31 |
 | 6. MinIO Infrastructure + Blob Upload | 2/2 | Complete | 2026-05-31 |
-| 7. PDF Text Extraction + Chunking | 0/2 | Planning complete | - |
+| 7. PDF Text Extraction + Chunking | 2/2 | Complete | 2026-05-31 |
 | 8. Full Workflow Integration + Tests | 0/0 | Not started | - |
