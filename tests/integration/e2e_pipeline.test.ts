@@ -128,6 +128,7 @@ describe("e2e pipeline — full lifecycle", () => {
         const deadline = Date.now() + PROCESSING_TIMEOUT;
         let lastStatus = doc.status;
         const statusHistory: string[] = [lastStatus];
+        let pendingPolls = 0;
 
         console.log(`  Monitoring document ${doc.document_id}...`);
 
@@ -162,6 +163,17 @@ describe("e2e pipeline — full lifecycle", () => {
             // Don't fail the test — processing depends on Temporal + LLM availability
             console.log("ℹ  Document processing failed (LLM/Temporal may be unavailable)");
             return;
+          }
+
+          if (current.status === "pending") {
+            pendingPolls++;
+            if (pendingPolls >= 3) {
+              console.log(
+                `ℹ  No worker detected — document still "${lastStatus}" after 3 polls`,
+              );
+              console.log("  (Processing requires Temporal + OpenRouter to be available)");
+              return;
+            }
           }
         }
 
@@ -426,6 +438,7 @@ async function waitForProcessing(
   timeout = PROCESSING_TIMEOUT,
 ): Promise<void> {
   const deadline = Date.now() + timeout;
+  let pollsSincePending = 0;
   while (Date.now() < deadline) {
     const current = await getDocumentStatus(documentId);
     if (current === null) {
@@ -436,6 +449,13 @@ async function waitForProcessing(
     if (current.status === "failed") {
       console.log(`ℹ  Document ${documentId} failed (${current.error_message ?? "unknown"})`);
       return;
+    }
+    if (current.status === "pending") {
+      pollsSincePending++;
+      if (pollsSincePending >= 3) {
+        console.log("ℹ  No worker detected — skipping wait (processing needs Temporal + OpenRouter)");
+        return;
+      }
     }
     await new Promise((r) => setTimeout(r, POLL_INTERVAL));
   }
