@@ -73,33 +73,33 @@ Explicitly excluded. Documented to prevent scope creep.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| BLOB-01 | | Pending |
-| BLOB-02 | | Pending |
-| BLOB-03 | | Pending |
-| BLOB-04 | | Pending |
-| BLOB-05 | | Pending |
-| EXTR-01 | | Pending |
-| EXTR-02 | | Pending |
-| EXTR-03 | | Pending |
-| EXTR-04 | | Pending |
-| EXTR-05 | | Pending |
-| CHNK-01 | | Pending |
-| CHNK-02 | | Pending |
-| CHNK-03 | | Pending |
-| CHNK-04 | | Pending |
-| CHNK-05 | | Pending |
-| WFLW-01 | | Pending |
-| WFLW-02 | | Pending |
-| WFLW-03 | | Pending |
-| WFLW-04 | | Pending |
-| TEST-01 | | Pending |
-| TEST-02 | | Pending |
-| TEST-03 | | Pending |
+| BLOB-01 | Phase 6 | Pending |
+| BLOB-02 | Phase 6 | Pending |
+| BLOB-03 | Phase 6 | Pending |
+| BLOB-04 | Phase 6 | Pending |
+| BLOB-05 | Phase 6 | Pending |
+| EXTR-01 | Phase 7 | Pending |
+| EXTR-02 | Phase 7 | Pending |
+| EXTR-03 | Phase 7 | Pending |
+| EXTR-04 | Phase 7 | Pending |
+| EXTR-05 | Phase 7 | Pending |
+| CHNK-01 | Phase 7 | Pending |
+| CHNK-02 | Phase 7 | Pending |
+| CHNK-03 | Phase 7 | Pending |
+| CHNK-04 | Phase 7 | Pending |
+| CHNK-05 | Phase 7 | Pending |
+| WFLW-01 | Phase 8 | Pending |
+| WFLW-02 | Phase 8 | Pending |
+| WFLW-03 | Phase 8 | Pending |
+| WFLW-04 | Phase 8 | Pending |
+| TEST-01 | Phase 8 | Pending |
+| TEST-02 | Phase 8 | Pending |
+| TEST-03 | Phase 8 | Pending |
 
 **Coverage:**
 - v2 requirements: 22 total
-- Mapped to phases: 0
-- Unmapped: 22 ⚠️
+- Mapped to phases: 22
+- Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-05-31*

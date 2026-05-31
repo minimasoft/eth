@@ -1,12 +1,12 @@
 ---
-gsd_state_version: 1.0
+gsd_state_version: "1.0"
 milestone: v2.0
 milestone_name: Blob & Chunk Pipeline
 status: planning
-last_updated: "2026-05-31T23:23:58.185Z"
+last_updated: "2026-05-31T23:24:00.000Z"
 last_activity: 2026-05-31
 progress:
-  total_phases: 0
+  total_phases: 3
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -17,44 +17,70 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md
+See: .planning/PROJECT.md (updated 2026-05-31)
 
-**Current focus:** v1.2 M002 Integration Test Fixes — COMPLETED
-
-## Milestone Summary
-
-### Phase 3: GraphQL Proxy Fixes ✅
-
-- Fixed test SQL inserts: changed `properties: { test: true, ... }` to `properties: {}` (SCHEMAFULL rejects undefined sub-fields)
-- Fixed reference field names: `text` → `verbatim_text`, added `reference_type`, `span_start`, `span_end`
-- Fixed reference record references: `event: 'test_event'` → `event: event:test_event`
-- Added `updated_at`, `created_at` fields to reference table schema
-
-### Phase 4: Merge/Split Endpoint Fixes ✅
-
-- Added `updated_at` field to reference table schema (merge handler writes it)
-- Made `properties` field FLEXIBLE on canonical_entity table (split handler writes `properties.split_from`)
-- Both endpoints now return correct responses (200/400) instead of 502
-
-### Phase 5: Regression Verification ✅
-
-- All 17/17 integration tests pass (M001: 11/11, M002: 6/6)
-- `docker compose run --rm integration-tests` exits with code 0
-
-## Decisions
-
-- `properties` field on `canonical_entity` made FLEXIBLE to support arbitrary metadata keys
-- `created_at` and `updated_at` added to `reference` table (mirroring `canonical_entity` and `document`)
-- Test SQL inserts used `text` field instead of `verbatim_text` — all tests updated
-- Test reference inserts used string values for `event`/`document` record fields — fixed to use proper record IDs
+**Core value:** Every extracted event must be traceable to its exact source text in the original document, and every resolved entity must show its evidential references.
+**Current focus:** v2.0 Blob & Chunk Pipeline — Phase 6 (MinIO Infrastructure + Blob Upload)
 
 ## Current Position
 
-Phase: Not started (defining requirements)
-Plan: —
-Status: Defining requirements
-Last activity: 2026-05-31 — Milestone v2.0 started
+Phase: 6 of 8 (MinIO Infrastructure + Blob Upload)
+Plan: - of - in current phase
+Status: Ready to plan
+Last activity: 2026-05-31 — Roadmap created for v2.0, phases 6-8 defined
 
-## Operator Next Steps
+Progress: [░░░░░░░░░░] 0%
 
-- Start the next milestone with /gsd-new-milestone
+## Performance Metrics
+
+**Velocity:**
+- Total plans completed: 0
+- Average duration: N/A
+- Total execution time: N/A
+
+**By Phase:**
+
+| Phase | Plans | Total | Avg/Plan |
+|-------|-------|-------|----------|
+| TBD | — | — | — |
+
+**Recent Trend:**
+- Last 5 plans: N/A
+- Trend: N/A
+
+*Updated after each plan completion*
+
+## Accumulated Context
+
+### Decisions
+
+Decisions are logged in PROJECT.md Key Decisions table.
+Recent decisions affecting current work:
+
+- None yet for v2.0. Phase 6 (MinIO) follows established patterns: `storage.py` mirrors `db.py`, init bucket script mirrors `init_schema.py`.
+
+### Pending Todos
+
+None yet.
+
+### Blockers/Concerns
+
+None yet.
+
+## Deferred Items
+
+Items acknowledged and carried forward from previous milestone close:
+
+| Category | Item | Status | Deferred At |
+|----------|------|--------|-------------|
+| M003 Scope | Geospatial queries (radius/bounding box) | Deferred | v2.0 start |
+| M003 Scope | Event type taxonomy | Deferred | v2.0 start |
+| M003 Scope | Full-text search via SurrealDB FT index | Deferred | v2.0 start |
+| v3.0 Scope | OCR for scanned PDFs (Tesseract + Spanish) | Deferred | v2.0 start |
+| v3.0 Scope | DOCX/image content extractors | Deferred | v2.0 start |
+
+## Session Continuity
+
+Last session: 2026-05-31 23:23
+Stopped at: Milestone v2.0 started — requirements defined, research complete
+Resume file: None
