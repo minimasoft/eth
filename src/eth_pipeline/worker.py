@@ -37,10 +37,13 @@ async def main() -> None:
         task_queue=TASK_QUEUE,
         workflows=[workflows.DocumentProcessingWorkflow],
         activities=[
+            activities.chunk_document_activity,
             activities.extract_events_activity,
-            activities.update_document_status_activity,
-            activities.store_extraction_results_activity,
+            activities.extract_text_activity,
             activities.resolve_entities_activity,
+            activities.store_chunks_activity,
+            activities.store_extraction_results_activity,
+            activities.update_document_status_activity,
         ],
     )
 

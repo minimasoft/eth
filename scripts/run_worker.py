@@ -15,7 +15,11 @@ from temporalio.worker import Worker
 
 # Import the workflow and activities from the pipeline package
 from eth_pipeline.activities import (
+    chunk_document_activity,
     extract_events_activity,
+    extract_text_activity,
+    resolve_entities_activity,
+    store_chunks_activity,
     store_extraction_results_activity,
     update_document_status_activity,
 )
@@ -38,14 +42,20 @@ async def main():
         task_queue="event-extraction",
         workflows=[DocumentProcessingWorkflow],
         activities=[
+            chunk_document_activity,
             extract_events_activity,
+            extract_text_activity,
+            resolve_entities_activity,
+            store_chunks_activity,
             store_extraction_results_activity,
             update_document_status_activity,
         ],
     )
     print("✅ Worker registered for task_queue 'event-extraction'")
     print("   Workflow: DocumentProcessingWorkflow")
-    print("   Activities: extract_events_activity, store_extraction_results_activity, update_document_status_activity")
+    print("   Activities: chunk_document_activity, extract_events_activity, extract_text_activity, "
+          "resolve_entities_activity, store_chunks_activity, "
+          "store_extraction_results_activity, update_document_status_activity")
 
     # Start the worker (runs until shutdown)
     await worker.run()
