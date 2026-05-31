@@ -21,18 +21,18 @@ Every extracted event must be traceable to its exact source text in the original
 
 **M002: Entity Resolution — COMPLETE.** Canonical entities (places, persons, objects) accumulate verbatim references during Temporal document processing via resolve_entities_activity with LLM-powered per-type batching (place/person/object, skip tiempo). Nullify-then-recreate pattern ensures Temporal replay safety. POST /entities/merge and POST /entities/{type}/{id}/split REST endpoints provide human correction with 7-condition and 6-condition validation pipelines, reference rewiring, soft-delete via superseded_by, and split_from provenance tracking. All 4 slices verified: S01 (schema) through S04 (integration) — 14/14 Python checks, 6/6 TypeScript tests. Validation verdict: pass. Ready for human evaluation and M003.
 
-**M003: Advanced Query — NOT STARTED.** Geospatial queries (radius/bounding box), event type taxonomy, full-text search via SurrealDB FT index.
+**M003: Advanced Query — DEFERRED.** Geospatial queries (radius/bounding box), event type taxonomy, full-text search via SurrealDB FT index. Deferred to later milestone — v2.0 focused on blob/chunk infrastructure instead.
 
-## Current Milestone: v1.2 M002 Integration Test Fixes
+## Current Milestone: v2.0 Blob & Chunk Pipeline
 
-**Goal:** Make all 6/6 M002 TypeScript integration tests pass in Docker
+**Goal:** Add MinIO blob storage, PDF text extraction workflow, smart text chunking, and transparent multi-chunk document model
 
-**Status:** COMPLETED ✅ — All 17/17 tests pass (M001: 11/11, M002: 6/6)
-
-**Changes:**
-- Schema: Added `created_at`/`updated_at` to reference table, made `properties` FLEXIBLE on canonical_entity
-- Tests: Fixed SQL field names, record references, and missing fields to match SCHEMAFULL schema
-- Root cause: Test SQL inserts used field names/types mismatched with schema; API handler wrote to undefined fields
+**Target features:**
+- MinIO/S3 blob storage for source documents
+- Content extraction workflows (PDF first, extensible)
+- Smart text chunking (~128k chars, punctuation-aware, page-provenance)
+- Chunks are internal — user-facing API remains the same
+- Document has: original blob (MinIO) + text (streamed from chunks with offsets)
 
 ## Architecture / Key Patterns
 
@@ -75,5 +75,5 @@ This document evolves at phase transitions and milestone boundaries.
 3. Audit Out of Scope — reasons still valid?
 4. Update Context with current state
 
----
-*Last updated: 2026-05-31 after v1.2 milestone definition*
+---  
+*Last updated: 2026-05-31 after v2.0 milestone start*
