@@ -1,54 +1,106 @@
 # Requirements: Espacio Tiempo Humanos
 
 **Defined:** 2026-05-31
-**Core Value:** Every extracted event must be traceable to its exact source text in the original document, and every resolved entity must show its evidential references.
-
-## v1.2 Requirements
-
-Requirements for v1.2 M002 Integration Test Fixes milestone.
-
-### GraphQL Proxy
-
-- [ ] **GQL-01**: SQL-inserted canonical entities are visible via GraphQL proxy (Test 2)
-- [ ] **GQL-02**: Reference-to-canonical links are visible via GraphQL proxy (Test 3)
-
-### Merge/Split Endpoints
-
-- [ ] **MERGE-01**: `POST /entities/merge` returns HTTP 200 (not 404) when SurrealDB is available (Test 4)
-- [ ] **SPLIT-01**: `POST /entities/{type}/{id}/split` returns HTTP 200 (not 404) when SurrealDB is available (Test 5)
-
-### Regression
-
-- [ ] **REGR-01**: All 8/8 M001 integration tests still pass after fixes
+**Core Value:** Every extracted event must be traceable to its exact source text in the original document, and every resolved entity must show its evidential references. No black boxes — if an LLM output is wrong, delete it and replay from known state.
 
 ## v2 Requirements
 
-(Not applicable for this milestone)
+Requirements for v2.0 Blob & Chunk Pipeline. Each maps to roadmap phases.
+
+### MinIO Infrastructure
+
+- [ ] **BLOB-01**: MinIO Docker Compose service runs with healthcheck and configurable ports
+- [ ] **BLOB-02**: Bucket auto-initialized on startup via init container script
+- [ ] **BLOB-03**: Storage client factory (`storage.py`) mirrors `db.py` per-activity connection pattern
+- [ ] **BLOB-04**: Document blob upload via Temporal activity (`store_blob_activity`)
+- [ ] **BLOB-05**: `POST /documents/upload` endpoint accepts multipart file upload, returns document ID
+
+### PDF Text Extraction
+
+- [ ] **EXTR-01**: `ContentExtractor` protocol with registry — extensible for PDF, future formats (DOCX, images)
+- [ ] **EXTR-02**: `PdfExtractor` using PyMuPDF with page-level metadata extraction
+- [ ] **EXTR-03**: AGPL license mitigation via `pypdf` fallback (env var `USE_PYPDF=true`)
+- [ ] **EXTR-04**: Quality gate — detects empty/scanned PDFs with actionable error message
+- [ ] **EXTR-05**: `extract_text_activity` reads blob from MinIO, runs extractor, returns extracted text with page metadata
+
+### Document Chunking
+
+- [ ] **CHNK-01**: `DocumentChunker` wraps `RecursiveCharacterTextSplitter` with ~128k-char chunks
+- [ ] **CHNK-02**: Chunking splits at punctuation/paragraph boundaries (smart boundaries, not byte-level)
+- [ ] **CHNK-03**: Page provenance tracked per chunk: `chunk_index`, `page_start`, `page_end`, `offset_start`, `offset_end`
+- [ ] **CHNK-04**: `document_chunk` SurrealDB table stores chunk records linked to document
+- [ ] **CHNK-05**: `chunk_text_activity` + `store_chunks_activity` with delete-then-recreate idempotency
+
+### Workflow Integration
+
+- [ ] **WFLW-01**: `DocumentProcessingWorkflow` conditional branch — blob path vs direct text path
+- [ ] **WFLW-02**: Extended processing status values: `extracting_blob`, `extracting_text`, `chunking`
+- [ ] **WFLW-03**: Worker registers all new activities
+- [ ] **WFLW-04**: All new activities follow per-activity connection pattern (D012)
+
+### Tests
+
+- [ ] **TEST-01**: All existing 11/11 integration tests continue to pass
+- [ ] **TEST-02**: New integration tests verify upload → extract → chunk → events pipeline
+- [ ] **TEST-03**: Chunk transparency verified — `extract_events_activity` receives reconstructed full text, never sees individual chunks
+
+## v3 Requirements
+
+Deferred to future release. Tracked but not in current roadmap.
+
+### Future Pipeline
+
+- **EXTR-06**: OCR support for scanned PDFs via Tesseract + Spanish language pack
+- **EXTR-07**: DOCX/image content extractors via the existing protocol
+- **CHNK-06**: Configurable chunk overlap strategy for RAG use cases
+- **CHNK-07**: Parallel chunk processing for LLM extraction
 
 ## Out of Scope
 
+Explicitly excluded. Documented to prevent scope creep.
+
 | Feature | Reason |
 |---------|--------|
-| New feature development | Bug-fix milestone only |
-| Refactoring passing tests | Risk of regression with no benefit |
-| M003 Advanced Query | Deferred to future milestone |
-| Non-test code cleanup | Strictly scoped to test fixes |
+| Chunk-level LLM extraction | Chunks are internal — LLM always receives full reconstructed text. Prevents 10x cost increase and stitching complexity |
+| Async MinIO SDK wrapper | Temporal activities use synchronous I/O in thread pool. Async wrapper adds complexity with zero benefit |
+| Chunk-based GraphQL filtering | Chunks are internal. Exposing them at the GraphQL layer couples API to implementation detail |
+| OCR for scanned PDFs | Requires Tesseract + image pipeline + Spanish language pack. Deferred to v3.0 |
+| Document type taxonomy | Deferred from original M003 scope |
+| Geospatial queries | Deferred from original M003 scope |
+| Full-text search FT index | Deferred from original M003 scope |
 
 ## Traceability
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| GQL-01 | Phase 1 | Pending |
-| GQL-02 | Phase 1 | Pending |
-| MERGE-01 | Phase 2 | Pending |
-| SPLIT-01 | Phase 2 | Pending |
-| REGR-01 | Phase 3 | Pending |
+| BLOB-01 | | Pending |
+| BLOB-02 | | Pending |
+| BLOB-03 | | Pending |
+| BLOB-04 | | Pending |
+| BLOB-05 | | Pending |
+| EXTR-01 | | Pending |
+| EXTR-02 | | Pending |
+| EXTR-03 | | Pending |
+| EXTR-04 | | Pending |
+| EXTR-05 | | Pending |
+| CHNK-01 | | Pending |
+| CHNK-02 | | Pending |
+| CHNK-03 | | Pending |
+| CHNK-04 | | Pending |
+| CHNK-05 | | Pending |
+| WFLW-01 | | Pending |
+| WFLW-02 | | Pending |
+| WFLW-03 | | Pending |
+| WFLW-04 | | Pending |
+| TEST-01 | | Pending |
+| TEST-02 | | Pending |
+| TEST-03 | | Pending |
 
 **Coverage:**
-- v1.2 requirements: 5 total
-- Mapped to phases: 5
-- Unmapped: 0 ✓
+- v2 requirements: 22 total
+- Mapped to phases: 0
+- Unmapped: 22 ⚠️
 
 ---
 *Requirements defined: 2026-05-31*
-*Last updated: 2026-05-31 after v1.2 definition*
+*Last updated: 2026-05-31 after initial definition*
