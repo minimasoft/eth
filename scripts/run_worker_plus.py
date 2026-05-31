@@ -5,7 +5,7 @@ Registers extract_events_activity as activity, and also defines
 a simple workflow 'extract_single' that just calls the activity.
 """
 
-import asyncio, uuid, json, os, sys
+import asyncio, sys, uuid, json, os
 from datetime import datetime, timezone
 
 from temporalio.client import Client
@@ -13,7 +13,6 @@ from temporalio.worker import Worker
 from temporalio import workflow, activity
 
 # Import the activity
-sys.path.insert(0, '/home/u/src/eth/.gsd/worktrees/M001/.gsd/skills/pipeline-pipeline/scripts')
 from eth_pipeline.activities import extract_events_activity
 
 # Also check LLM schema

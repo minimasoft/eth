@@ -3,44 +3,50 @@ services:
     image: surrealdb/surrealdb:latest
     command: start -u root -p root
     ports:
-      - "8000:8000"
+    - 8000:8000
     volumes:
-      - surrealdb_data:/data
+    - surrealdb_data:/data
     environment:
       SURREAL_USER: root
       SURREAL_PASS: root
     healthcheck:
-      test: ["CMD", "/surreal", "is-ready"]
+      test:
+      - CMD
+      - /surreal
+      - is-ready
       interval: 5s
       retries: 6
       start_period: 10s
       timeout: 5s
     restart: unless-stopped
     networks:
-      - eth-pipeline
-
+    - eth-pipeline
   temporal-server:
     image: temporalio/temporal:latest
     command: server start-dev --ip 0.0.0.0
     ports:
-      - "7233:7233"    # gRPC
-      - "8233:8233"    # HTTP metrics
+    - 7233:7233
+    - 8233:8233
     environment:
-      - TEMPORAL_ADDRESS=temporal-server:7233
+    - TEMPORAL_ADDRESS=temporal-server:7233
     healthcheck:
-      test: ["CMD", "temporal", "operator", "cluster", "describe"]
+      test:
+      - CMD
+      - temporal
+      - operator
+      - cluster
+      - describe
       interval: 5s
       retries: 6
       start_period: 15s
       timeout: 5s
     restart: unless-stopped
     networks:
-      - eth-pipeline
-
+    - eth-pipeline
   temporal-ui:
     image: temporalio/ui:latest
     ports:
-      - "8080:8080"
+    - 8080:8080
     environment:
       TEMPORAL_ADDRESS: temporal-server:7233
     depends_on:
@@ -48,11 +54,45 @@ services:
         condition: service_started
     restart: unless-stopped
     networks:
-      - eth-pipeline
-
+    - eth-pipeline
+  schema-init:
+    build: .
+    command: uv run python scripts/init_schema.py
+    env_file: .env
+    depends_on:
+      surrealdb:
+        condition: service_healthy
+    restart: 'no'
+    networks:
+    - eth-pipeline
+  api:
+    build: .
+    command: uv run python scripts/run_api.py
+    ports:
+    - 8001:8001
+    env_file: .env
+    depends_on:
+      schema-init:
+        condition: service_completed_successfully
+      temporal-server:
+        condition: service_started
+    restart: unless-stopped
+    networks:
+    - eth-pipeline
+  worker:
+    build: .
+    command: uv run python scripts/run_worker.py
+    env_file: .env
+    depends_on:
+      schema-init:
+        condition: service_completed_successfully
+      temporal-server:
+        condition: service_started
+    restart: unless-stopped
+    networks:
+    - eth-pipeline
 volumes:
-  surrealdb_data:
-
+  surrealdb_data: null
 networks:
   eth-pipeline:
     driver: bridge

@@ -8,14 +8,11 @@ Usage:
 from __future__ import annotations
 
 import asyncio
-import sys
 
 from temporalio.client import Client
 from temporalio.worker import Worker
 
 # Import the workflow and activities from the pipeline package
-sys.path.insert(0, '/home/u/src/eth/.gsd/worktrees/M001/.gsd/skills/pipeline-pipeline/scripts')
-
 from eth_pipeline.activities import (
     extract_events_activity,
     store_extraction_results_activity,

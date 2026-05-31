@@ -1,0 +1,13 @@
+.git
+__pycache__
+*.pyc
+.env
+.gsd/
+.agents/
+test_data/
+tests/
+.bg-shell/
+.gitignore
+.dockerignore
+project-update.md
+skills-lock.json
