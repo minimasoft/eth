@@ -7,12 +7,21 @@ is a plain async function decorated with ``@activity.defn``.
 
 from __future__ import annotations
 
+import asyncio
+import base64
+import io
 import os
 
 from temporalio import activity
 
+from eth_pipeline.chunker import DocumentChunker
 from eth_pipeline.db import get_db
+from eth_pipeline.extractors import (
+    ExtractorQualityError,
+    PdfExtractor,
+)
 from eth_pipeline.llm import DEFAULT_MODEL, OpenRouterProvider
+from eth_pipeline.storage import get_storage
 
 # ---------------------------------------------------------------------------
 # SurrealDB connection helpers (read from env at runtime)
@@ -32,6 +41,43 @@ def _db_params() -> dict:
         "ns": os.environ.get("SURREAL_NS", "eth"),
         "database": os.environ.get("SURREAL_DB", "pipeline"),
     }
+
+
+async def _get_blob_from_minio(blob_path: str) -> bytes:
+    """Fetch a binary blob from MinIO asynchronously.
+
+    The ``get_storage()`` context manager is synchronous, so we wrap it in
+    ``asyncio.to_thread()`` to avoid blocking the Temporal worker's event
+    loop.
+
+    Parameters
+    ----------
+    blob_path:
+        Object path within the configured MinIO bucket.
+
+    Returns
+    -------
+    bytes
+        The blob's raw content.
+
+    Raises
+    ------
+    ConnectionError
+        If MinIO is unreachable.
+    OSError
+        If the object cannot be read.
+    """
+    bucket = os.environ.get("MINIO_BUCKET", "eth-documents")
+
+    def _fetch() -> bytes:
+        with get_storage() as client:
+            response = client.get_object(bucket, blob_path)
+            data = response.read()
+            response.close()
+            response.release_conn()
+            return data
+
+    return await asyncio.to_thread(_fetch)
 
 
 # ---------------------------------------------------------------------------
@@ -669,3 +715,339 @@ async def store_extraction_results_activity(
         "events_stored": len(events),
         "references_stored": total_references,
     }
+
+
+# ---------------------------------------------------------------------------
+# PDF Text Extraction + Chunking activities (Phase 7)
+# ---------------------------------------------------------------------------
+
+
+@activity.defn
+async def extract_text_activity(document_id: str) -> dict:
+    """Extract text from a blob-stored document using ``PdfExtractor``.
+
+    Reads the document record from SurrealDB to get ``blob_format`` and
+    ``blob_path``.  If ``blob_format == "minio"``, fetches the blob from
+    MinIO and runs ``PdfExtractor``.  If ``blob_format`` is ``None``
+    (legacy), decodes ``original_blob`` from the document record and runs
+    ``PdfExtractor``.
+
+    Updates ``document.status`` to ``"extracting_text"`` and populates
+    ``text_content`` on success.  Sets ``status`` to ``"failed"`` with
+    ``error_message`` on quality-gate failure.
+
+    Parameters
+    ----------
+    document_id:
+        SurrealDB record ID of the document (e.g. ``"abc123"``).
+
+    Returns
+    -------
+    dict
+        ``{"document_id": ..., "text_length": N, "page_count": N,
+        "page_offsets": [...]}`` on success, or
+        ``{"error": ..., "document_id": ...}`` on failure.
+    """
+    params = _db_params()
+    doc_ref = f"document:{document_id}"
+
+    activity.logger.info(
+        "extract_text_activity called [document_id=%s]",
+        document_id,
+    )
+
+    try:
+        async with get_db(**params) as db:
+            raw = await db.query(
+                f"SELECT * FROM {doc_ref}",
+            )
+            rows = _extract_query_results(raw)
+            if not rows:
+                activity.logger.warning(
+                    "Document not found [document_id=%s]",
+                    document_id,
+                )
+                return {"error": "Document not found", "document_id": document_id}
+
+            doc = rows[0]
+            blob_format = doc.get("blob_format")
+            blob_path = doc.get("blob_path", "")
+            original_blob = doc.get("original_blob", "")
+            filename = doc.get("filename", "")
+            mime_type = doc.get("mime_type", "")
+
+            # ---- Get binary content ----
+            if blob_format == "minio":
+                content = await _get_blob_from_minio(blob_path)
+            else:
+                # Legacy: base64-encoded inline blob
+                content = base64.b64decode(original_blob.encode("ascii"))
+
+            # ---- Run PdfExtractor ----
+            extractor = PdfExtractor()
+            try:
+                result = extractor.extract(content, filename=filename)
+            except ExtractorQualityError as exc:
+                await db.query(
+                    f"UPDATE {doc_ref} SET status = 'failed', "
+                    f"error_message = $msg, updated_at = time::now()",
+                    {"msg": str(exc)},
+                )
+                activity.logger.warning(
+                    "Quality gate failed [document_id=%s] [reason=%s]: %s",
+                    document_id,
+                    exc.reason,
+                    exc,
+                )
+                return {
+                    "error": str(exc),
+                    "document_id": document_id,
+                    "reason": exc.reason,
+                }
+
+            # ---- Update document record ----
+            await db.query(
+                f"UPDATE {doc_ref} SET text_content = $text, "
+                f"status = 'extracting_text', "
+                f"_page_count = $page_count, "
+                f"updated_at = time::now()",
+                {
+                    "text": result.text,
+                    "page_count": result.page_count,
+                },
+            )
+
+            activity.logger.info(
+                "extract_text_activity completed [document_id=%s] "
+                "[text_length=%d] [page_count=%d]",
+                document_id,
+                len(result.text),
+                result.page_count,
+            )
+
+            return {
+                "document_id": document_id,
+                "text_length": len(result.text),
+                "page_count": result.page_count,
+                "page_offsets": result.page_offsets,
+            }
+
+    except ConnectionError as exc:
+        activity.logger.error(
+            "Connection failed in extract_text_activity: %s",
+            exc,
+        )
+        return {"error": str(exc), "document_id": document_id}
+    except Exception as exc:
+        activity.logger.error(
+            "Unexpected error in extract_text_activity: %s",
+            exc,
+        )
+        return {"error": str(exc), "document_id": document_id}
+
+
+@activity.defn
+async def chunk_document_activity(document_id: str, extraction_result: dict) -> dict:
+    """Chunk a document's extracted text with page-provenance tracking.
+
+    Takes the extraction result dict (from ``extract_text_activity``)
+    containing ``text_length``, ``page_count``, and ``page_offsets``.
+    Queries ``text_content`` from SurrealDB, runs ``DocumentChunker``,
+    and returns chunk payloads.
+
+    Parameters
+    ----------
+    document_id:
+        SurrealDB record ID of the document.
+    extraction_result:
+        Dict from ``extract_text_activity`` with ``page_offsets``.
+
+    Returns
+    -------
+    dict
+        ``{"document_id": ..., "chunks": [...], "chunk_count": N}`` on
+        success, or ``{"error": ..., "document_id": ...}`` on failure.
+    """
+    params = _db_params()
+    doc_ref = f"document:{document_id}"
+
+    activity.logger.info(
+        "chunk_document_activity called [document_id=%s]",
+        document_id,
+    )
+
+    try:
+        async with get_db(**params) as db:
+            raw = await db.query(
+                f"SELECT text_content FROM {doc_ref}",
+            )
+            rows = _extract_query_results(raw)
+            if not rows:
+                return {"error": "Document not found", "document_id": document_id}
+
+            text = rows[0].get("text_content", "")
+            page_offsets = extraction_result.get("page_offsets", [0])
+
+            # ---- Run DocumentChunker ----
+            chunker = DocumentChunker()
+            chunk_result = chunker.chunk(text, page_offsets)
+
+            # ---- Build serializable chunk payloads ----
+            chunks: list[dict] = []
+            for c in chunk_result.chunks:
+                chunks.append({
+                    "chunk_index": c.chunk_index,
+                    "text": c.text,
+                    "page_start": c.page_start,
+                    "page_end": c.page_end,
+                    "offset_start": c.offset_start,
+                    "offset_end": c.offset_end,
+                })
+
+            # ---- Update document status ----
+            await db.query(
+                f"UPDATE {doc_ref} SET status = 'chunking', "
+                f"updated_at = time::now()",
+            )
+
+            activity.logger.info(
+                "chunk_document_activity completed [document_id=%s] "
+                "[chunk_count=%d]",
+                document_id,
+                len(chunks),
+            )
+
+            return {
+                "document_id": document_id,
+                "chunks": chunks,
+                "chunk_count": len(chunks),
+            }
+
+    except ConnectionError as exc:
+        activity.logger.error(
+            "Connection failed in chunk_document_activity: %s",
+            exc,
+        )
+        return {"error": str(exc), "document_id": document_id}
+    except Exception as exc:
+        activity.logger.error(
+            "Unexpected error in chunk_document_activity: %s",
+            exc,
+        )
+        # Mark document as failed on unexpected error
+        try:
+            async with get_db(**params) as db:
+                await db.query(
+                    f"UPDATE {doc_ref} SET status = 'failed', "
+                    f"error_message = $msg, updated_at = time::now()",
+                    {"msg": str(exc)},
+                )
+        except Exception:
+            pass
+        return {"error": str(exc), "document_id": document_id}
+
+
+@activity.defn
+async def store_chunks_activity(document_id: str, chunk_payload: dict) -> dict:
+    """Store document chunk records in SurrealDB.
+
+    **Idempotent:** First deletes any existing ``document_chunk`` records
+    for this document, then inserts fresh chunks from
+    ``chunk_payload["chunks"]``.
+
+    Parameters
+    ----------
+    document_id:
+        SurrealDB record ID of the source document.
+    chunk_payload:
+        Dict from ``chunk_document_activity`` with a ``"chunks"`` array.
+
+    Returns
+    -------
+    dict
+        ``{"document_id": ..., "chunks_stored": N}`` on success, or
+        ``{"error": ..., "document_id": ...}`` on failure.
+    """
+    params = _db_params()
+    doc_ref = f"document:{document_id}"
+
+    activity.logger.info(
+        "store_chunks_activity called [document_id=%s]",
+        document_id,
+    )
+
+    try:
+        async with get_db(**params) as db:
+            chunks_data = chunk_payload.get("chunks", [])
+
+            # ---- Idempotent: delete existing chunks ----
+            await db.query(
+                "DELETE document_chunk WHERE document = $doc_ref",
+                {"doc_ref": doc_ref},
+            )
+
+            # ---- Insert new chunks ----
+            for chunk in chunks_data:
+                await db.create(
+                    "document_chunk",
+                    {
+                        "chunk_index": chunk["chunk_index"],
+                        "text": chunk["text"],
+                        "page_start": chunk["page_start"],
+                        "page_end": chunk["page_end"],
+                        "offset_start": chunk["offset_start"],
+                        "offset_end": chunk["offset_end"],
+                        "document": doc_ref,
+                    },
+                )
+
+            # ---- Update document status ----
+            if chunks_data:
+                await db.query(
+                    f"UPDATE {doc_ref} SET status = 'processed', "
+                    f"updated_at = time::now()",
+                )
+            else:
+                activity.logger.warning(
+                    "No chunks to store [document_id=%s]",
+                    document_id,
+                )
+                await db.query(
+                    f"UPDATE {doc_ref} SET status = 'processed', "
+                    f"updated_at = time::now()",
+                )
+
+            activity.logger.info(
+                "store_chunks_activity completed [document_id=%s] "
+                "[chunks_stored=%d]",
+                document_id,
+                len(chunks_data),
+            )
+
+            return {
+                "document_id": document_id,
+                "chunks_stored": len(chunks_data),
+            }
+
+    except ConnectionError as exc:
+        activity.logger.error(
+            "Connection failed in store_chunks_activity: %s",
+            exc,
+        )
+        return {"error": str(exc), "document_id": document_id}
+    except Exception as exc:
+        activity.logger.error(
+            "Unexpected error in store_chunks_activity: %s",
+            exc,
+        )
+        # Mark document as failed on unexpected error
+        try:
+            async with get_db(**params) as db:
+                await db.query(
+                    f"UPDATE {doc_ref} SET status = 'failed', "
+                    f"error_message = $msg, updated_at = time::now()",
+                    {"msg": str(exc)},
+                )
+        except Exception:
+            pass
+        return {"error": str(exc), "document_id": document_id}
