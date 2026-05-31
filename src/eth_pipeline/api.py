@@ -307,7 +307,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 app = FastAPI(
     title="eth-pipeline",
-    description="Ethereum document processing pipeline with Temporal and SurrealDB",
+    description="Document processing pipeline with Temporal and SurrealDB",
     version="0.1.0",
     lifespan=lifespan,
 )
@@ -324,7 +324,7 @@ async def root() -> APIInfo:
     return APIInfo(
         name="eth-pipeline",
         version="0.1.0",
-        description="Ethereum document processing pipeline with Temporal and SurrealDB",
+        description="Document processing pipeline with Temporal and SurrealDB",
         endpoints={
             "/": "This information",
             "/health": "Liveness check",

@@ -1,7 +1,7 @@
 -- ==========================================================================
 -- Eth-Pipeline: SurrealDB Schema
 -- ==========================================================================
--- This schema defines the data model for processing Ethereum documents,
+-- This schema defines the data model for processing Spanish-language court documents,
 -- extracting structured events, and storing verbatim text references.
 --
 -- All DEFINE TABLE and DEFINE FIELD statements carry COMMENT annotations
@@ -16,19 +16,19 @@
 -- namespace/database via HTTP headers (NS: eth, DB: pipeline).
 -- --------------------------------------------------------------------------
 
-DEFINE NAMESPACE eth COMMENT 'Top-level namespace for the Ethereum document processing pipeline';
+DEFINE NAMESPACE eth COMMENT 'Top-level namespace for the document processing pipeline';
 DEFINE DATABASE pipeline COMMENT 'Primary database holding documents, extracted events, and verbatim references';
 
 -- ==========================================================================
 -- Table: document
 -- ==========================================================================
--- Stores uploaded (or ingested) source documents — Ethereum-related texts,
+-- Stores uploaded (or ingested) source documents — Spanish-language court documents,
 -- PDFs, markdown files, or plain text. Each document progresses through a
 -- lifecycle: pending → extracted → processed → failed.
 -- ==========================================================================
 
 DEFINE TABLE document SCHEMAFULL
-    COMMENT 'Source documents ingested into the pipeline (Ethereum texts, PDFs, markdown)';
+    COMMENT 'Source documents ingested into the pipeline (court documents, PDFs, markdown)';
 
 DEFINE FIELD original_blob ON TABLE document TYPE string
     COMMENT 'Base64-encoded raw content of the uploaded source file';

@@ -31,7 +31,7 @@ class DocumentProcessingWorkflow:
     """Orchestrate document event extraction and persistence.
 
     This workflow is the top-level coordinator for processing a single
-    Ethereum document.  It:
+    document.  It:
       1. Marks the document as ``processing``.
       2. Delegates raw-text event extraction to ``extract_events_activity``.
       3. Persists extracted events and verbatim references to SurrealDB

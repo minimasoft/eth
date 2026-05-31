@@ -519,7 +519,7 @@ def check_api_info_endpoints() -> bool:
     info = APIInfo(
         name="eth-pipeline",
         version="0.1.0",
-        description="Ethereum document processing pipeline with Temporal and SurrealDB",
+        description="Document processing pipeline with Temporal and SurrealDB",
         endpoints={
             "/": "This information",
             "/health": "Liveness check",

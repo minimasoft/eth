@@ -5,8 +5,8 @@
 -- with Surreal-Ns:eth, Surreal-DB:pipeline
 
 -- First ensure namespace and database exist
-DEFINE NAMESPACE eth COMMENT 'Ethereum processing namespace';
-DEFINE DATABASE pipeline COMMENT 'Ethereum document pipeline database';
+DEFINE NAMESPACE eth COMMENT 'Document processing namespace';
+DEFINE DATABASE pipeline COMMENT 'Document pipeline database';
 
 -- Define the event table
 DEFINE TABLE event SCHEMAFULL
