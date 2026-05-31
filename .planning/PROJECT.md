@@ -27,10 +27,12 @@ Every extracted event must be traceable to its exact source text in the original
 
 **Goal:** Make all 6/6 M002 TypeScript integration tests pass in Docker
 
-**Target features:**
-- Fix merge/split HTTP 404 endpoints (Tests 4 & 5) — ensure endpoints are routable
-- Fix GraphQL proxy visibility for SQL-inserted test data (Tests 2 & 3) — NS/DB context alignment
-- No regression on M001 (all 8/8 tests still pass)
+**Status:** COMPLETED ✅ — All 17/17 tests pass (M001: 11/11, M002: 6/6)
+
+**Changes:**
+- Schema: Added `created_at`/`updated_at` to reference table, made `properties` FLEXIBLE on canonical_entity
+- Tests: Fixed SQL field names, record references, and missing fields to match SCHEMAFULL schema
+- Root cause: Test SQL inserts used field names/types mismatched with schema; API handler wrote to undefined fields
 
 ## Architecture / Key Patterns
 

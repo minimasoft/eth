@@ -1,16 +1,16 @@
 ---
 gsd_state_version: 1.0
 milestone: v1.2
-milestone_name: M002 Integration Test Fixes
-status: completed
-last_updated: "2026-05-31T17:25:04.456Z"
-last_activity: 2026-05-31
+milestone_name: milestone
+status: Awaiting next milestone
+last_updated: "2026-05-31T17:50:41.177Z"
+last_activity: 2026-05-31 — Milestone v1.2 completed and archived
 progress:
   total_phases: 3
-  completed_phases: 3
-  total_plans: 3
-  completed_plans: 3
-  percent: 100
+  completed_phases: 0
+  total_plans: 1
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -24,17 +24,20 @@ See: .planning/PROJECT.md
 ## Milestone Summary
 
 ### Phase 3: GraphQL Proxy Fixes ✅
+
 - Fixed test SQL inserts: changed `properties: { test: true, ... }` to `properties: {}` (SCHEMAFULL rejects undefined sub-fields)
 - Fixed reference field names: `text` → `verbatim_text`, added `reference_type`, `span_start`, `span_end`
 - Fixed reference record references: `event: 'test_event'` → `event: event:test_event`
 - Added `updated_at`, `created_at` fields to reference table schema
 
 ### Phase 4: Merge/Split Endpoint Fixes ✅
+
 - Added `updated_at` field to reference table schema (merge handler writes it)
 - Made `properties` field FLEXIBLE on canonical_entity table (split handler writes `properties.split_from`)
 - Both endpoints now return correct responses (200/400) instead of 502
 
 ### Phase 5: Regression Verification ✅
+
 - All 17/17 integration tests pass (M001: 11/11, M002: 6/6)
 - `docker compose run --rm integration-tests` exits with code 0
 
@@ -49,8 +52,8 @@ See: .planning/PROJECT.md
 
 Phase: Milestone v1.2 complete
 Plan: —
-Status: completed
-Last activity: 2026-05-31 — Milestone v1.2 completed
+Status: Awaiting next milestone
+Last activity: 2026-05-31 — Milestone v1.2 completed and archived
 
 ## Operator Next Steps
 
