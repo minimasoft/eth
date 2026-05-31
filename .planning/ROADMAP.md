@@ -50,7 +50,7 @@
 
 ## Phase Details
 
-### 🚧 Phase 6: MinIO Infrastructure + Blob Upload
+### Phase 6: MinIO Infrastructure + Blob Upload
 
 **Goal**: Users can upload document files that are stored as blobs in MinIO with proper status tracking, laying the foundation for automated text extraction
 
@@ -69,7 +69,7 @@
 
 ---
 
-### 🚧 Phase 7: PDF Text Extraction + Chunking
+### Phase 7: PDF Text Extraction + Chunking
 
 **Goal**: PDF texts are automatically extracted with page-level metadata and stored as provenance-tracked chunks in the `document_chunk` table, transparent to the LLM extraction pipeline
 
@@ -88,7 +88,7 @@
 
 ---
 
-### 🚧 Phase 8: Full Workflow Integration + Tests
+### Phase 8: Full Workflow Integration + Tests
 
 **Goal**: All new pipeline components integrate with the existing document lifecycle (reprocess, delete, lazy migration); all existing and new tests pass with chunk transparency verified
 
