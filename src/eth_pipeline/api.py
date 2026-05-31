@@ -27,6 +27,7 @@ continues in degraded mode (documents are ingested but not processed).
 from __future__ import annotations
 
 import base64
+import io
 import logging
 import os
 import uuid
@@ -36,7 +37,7 @@ from urllib.parse import urlparse
 
 import httpx
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.responses import Response as FastAPIResponse
 from pydantic import BaseModel
 from surrealdb import AsyncWsSurrealConnection
@@ -49,6 +50,8 @@ from eth_pipeline.db import (
     DEFAULT_USER,
     _connect,
 )
+
+from eth_pipeline.storage import get_storage_async
 
 logger = logging.getLogger(__name__)
 
@@ -80,6 +83,16 @@ class DocumentCreated(BaseModel):
     """Initial lifecycle status of the document."""
 
 
+class DocumentUploadCreated(BaseModel):
+    """Response body for a successful ``POST /documents/upload`` (HTTP 201)."""
+
+    document_id: str
+    """Unique identifier for the created document."""
+
+    status: str = "pending"
+    """Initial lifecycle status of the document."""
+
+
 class DocumentStatus(BaseModel):
     """Response body for ``GET /documents/{document_id}``."""
 
@@ -97,6 +110,12 @@ class DocumentStatus(BaseModel):
 
     created_at: str | None = None
     """ISO-8601 timestamp of document creation (if available)."""
+
+    blob_format: str | None = None
+    """Storage format: 'minio' (object-stored) or None (legacy inline)."""
+
+    blob_path: str | None = None
+    """S3 object path when blob_format='minio'; None for legacy inline-stored documents."""
 
 
 class EventsCleared(BaseModel):
@@ -330,6 +349,7 @@ async def root() -> APIInfo:
             "/health": "Liveness check",
             "/graphql": "Proxy to SurrealDB auto-GraphQL (POST)",
             "/documents": "Submit a document for processing (POST)",
+            "/documents/upload": "Upload a binary document file (POST, multipart)",
             "/documents/{document_id}": "Get document status (GET)",
             "/documents/{document_id}/events": "Clear extraction results (DELETE)",
             "/entities/merge": "Merge two canonical entities of the same type (POST)",
@@ -429,7 +449,187 @@ async def create_document(input: DocumentInput) -> DocumentCreated:
     return DocumentCreated(document_id=doc_id, status="pending")
 
 
-@app.get("/documents/{document_id}", response_model=DocumentStatus)
+# =======================================================================
+# Upload document endpoint (MinIO blob storage)
+# =======================================================================
+
+#: Maximum upload file size: 50 MB.
+MAX_UPLOAD_SIZE = 50 * 1024 * 1024
+
+
+@app.post("/documents/upload", response_model=DocumentUploadCreated, status_code=201)
+async def upload_document(file: UploadFile = File(...)) -> DocumentUploadCreated:
+    """Upload a binary document file for processing.
+
+    Accepts a multipart file upload, stores the binary blob in MinIO
+    (with fallback to base64-encoded inline storage if MinIO is
+    unavailable), creates a SurrealDB document record with
+    ``blob_format="minio"``, and triggers Temporal processing
+    (best-effort).
+
+    Returns HTTP 201 with ``{document_id, status}`` on success.
+    Returns HTTP 413 if the file exceeds 50 MB.
+    Returns HTTP 503 if SurrealDB is unavailable.
+    """
+    db: AsyncWsSurrealConnection | None = app.state.db
+
+    if db is None:
+        logger.error("POST /documents/upload rejected — SurrealDB unavailable")
+        raise HTTPException(
+            status_code=503,
+            detail="SurrealDB is not available. Please try again later.",
+        )
+
+    # 1. Validate file
+    if not file.filename:
+        raise HTTPException(
+            status_code=400,
+            detail="Filename is required.",
+        )
+
+    # 2. Generate document ID
+    doc_id = str(uuid.uuid4().hex)
+
+    # 3. Determine blob path
+    ext = ".bin"
+    if "." in file.filename:
+        _, ext_candidate = os.path.splitext(file.filename)
+        if ext_candidate:
+            ext = ext_candidate
+    blob_path = f"doc/{doc_id}{ext}"
+
+    # 4. Read file content with size guard
+    try:
+        content = await file.read()
+    except Exception as exc:
+        logger.error("Failed to read uploaded file: %s", exc)
+        raise HTTPException(
+            status_code=400,
+            detail="Failed to read uploaded file content.",
+        ) from exc
+
+    if len(content) > MAX_UPLOAD_SIZE:
+        raise HTTPException(
+            status_code=413,
+            detail=f"File exceeds maximum size of {MAX_UPLOAD_SIZE // (1024 * 1024)} MB.",
+        )
+
+    # 5. Try MinIO storage (degraded mode: fall back to base64 inline)
+    minio_available = False
+    try:
+        async with get_storage_async() as minio_client:
+            content_type = file.content_type or "application/octet-stream"
+            await minio_client.put_object(
+                os.environ.get("MINIO_BUCKET", "eth-documents"),
+                blob_path,
+                io.BytesIO(content),
+                length=len(content),
+                content_type=content_type,
+            )
+            minio_available = True
+            logger.info(
+                "Stored blob for document %s in MinIO at %s",
+                doc_id,
+                blob_path,
+            )
+    except ConnectionError:
+        logger.warning(
+            "MinIO unavailable — falling back to base64 inline storage for document %s",
+            doc_id,
+        )
+    except Exception as exc:
+        logger.warning(
+            "MinIO storage failed for document %s: %s — falling back to base64 inline",
+            doc_id,
+            exc,
+        )
+
+    # 6. Prepare document record
+    if minio_available:
+        original_blob = None
+        blob_format = "minio"
+        stored_blob_path = blob_path
+    else:
+        original_blob = base64.b64encode(content).decode("ascii")
+        blob_format = None
+        stored_blob_path = None
+
+    # 7. Create document record in SurrealDB
+    try:
+        await db.create(
+            f"document:{doc_id}",
+            {
+                "text_content": None,
+                "original_blob": original_blob,
+                "blob_format": blob_format,
+                "blob_path": stored_blob_path,
+                "filename": file.filename or f"unnamed_{doc_id}",
+                "mime_type": file.content_type or "application/octet-stream",
+                "status": "pending",
+                "error_message": None,
+            },
+        )
+    except Exception as exc:
+        logger.error("Failed to create document in SurrealDB: %s", exc)
+        # Clean up MinIO blob if SurrealDB failed after storage
+        if minio_available:
+            try:
+                async with get_storage_async() as cleanup_client:
+                    cleanup_client.remove_object(
+                        os.environ.get("MINIO_BUCKET", "eth-documents"),
+                        blob_path,
+                    )
+                    logger.info("Cleaned up MinIO blob %s after DB failure", blob_path)
+            except Exception as cleanup_exc:
+                logger.warning(
+                    "Failed to clean up MinIO blob %s: %s",
+                    blob_path,
+                    cleanup_exc,
+                )
+        raise HTTPException(
+            status_code=502,
+            detail="Failed to store document in database.",
+        ) from exc
+
+    logger.info(
+        "Created document %s (filename=%s, blob_format=%s, status=pending)",
+        doc_id,
+        file.filename,
+        blob_format,
+    )
+
+    # 8. Trigger Temporal workflow (best-effort)
+    temporal = getattr(app.state, "temporal", None)
+    if temporal is not None:
+        try:
+            from eth_pipeline.workflows import DocumentProcessingWorkflow
+
+            await temporal.start_workflow(
+                DocumentProcessingWorkflow.run,
+                id=f"doc-{doc_id}",
+                task_queue="event-extraction",
+                args=[doc_id, ""],
+                id_conflict_policy=1,  # USE_EXISTING
+            )
+            logger.info("Temporal workflow started for document %s", doc_id)
+        except Exception as exc:
+            logger.warning(
+                "Failed to start Temporal workflow for document %s: %s",
+                doc_id,
+                exc,
+            )
+    else:
+        logger.warning(
+            "Temporal not available — document %s stored but workflow not started",
+            doc_id,
+        )
+
+    return DocumentUploadCreated(document_id=doc_id, status="pending")
+
+
+# =======================================================================
+# Get document status
+# =======================================================================
 async def get_document(document_id: str) -> DocumentStatus:
     """Retrieve document status and metadata.
 
@@ -503,6 +703,8 @@ async def get_document(document_id: str) -> DocumentStatus:
         filename=record.get("filename", ""),
         error_message=record.get("error_message"),
         created_at=created_at_str,
+        blob_format=record.get("blob_format"),
+        blob_path=record.get("blob_path"),
     )
 
 
