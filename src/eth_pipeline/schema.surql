@@ -133,6 +133,14 @@ DEFINE FIELD resolution_confidence ON TABLE reference TYPE number | null
     ASSERT $value IS NONE OR ($value >= 0 AND $value <= 1)
     COMMENT 'Confidence score (0.0–1.0) for the canonical_entity resolution; null when not yet resolved';
 
+DEFINE FIELD created_at ON TABLE reference TYPE datetime
+    DEFAULT time::now() READONLY
+    COMMENT 'Timestamp when the reference record was created (immutable after insertion)';
+
+DEFINE FIELD updated_at ON TABLE reference TYPE datetime
+    DEFAULT time::now()
+    COMMENT 'Timestamp of the most recent update to this reference record';
+
 -- ==========================================================================
 -- Table: canonical_entity
 -- ==========================================================================
@@ -152,7 +160,7 @@ DEFINE FIELD entity_type ON TABLE canonical_entity TYPE string
 DEFINE FIELD name ON TABLE canonical_entity TYPE string
     COMMENT 'Display name or label for this canonical entity';
 
-DEFINE FIELD properties ON TABLE canonical_entity TYPE object | null
+DEFINE FIELD properties ON TABLE canonical_entity TYPE object | null FLEXIBLE
     DEFAULT null
     COMMENT 'Arbitrary key-value metadata enriching this entity (optional, nullable)';
 

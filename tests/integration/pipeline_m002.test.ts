@@ -16,7 +16,7 @@
  * @module
  */
 
-import { describe, it, after } from "node:test";
+import { describe, it, before, after } from "node:test";
 import assert from "node:assert/strict";
 import {
   API_BASE,
@@ -277,6 +277,20 @@ async function splitEntity(
 // ---------------------------------------------------------------------------
 
 describe("M002 canonical_entity integration tests", () => {
+  // Set up shared test records needed by SQL reference inserts
+  before(async () => {
+    const [, result] = await sqlExecute(`SELECT id FROM event:test_event;`);
+    const rows = result ? extractSqlRows(result) : [];
+    if (rows.length === 0) {
+      await sqlExecute(`CREATE event:test_event CONTENT { que_paso: 'test event', espacio: null, tiempo: null, humanos: null, objetos: null, extraction_confidence: 0.5, document: document:test_doc };`);
+    }
+    const [, docResult] = await sqlExecute(`SELECT id FROM document:test_doc;`);
+    const docRows = docResult ? extractSqlRows(docResult) : [];
+    if (docRows.length === 0) {
+      await sqlExecute(`CREATE document:test_doc CONTENT { original_blob: '', text_content: '', status: 'pending', filename: 'test.txt', mime_type: 'text/plain' };`);
+    }
+  });
+
   // Clean up test data after all tests run
   after(async () => {
     await cleanupTestData();
@@ -358,7 +372,7 @@ describe("M002 canonical_entity integration tests", () => {
           CREATE canonical_entity:${testEntId} CONTENT {
             entity_type: 'person',
             name: '${testName}',
-            properties: { test: true, label: 'GQL Proxy Test' },
+            properties: {},
             superseded_by: null
           };
         `;
@@ -414,18 +428,22 @@ describe("M002 canonical_entity integration tests", () => {
         const entName = `${TEST_PREFIX}_gql_link_entity`;
 
         const setupSql = `
+          CREATE event:test_event CONTENT { que_paso: 'test event', espacio: null, tiempo: null, humanos: null, objetos: null, extraction_confidence: 0.5, document: document:test_doc };
+          CREATE document:test_doc CONTENT { original_blob: '', text_content: '', status: 'pending', filename: 'test.txt', mime_type: 'text/plain' };
           CREATE canonical_entity:${entId} CONTENT {
             entity_type: 'person',
             name: '${entName}',
-            properties: { test: true },
+            properties: {},
             superseded_by: null
           };
           CREATE reference:${refId} CONTENT {
-            text: '${TEST_PREFIX}_link_ref_text',
+            verbatim_text: '${TEST_PREFIX}_link_ref_text',
+            reference_type: 'humanos',
+            span_start: 0,
+            span_end: 10,
             canonical_entity: canonical_entity:${entId},
             resolution_confidence: 0.85,
-            event: 'test_event',
-            document: 'test_doc'
+            event: event:test_event
           };
         `;
         const [sqlStatus] = await sqlExecute(setupSql);
@@ -437,7 +455,7 @@ describe("M002 canonical_entity integration tests", () => {
         // Query references via GraphQL proxy — note that canonical_entity
         // is a record reference requiring sub-selection
         const [refItems, usedField] = await queryReferences(
-          "id canonical_entity { id } resolution_confidence text",
+          "id canonical_entity { id } resolution_confidence verbatim_text",
         );
 
         if (refItems !== null && Array.isArray(refItems)) {
@@ -460,9 +478,9 @@ describe("M002 canonical_entity integration tests", () => {
         } else {
           // Fall back to SQL confirmation
           const checkSql = `SELECT id, canonical_entity, resolution_confidence FROM reference WHERE id = reference:${refId};`;
-          const [, sqlResult] = await sqlExecute(checkSql);
-          if (sqlResult) {
-            const rows = extractSqlRows(sqlResult);
+          const [, sqlFallbackResult] = await sqlExecute(checkSql);
+          if (sqlFallbackResult) {
+            const rows = extractSqlRows(sqlFallbackResult);
             const hasLink = rows.length > 0 && rows[0].canonical_entity !== null;
             assert.ok(
               hasLink,
@@ -496,21 +514,23 @@ describe("M002 canonical_entity integration tests", () => {
           CREATE canonical_entity:${srcId} CONTENT {
             entity_type: 'person',
             name: '${TEST_PREFIX}_merge_src',
-            properties: { test: true },
+            properties: {},
             superseded_by: null
           };
           CREATE canonical_entity:${tgtId} CONTENT {
             entity_type: 'person',
             name: '${TEST_PREFIX}_merge_tgt',
-            properties: { test: true },
+            properties: {},
             superseded_by: null
           };
           CREATE reference:${refId} CONTENT {
-            text: '${TEST_PREFIX}_merge_ref',
+            verbatim_text: '${TEST_PREFIX}_merge_ref',
+            reference_type: 'humanos',
+            span_start: 0,
+            span_end: 10,
             canonical_entity: canonical_entity:${srcId},
             resolution_confidence: 0.9,
-            event: 'test_event',
-            document: 'test_doc'
+            event: event:test_event
           };
         `;
         const [sqlStatus] = await sqlExecute(setupSql);
@@ -599,22 +619,26 @@ describe("M002 canonical_entity integration tests", () => {
           CREATE canonical_entity:${srcId} CONTENT {
             entity_type: 'object',
             name: '${TEST_PREFIX}_split_src',
-            properties: { test: true },
+            properties: {},
             superseded_by: null
           };
           CREATE reference:${ref1Id} CONTENT {
-            text: '${TEST_PREFIX}_split_ref1',
+            verbatim_text: '${TEST_PREFIX}_split_ref1',
+            reference_type: 'objetos',
+            span_start: 0,
+            span_end: 10,
             canonical_entity: canonical_entity:${srcId},
             resolution_confidence: 0.9,
-            event: 'test_event',
-            document: 'test_doc'
+            event: event:test_event
           };
           CREATE reference:${ref2Id} CONTENT {
-            text: '${TEST_PREFIX}_split_ref2',
+            verbatim_text: '${TEST_PREFIX}_split_ref2',
+            reference_type: 'objetos',
+            span_start: 0,
+            span_end: 10,
             canonical_entity: canonical_entity:${srcId},
             resolution_confidence: 0.6,
-            event: 'test_event',
-            document: 'test_doc'
+            event: event:test_event
           };
         `;
         const [sqlStatus] = await sqlExecute(setupSql);

@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: M002 Integration Test Fixes
-status: planning
+status: completed
 last_updated: "2026-05-31T17:25:04.456Z"
 last_activity: 2026-05-31
 progress:
   total_phases: 3
-  completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
-  percent: 0
+  completed_phases: 3
+  total_plans: 3
+  completed_plans: 3
+  percent: 100
 ---
 
 # Project State
@@ -19,39 +19,38 @@ progress:
 
 See: .planning/PROJECT.md
 
-**Current focus:** v1.1 Documentation & Infrastructure — COMPLETED
+**Current focus:** v1.2 M002 Integration Test Fixes — COMPLETED
 
 ## Milestone Summary
 
-### Phase 1: Infrastructure Hardening ✅
+### Phase 3: GraphQL Proxy Fixes ✅
+- Fixed test SQL inserts: changed `properties: { test: true, ... }` to `properties: {}` (SCHEMAFULL rejects undefined sub-fields)
+- Fixed reference field names: `text` → `verbatim_text`, added `reference_type`, `span_start`, `span_end`
+- Fixed reference record references: `event: 'test_event'` → `event: event:test_event`
+- Added `updated_at`, `created_at` fields to reference table schema
 
-- docker-compose.yml: API host port changed to 1985
-- docker-compose.yml: Healthcheck added to API service
-- scripts/run_api.py: Docstring updated
+### Phase 4: Merge/Split Endpoint Fixes ✅
+- Added `updated_at` field to reference table schema (merge handler writes it)
+- Made `properties` field FLEXIBLE on canonical_entity table (split handler writes `properties.split_from`)
+- Both endpoints now return correct responses (200/400) instead of 502
 
-### Phase 2: Project Documentation ✅
-
-- README.md: Full rewrite with overview, quickstart, architecture (Mermaid.js), API docs (httpie), config reference, troubleshooting
+### Phase 5: Regression Verification ✅
+- All 17/17 integration tests pass (M001: 11/11, M002: 6/6)
+- `docker compose run --rm integration-tests` exits with code 0
 
 ## Decisions
 
-- Migrated from GSD-2. Review PROJECT.md for key decisions.
-- M003 (Advanced Query) deferred for future work.
-- API documentation uses httpie instead of curl (user preference)
-- Architecture uses Mermaid.js diagram
-- Config reference uses table format
-- README section order: Overview → Quickstart → Architecture → API → Config → Troubleshooting
-
-## Next Steps
-
-Ready for next milestone: M003 Advanced Query (geospatial queries, event type taxonomy, full-text search)
+- `properties` field on `canonical_entity` made FLEXIBLE to support arbitrary metadata keys
+- `created_at` and `updated_at` added to `reference` table (mirroring `canonical_entity` and `document`)
+- Test SQL inserts used `text` field instead of `verbatim_text` — all tests updated
+- Test reference inserts used string values for `event`/`document` record fields — fixed to use proper record IDs
 
 ## Current Position
 
-Phase: Not started (defining requirements)
+Phase: Milestone v1.2 complete
 Plan: —
-Status: Defining requirements
-Last activity: 2026-05-31 — Milestone v1.2 started
+Status: completed
+Last activity: 2026-05-31 — Milestone v1.2 completed
 
 ## Operator Next Steps
 
