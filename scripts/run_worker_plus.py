@@ -37,7 +37,8 @@ class ExtractSingle:
 
 async def main():
     # Connect to Temporal server
-    client = await Client.connect("localhost:7233", namespace="eth")
+    temporal_url = os.environ.get("TEMPORAL_URL", "localhost:7233")
+    client = await Client.connect(temporal_url, namespace="eth")
     print(f"✅ Connected to Temporal server (ns=eth)")
 
     # Register the worker with activity + workflow

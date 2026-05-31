@@ -8,6 +8,7 @@ Usage:
 from __future__ import annotations
 
 import asyncio
+import os
 
 from temporalio.client import Client
 from temporalio.worker import Worker
@@ -23,8 +24,9 @@ from eth_pipeline.workflows import DocumentProcessingWorkflow
 
 async def main():
     # Connect to Temporal server
+    temporal_url = os.environ.get("TEMPORAL_URL", "localhost:7233")
     client = await Client.connect(
-        "localhost:7233",
+        temporal_url,
         namespace="default",
         tls=None,  # Local dev — no TLS
     )

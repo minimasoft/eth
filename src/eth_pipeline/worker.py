@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import signal
 
 import temporalio.client
@@ -19,7 +20,7 @@ from eth_pipeline import activities, workflows
 
 logger = logging.getLogger(__name__)
 
-TARGET_HOST = "localhost:7233"
+TARGET_HOST = os.environ.get("TEMPORAL_URL", "localhost:7233")
 NAMESPACE = "default"
 TASK_QUEUE = "event-extraction"
 
