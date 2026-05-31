@@ -59,6 +59,8 @@ services:
     build: .
     command: uv run python scripts/init_schema.py
     env_file: .env
+    environment:
+      SURREAL_URL: http://surrealdb:8000
     depends_on:
       surrealdb:
         condition: service_healthy
@@ -71,6 +73,8 @@ services:
     ports:
     - 1985:8001
     env_file: .env
+    environment:
+      SURREAL_URL: ws://surrealdb:8000/rpc
     healthcheck:
       test:
       - CMD
@@ -93,6 +97,8 @@ services:
     build: .
     command: uv run python scripts/run_worker.py
     env_file: .env
+    environment:
+      SURREAL_URL: ws://surrealdb:8000/rpc
     depends_on:
       schema-init:
         condition: service_completed_successfully
