@@ -4,6 +4,8 @@ A document ingestion and event extraction system for Spanish-language legal and 
 
 Documents are ingested via HTTP, an LLM extracts structured events (space, time, participants, objects, what-happened), verbatim references are resolved into canonical entities, and everything is queryable via GraphQL — with full audit traceability from query result back to source document.
 
+This project is a experiment coded 100% by Deepseek v4 Flash using opencode + opengsd.
+
 ## Table of Contents
 
 - [Quickstart](#quickstart)
