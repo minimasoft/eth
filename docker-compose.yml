@@ -107,6 +107,26 @@ services:
     restart: unless-stopped
     networks:
     - eth-pipeline
+  integration-tests:
+    image: node:22-slim
+    working_dir: /tests
+    command:
+      sh -c "npm install --silent && npx tsc && node --test dist/*.test.js"
+    volumes:
+      - ./tests/integration:/tests
+    environment:
+      API_URL: http://api:8001
+      SURREAL_HTTP: http://surrealdb:8000
+      SURREAL_USER: ${SURREAL_USER:-root}
+      SURREAL_PASS: ${SURREAL_PASS:-root}
+      SURREAL_NS: ${SURREAL_NS:-eth}
+      SURREAL_DB: ${SURREAL_DB:-pipeline}
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: "no"
+    networks:
+      - eth-pipeline
 volumes:
   surrealdb_data: null
 networks:
