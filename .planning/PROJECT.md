@@ -23,14 +23,14 @@ Every extracted event must be traceable to its exact source text in the original
 
 **M003: Advanced Query — NOT STARTED.** Geospatial queries (radius/bounding box), event type taxonomy, full-text search via SurrealDB FT index.
 
-## Current Milestone: v1.1 Documentation & Infrastructure
+## Current Milestone: v1.2 M002 Integration Test Fixes
 
-**Goal:** Improve project documentation and harden the Docker deployment
+**Goal:** Make all 6/6 M002 TypeScript integration tests pass in Docker
 
 **Target features:**
-- Full README rewrite — overview, setup, API docs, architecture, configuration
-- Docker compose: map API to port 1985 on host, add health checks to API service
-- Verify that docker-compose up builds and launches correctly
+- Fix merge/split HTTP 404 endpoints (Tests 4 & 5) — ensure endpoints are routable
+- Fix GraphQL proxy visibility for SQL-inserted test data (Tests 2 & 3) — NS/DB context alignment
+- No regression on M001 (all 8/8 tests still pass)
 
 ## Architecture / Key Patterns
 
@@ -74,4 +74,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-05-31 after v1.1 milestone definition*
+*Last updated: 2026-05-31 after v1.2 milestone definition*

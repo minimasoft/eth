@@ -1,37 +1,47 @@
-# Roadmap: v1.1 Documentation & Infrastructure
+# Roadmap: v1.2 M002 Integration Test Fixes
 
 ## Phases
 
-- [x] **Phase 1: Infrastructure Hardening** — Fix API port to 1985, add Docker healthcheck, verify build
-- [x] **Phase 2: Project Documentation** — Full README rewrite with overview, API docs, architecture, and configuration
+- [ ] **Phase 3: GraphQL Proxy Fixes** — Fix SQL-inserted entity visibility via GraphQL proxy (Tests 2 & 3)
+- [ ] **Phase 4: Merge/Split Endpoint Fixes** — Fix HTTP 404 on merge/split endpoints (Tests 4 & 5)
+- [ ] **Phase 5: Regression Verification** — Verify all M001 and M002 tests pass cleanly
 
 ## Phase Details
 
-### Phase 1: Infrastructure Hardening
-**Goal**: Docker deployment is hardened with corrected port mapping, health checks, and a verified build that serves the API on port 1985
-**Depends on**: Nothing (first phase of milestone)
-**Requirements**: INFRA-01, INFRA-02, INFRA-03
+### Phase 3: GraphQL Proxy Fixes
+**Goal**: Canonical entities and reference-to-canonical links created via SQL are visible through the GraphQL proxy
+**Depends on**: Nothing
+**Requirements**: GQL-01, GQL-02
 **Success Criteria** (what must be TRUE):
-  1. Docker compose maps API host port to 1985 (currently 8001)
-  2. API service has a Docker healthcheck that monitors service readiness (similar to surrealdb/temporal-server)
-  3. `docker-compose up --build` launches all services (surrealdb, temporal-server, temporal-ui, schema-init, api, worker) without errors
-  4. API is reachable on host port 1985 — `curl http://localhost:1985/health` or `/docs` returns a successful response
+  1. SQL-inserted canonical entities return rows when queried via `POST /graphql` with `{ canonicalEntities { id entity_type name properties } }`
+  2. SQL-inserted references with `canonical_entity` links return the linked entity via `POST /graphql` with `{ references { id canonical_entity { id } } }`
+  3. Test 2 and Test 3 pass in `docker compose run --rm integration-tests`
 **Plans**: TBD
 
-### Phase 2: Project Documentation
-**Goal**: New developers can understand the project, set up a local environment, use the API, and troubleshoot common issues — all from the README
-**Depends on**: Phase 1 (docs should reference correct port 1985 and verified deployment)
-**Requirements**: DOC-01, DOC-02, DOC-03, DOC-04
+### Phase 4: Merge/Split Endpoint Fixes
+**Goal**: `POST /entities/merge` and `POST /entities/{type}/{id}/split` return HTTP 200 instead of 404
+**Depends on**: Phase 3 (test environment must be working)
+**Requirements**: MERGE-01, SPLIT-01
 **Success Criteria** (what must be TRUE):
-  1. README explains the project purpose (Espacio Tiempo Humanos) and provides a working quickstart that lets a new developer run the system
-  2. README documents every API endpoint with request/response examples (ingest document, GraphQL queries, entity merge/split)
-  3. README explains the system architecture (SurrealDB, Temporal, LLM extraction, entity resolution) and data flow from ingest to query
-  4. README includes an environment configuration reference (all `.env` variables) and a troubleshooting section for common issues
+  1. `POST /entities/merge` with valid source/target entity IDs returns HTTP 200 with `{ success: true }`
+  2. `POST /entities/{type}/{id}/split` with valid entity ID and partitions returns HTTP 200 with `{ success: true }`
+  3. Test 4 and Test 5 pass in `docker compose run --rm integration-tests`
+**Plans**: TBD
+
+### Phase 5: Regression Verification
+**Goal**: No regressions from fixes — all M001 and M002 tests pass
+**Depends on**: Phase 4
+**Requirements**: REGR-01
+**Success Criteria** (what must be TRUE):
+  1. `docker compose run --rm integration-tests` exits with code 0
+  2. All 8/8 M001 tests pass (no regression)
+  3. All 6/6 M002 tests pass (fixes confirmed)
 **Plans**: TBD
 
 ## Progress
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Infrastructure Hardening | 0/0 | Not started | — |
-| 2. Project Documentation | 0/0 | Not started | — |
+| 3. GraphQL Proxy Fixes | 0/0 | Not started | — |
+| 4. Merge/Split Endpoint Fixes | 0/0 | Not started | — |
+| 5. Regression Verification | 0/0 | Not started | — |
