@@ -69,8 +69,18 @@ services:
     build: .
     command: uv run python scripts/run_api.py
     ports:
-    - 8001:8001
+    - 1985:8001
     env_file: .env
+    healthcheck:
+      test:
+      - CMD
+      - python
+      - -c
+      - import urllib.request, sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8001/health').status == 200 else 1)
+      interval: 5s
+      retries: 6
+      start_period: 15s
+      timeout: 5s
     depends_on:
       schema-init:
         condition: service_completed_successfully
