@@ -88,7 +88,11 @@ Plans:
   4. When `USE_PYPDF=true` env var is set, extraction falls back to `pypdf` successfully (license mitigation works)
   5. Empty/scanned PDFs fail with a clear actionable error message (not a generic crash) — quality gate triggers
 
-**Plans**: TBD
+**Plans**: 2 plans
+
+Plans:
+- [ ] 07-01-PLAN.md — Content extractors (ContentExtractor protocol, PdfExtractor, quality gate) + DocumentChunker with page-provenance tracking + dependencies
+- [ ] 07-02-PLAN.md — document_chunk SurrealDB schema + Temporal activities (extract_text, chunk_document, store_chunks) + worker registration
 
 ---
 
@@ -120,5 +124,5 @@ Plans:
 | 4. Merge/Split Endpoint Fixes | — | Complete | 2026-05-31 |
 | 5. Regression Verification | — | Complete | 2026-05-31 |
 | 6. MinIO Infrastructure + Blob Upload | 2/2 | Complete | 2026-05-31 |
-| 7. PDF Text Extraction + Chunking | 0/0 | Not started | - |
+| 7. PDF Text Extraction + Chunking | 0/2 | Planning complete | - |
 | 8. Full Workflow Integration + Tests | 0/0 | Not started | - |
