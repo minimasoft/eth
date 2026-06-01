@@ -70,7 +70,7 @@ DEFINE FIELD updated_at ON TABLE document TYPE datetime
 -- ==========================================================================
 -- Table: document_chunk
 -- ==========================================================================
--- Stores text chunks extracted from a document's content, with page-level
+-- Stores text chunks extracted from a document, with page-level
 -- provenance. Each chunk records its position in the chunk sequence, the
 -- page range it covers (1-based), and the character offset range in the
 -- full document text. Chunks are internal — the LLM extraction pipeline
