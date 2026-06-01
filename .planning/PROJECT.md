@@ -21,18 +21,20 @@ Every extracted event must be traceable to its exact source text in the original
 
 **M002: Entity Resolution — COMPLETE.** Canonical entities (places, persons, objects) accumulate verbatim references during Temporal document processing via resolve_entities_activity with LLM-powered per-type batching (place/person/object, skip tiempo). Nullify-then-recreate pattern ensures Temporal replay safety. POST /entities/merge and POST /entities/{type}/{id}/split REST endpoints provide human correction with 7-condition and 6-condition validation pipelines, reference rewiring, soft-delete via superseded_by, and split_from provenance tracking. All 4 slices verified: S01 (schema) through S04 (integration) — 14/14 Python checks, 6/6 TypeScript tests. Validation verdict: pass. Ready for human evaluation and M003.
 
-**M003: Advanced Query — DEFERRED.** Geospatial queries (radius/bounding box), event type taxonomy, full-text search via SurrealDB FT index. Deferred to later milestone — v2.0 focused on blob/chunk infrastructure instead.
+**M002 Integration Test Fixes — COMPLETE.** All 6/6 M002 integration tests passing (up from 2/6). Schema: added `created_at`/`updated_at` to reference table, made `properties` FLEXIBLE on canonical_entity. Fixed test SQL inserts to match SCHEMAFULL schema (field names, record references, required fields). No regression on M001 (11/11 tests still pass).
 
-## Current Milestone: v2.0 Blob & Chunk Pipeline
+**v2.0: Blob & Chunk Pipeline — COMPLETE.** MinIO Docker service with healthcheck, storage.py client factory, POST /documents/upload endpoint. PdfExtractor (pypdfium2, pypdf fallback), DocumentChunker with page-provenance tracking. Full workflow integration with conditional branch, status tracking, reprocess safety, backward compatibility, and integration tests. 3 phases (6-8), 6 plans, all verified.
 
-**Goal:** Add MinIO blob storage, PDF text extraction workflow, smart text chunking, and transparent multi-chunk document model
+## Current Milestone: v3.0 Web UI
+
+**Goal:** Serve a basic web UI from the FastAPI API at `/ui` for document upload, listing, and entity browsing
 
 **Target features:**
-- MinIO/S3 blob storage for source documents
-- Content extraction workflows (PDF first, extensible)
-- Smart text chunking (~128k chars, punctuation-aware, page-provenance)
-- Chunks are internal — user-facing API remains the same
-- Document has: original blob (MinIO) + text (streamed from chunks with offsets)
+- Static HTML/CSS/JS served by FastAPI at `/ui` — no build step
+- Three-tab single-page UI: Upload, Documents, Entities
+- Upload tab with basic file picker calling POST /documents/upload
+- Documents tab: paginated list (20/page, text search) with ID, filename, upload date, processing status
+- Entities tab: paginated list (20/page, text search) with name, type, reference count
 
 ## Architecture / Key Patterns
 
@@ -56,7 +58,8 @@ See `.gsd/REQUIREMENTS.md` for the explicit capability contract, requirement sta
 
 - [x] M001: Core Pipeline — Document ingestion with status tracking, LLM event extraction (protocol-based, OpenRouter first), event/reference storage with full provenance, Temporal workflow with retry + replay, GraphQL API via SurrealDB native GraphQL proxy. Integration tests: 12/12 Python checks, 11/11 TypeScript tests.
 - [x] M002: Entity Resolution — Canonical places/persons/objects, reference accumulation via LLM-powered per-type batching (place/person/object, skip tiempo), merge/split correction operations. Temporal integration with nullify-then-recreate replay safety. Validated: 14/14 Python checks, 6/6 TypeScript tests, all cross-slice boundaries honored.
-- [ ] M003: Advanced Query — Geospatial queries (radius/bounding box), event type taxonomy, full-text search via SurrealDB FT index.
+- [x] v2.0: Blob & Chunk Pipeline — MinIO blob storage, PDF extraction, chunking, workflow integration. 3 phases (6-8), 6 plans.
+- [ ] v3.0: Web UI — Current milestone. Static HTML/CSS/JS UI served at /ui for upload, document list, entity browsing.
 
 ## Evolution
 
@@ -76,4 +79,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---  
-*Last updated: 2026-05-31 after v2.0 milestone start*
+*Last updated: 2026-06-01 after v3.0 milestone start*
