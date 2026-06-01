@@ -44,11 +44,36 @@ Requirements for v2.0 Blob & Chunk Pipeline. Each maps to roadmap phases.
 - [x] **TEST-02**: New integration tests verify upload → extract → chunk → events pipeline
 - [x] **TEST-03**: Chunk transparency verified — `extract_events_activity` receives reconstructed full text, never sees individual chunks
 
-## v3 Requirements
+## v3 Requirements: Web UI
+
+Requirements for v3.0 Web UI milestone. Each maps to roadmap phases.
+
+### UI Infrastructure
+
+- [ ] **UI-01**: FastAPI serves static HTML/CSS/JS files at `/ui` endpoint
+- [ ] **UI-02**: Single-page application with three-tab navigation: Upload, Documents, Entities
+- [ ] **UI-03**: Page title and heading reflect application name ("ETH Pipeline")
+
+### Upload
+
+- [ ] **UPLD-01**: User can select and upload one or more document files via file picker
+- [ ] **UPLD-02**: Upload calls existing `POST /documents/upload` endpoint and shows success/error feedback
+
+### Document List
+
+- [ ] **DOCL-01**: User can view paginated list of documents (20 per page) with ID, filename, upload date, and processing status
+- [ ] **DOCL-02**: User can search/filter documents by filename or processing status
+- [ ] **DOCL-03**: Pagination controls show current page, total pages, and allow navigation
+
+### Entity List
+
+- [ ] **ENTL-01**: User can view paginated list of canonical entities (20 per page) with name, type, and reference count
+- [ ] **ENTL-02**: User can search/filter entities by name or type
+- [ ] **ENTL-03**: Pagination controls show current page, total pages, and allow navigation
+
+## Future Requirements
 
 Deferred to future release. Tracked but not in current roadmap.
-
-### Future Pipeline
 
 - **EXTR-06**: OCR support for scanned PDFs via Tesseract + Spanish language pack
 - **EXTR-07**: DOCX/image content extractors via the existing protocol
@@ -97,10 +122,10 @@ Explicitly excluded. Documented to prevent scope creep.
 | TEST-03 | Phase 8 | Complete |
 
 **Coverage:**
-- v2 requirements: 22 total
-- Mapped to phases: 22
-- Unmapped: 0 ✓
+- v2 requirements: 22 total ✓
+- v3 requirements: 10 total
+- Mapped to phases: Pending (roadmap creation)
 
 ---
 *Requirements defined: 2026-05-31*
-*Last updated: 2026-05-31 after v2.0 completion*
+*Last updated: 2026-06-01 after v3.0 requirements definition*
