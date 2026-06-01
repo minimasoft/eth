@@ -254,6 +254,8 @@ export interface DocumentStatus {
   filename: string;
   error_message: string | null;
   created_at: string | null;
+  blob_format: string | null;
+  blob_path: string | null;
 }
 
 /**
@@ -366,5 +368,106 @@ export function assertNonNull<T>(
   message = "Expected non-null value",
 ): asserts value is NonNullable<T> {
   assert.ok(value !== null && value !== undefined, message);
+}
+
+// ── v2.0 Pipeline helpers ──────────────────────────────────────────────
+
+/**
+ * Upload a binary file to POST /documents/upload via multipart form.
+ *
+ * @param filePath - Absolute or relative path to the file on disk.
+ * @param filename - Name of the uploaded file (used for blob_path generation).
+ * @returns The created document info, or `null` if the service is unavailable.
+ */
+export async function uploadDocument(
+  filePath: string,
+  filename: string,
+): Promise<DocumentCreated | null> {
+  const url = `${API_BASE}/documents/upload`;
+
+  try {
+    // Read the file from disk
+    const fs = await import("fs/promises");
+    const content = await fs.readFile(filePath);
+
+    // Build multipart form
+    const form = new FormData();
+    const blob = new Blob([content], { type: "application/pdf" });
+    form.append("file", blob, filename);
+
+    const resp = await fetch(url, {
+      method: "POST",
+      body: form,
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT),
+    });
+
+    const body = await resp.text();
+
+    if (resp.status === 503) {
+      console.warn("POST /documents/upload -- 503 (degraded mode)");
+      return null;
+    }
+
+    if (resp.status !== 201) {
+      console.warn(`POST /documents/upload -- HTTP ${resp.status}: ${body}`);
+      return null;
+    }
+
+    return JSON.parse(body) as DocumentCreated;
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn(`POST /documents/upload -- error: ${msg}`);
+    return null;
+  }
+}
+
+/**
+ * Count document_chunk records for a given document via direct SurrealDB SQL.
+ *
+ * @param documentId - The hex document ID (without "document:" prefix).
+ * @returns The chunk count, or `null` on error.
+ */
+export async function sqlCountChunks(
+  documentId: string,
+): Promise<number | null> {
+  const sqlUrl = `${SURREAL_HTTP}/sql`;
+  const token = Buffer.from(`${SURREAL_USER}:${SURREAL_PASS}`).toString("base64");
+  const sql = `SELECT count() as cnt FROM document_chunk WHERE document = document:${documentId};`;
+
+  try {
+    const resp = await fetch(sqlUrl, {
+      method: "POST",
+      headers: {
+        Authorization: `Basic ${token}`,
+        Accept: "application/json",
+        "Surreal-Ns": SURREAL_NS,
+        "Surreal-DB": SURREAL_DB,
+        "Content-Type": "text/plain",
+      },
+      body: sql,
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT),
+    });
+
+    if (!resp.ok) return null;
+    const body = (await resp.json()) as unknown[];
+
+    // Extract count from SurrealDB response
+    for (const entry of body) {
+      if (entry && typeof entry === "object" && "result" in entry) {
+        const result = (entry as { result: unknown[] }).result;
+        if (Array.isArray(result) && result.length > 0) {
+          const row = result[0] as Record<string, unknown>;
+          const cntVal = row.cnt;
+          if (typeof cntVal === "number") return cntVal;
+          if (cntVal && typeof cntVal === "object") {
+            return Number((cntVal as Record<string, unknown>).value ?? 0);
+          }
+        }
+      }
+    }
+    return 0;
+  } catch {
+    return null;
+  }
 }
 
