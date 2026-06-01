@@ -1,5 +1,16 @@
 # Milestones
 
+## v2.0 v2.0 (Shipped: 2026-06-01)
+
+**Phases completed:** 3 phases, 6 plans, 0 tasks
+
+**Key accomplishments:**
+
+- MinIO Docker service with healthcheck, storage.py client factory (sync+async context managers mirroring db.py), init_bucket.py idempotent bucket creation script, and nullable blob_format/blob_path fields on document schema.
+- POST /documents/upload accepts multipart file uploads, stores blobs in MinIO with base64 fallback, creates SurrealDB document records with blob_format="minio" and blob_path references, and triggers Temporal processing.
+
+---
+
 ## v1.2 M002 Integration Test Fixes (Shipped: 2026-05-31)
 
 **Phases completed:** 3 phases, 3 plans, 0 tasks
