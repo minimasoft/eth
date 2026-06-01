@@ -1051,3 +1051,155 @@ async def store_chunks_activity(document_id: str, chunk_payload: dict) -> dict:
         except Exception:
             pass
         return {"error": str(exc), "document_id": document_id}
+
+
+# ---------------------------------------------------------------------------
+# Helper query activities (Phase 8)
+# ---------------------------------------------------------------------------
+
+
+@activity.defn
+async def get_document_metadata_activity(document_id: str) -> dict:
+    """Retrieve document metadata to determine processing path.
+
+    Queries ``blob_format``, ``text_content``, ``filename``, and
+    ``mime_type`` for the given document.  The workflow uses this to
+    decide whether to follow the blob path (need to extract text from
+    binary source) or the text path (text already available).
+
+    Parameters
+    ----------
+    document_id:
+        SurrealDB record ID of the document (e.g. ``"abc123"``).
+
+    Returns
+    -------
+    dict
+        ``{"document_id": ..., "blob_format": ...|None,
+        "has_text_content": bool, "text_content": str}`` on success,
+        or ``{"error": ..., "document_id": ...}`` on connection failure.
+    """
+    params = _db_params()
+    doc_ref = f"document:{document_id}"
+
+    activity.logger.info(
+        "get_document_metadata_activity called [document_id=%s]",
+        document_id,
+    )
+
+    try:
+        async with get_db(**params) as db:
+            raw = await db.query(
+                f"SELECT blob_format, text_content, filename, mime_type "
+                f"FROM {doc_ref}",
+            )
+            rows = _extract_query_results(raw)
+            if not rows:
+                activity.logger.warning(
+                    "Document not found [document_id=%s]",
+                    document_id,
+                )
+                return {"error": "Document not found", "document_id": document_id}
+
+            doc = rows[0]
+            text_content = doc.get("text_content")
+            has_text_content = text_content is not None and text_content != ""
+
+            activity.logger.info(
+                "get_document_metadata_activity completed "
+                "[document_id=%s] [blob_format=%s] [has_text_content=%s]",
+                document_id,
+                doc.get("blob_format"),
+                has_text_content,
+            )
+
+            return {
+                "document_id": document_id,
+                "blob_format": doc.get("blob_format"),
+                "has_text_content": has_text_content,
+                "text_content": text_content if has_text_content else "",
+            }
+
+    except ConnectionError as exc:
+        activity.logger.error(
+            "SurrealDB connection failed in get_document_metadata_activity: %s",
+            exc,
+        )
+        return {"error": str(exc), "document_id": document_id}
+    except Exception as exc:
+        activity.logger.error(
+            "Unexpected error in get_document_metadata_activity: %s",
+            exc,
+        )
+        return {"error": str(exc), "document_id": document_id}
+
+
+@activity.defn
+async def get_document_text_activity(document_id: str) -> dict:
+    """Retrieve the full reconstructed text content for a document.
+
+    Queries ``text_content`` from the document record.  Used by the blob
+    path of the workflow to obtain the full text after extraction and
+    chunk storage — guaranteeing chunk transparency (``extract_events_activity``
+    never sees individual chunk records).
+
+    Parameters
+    ----------
+    document_id:
+        SurrealDB record ID of the document (e.g. ``"abc123"``).
+
+    Returns
+    -------
+    dict
+        ``{"document_id": ..., "text_content": str, "text_length": int}``
+        on success, or ``{"error": ..., "document_id": ...}`` on
+        connection failure.
+    """
+    params = _db_params()
+    doc_ref = f"document:{document_id}"
+
+    activity.logger.info(
+        "get_document_text_activity called [document_id=%s]",
+        document_id,
+    )
+
+    try:
+        async with get_db(**params) as db:
+            raw = await db.query(
+                f"SELECT text_content FROM {doc_ref}",
+            )
+            rows = _extract_query_results(raw)
+            if not rows:
+                activity.logger.warning(
+                    "Document not found [document_id=%s]",
+                    document_id,
+                )
+                return {"error": "Document not found", "document_id": document_id}
+
+            text_content = rows[0].get("text_content") or ""
+
+            activity.logger.info(
+                "get_document_text_activity completed "
+                "[document_id=%s] [text_length=%d]",
+                document_id,
+                len(text_content),
+            )
+
+            return {
+                "document_id": document_id,
+                "text_content": text_content,
+                "text_length": len(text_content),
+            }
+
+    except ConnectionError as exc:
+        activity.logger.error(
+            "SurrealDB connection failed in get_document_text_activity: %s",
+            exc,
+        )
+        return {"error": str(exc), "document_id": document_id}
+    except Exception as exc:
+        activity.logger.error(
+            "Unexpected error in get_document_text_activity: %s",
+            exc,
+        )
+        return {"error": str(exc), "document_id": document_id}

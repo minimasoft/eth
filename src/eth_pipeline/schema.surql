@@ -37,8 +37,8 @@ DEFINE FIELD text_content ON TABLE document TYPE string
     COMMENT 'Plain-text representation extracted from the source file for LLM processing';
 
 DEFINE FIELD status ON TABLE document TYPE string
-    ASSERT $value = 'pending' OR $value = 'extracted' OR $value = 'processed' OR $value = 'failed'
-    COMMENT 'Lifecycle status: pending=uploaded, extracted=events found, processed=fully handled, failed=processing error';
+    ASSERT $value = 'pending' OR $value = 'processing' OR $value = 'extracted' OR $value = 'extracting_blob' OR $value = 'extracting_text' OR $value = 'chunking' OR $value = 'processed' OR $value = 'failed'
+    COMMENT 'Lifecycle status: pending=uploaded, processing=workflow started, extracted=events found, extracting_blob=reading binary blob, extracting_text=llm extracting events, chunking=splitting text into chunks, processed=fully handled, failed=processing error';
 
 DEFINE FIELD filename ON TABLE document TYPE string
     COMMENT 'Original filename from ingestion (used for display and debugging)';

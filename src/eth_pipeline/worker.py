@@ -40,6 +40,8 @@ async def main() -> None:
             activities.chunk_document_activity,
             activities.extract_events_activity,
             activities.extract_text_activity,
+            activities.get_document_metadata_activity,
+            activities.get_document_text_activity,
             activities.resolve_entities_activity,
             activities.store_chunks_activity,
             activities.store_extraction_results_activity,
