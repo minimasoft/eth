@@ -33,8 +33,9 @@ DEFINE TABLE document SCHEMAFULL
 DEFINE FIELD original_blob ON TABLE document TYPE string
     COMMENT 'Base64-encoded raw content of the uploaded source file';
 
-DEFINE FIELD text_content ON TABLE document TYPE string
-    COMMENT 'Plain-text representation extracted from the source file for LLM processing';
+DEFINE FIELD text_content ON TABLE document TYPE string | null
+    DEFAULT null
+    COMMENT 'Plain-text representation extracted from the source file for LLM processing (null for unprocessed blob-stored documents)';
 
 DEFINE FIELD status ON TABLE document TYPE string
     ASSERT $value = 'pending' OR $value = 'processing' OR $value = 'extracted' OR $value = 'extracting_blob' OR $value = 'extracting_text' OR $value = 'chunking' OR $value = 'processed' OR $value = 'failed'

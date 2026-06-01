@@ -630,6 +630,10 @@ async def upload_document(file: UploadFile = File(...)) -> DocumentUploadCreated
 # =======================================================================
 # Get document status
 # =======================================================================
+@app.get(
+    "/documents/{document_id}",
+    response_model=DocumentStatus,
+)
 async def get_document(document_id: str) -> DocumentStatus:
     """Retrieve document status and metadata.
 
@@ -789,10 +793,11 @@ async def clear_document_events(document_id: str) -> EventsCleared:
         )
 
         # Reset document status to pending — clear text_content so
-        # reprocessing re-extracts from the blob.
+        # reprocessing re-extracts from the blob (empty string
+        # triggers has_text_content=False in the workflow).
         await db.query(
             f"UPDATE {doc_ref} SET status = 'pending', "
-            "text_content = NULL, error_message = NULL, "
+            "text_content = '', error_message = NULL, "
             "updated_at = time::now()",
         )
 
