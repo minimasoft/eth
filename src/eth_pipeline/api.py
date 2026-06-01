@@ -430,7 +430,7 @@ async def create_document(input: DocumentInput) -> DocumentCreated:
                 DocumentProcessingWorkflow.run,
                 id=f"doc-{doc_id}",
                 task_queue="event-extraction",
-                args=[doc_id, input.text],
+                args=[doc_id],
                 id_conflict_policy=1,  # USE_EXISTING
             )
             logger.info("Temporal workflow started for document %s", doc_id)
@@ -608,7 +608,7 @@ async def upload_document(file: UploadFile = File(...)) -> DocumentUploadCreated
                 DocumentProcessingWorkflow.run,
                 id=f"doc-{doc_id}",
                 task_queue="event-extraction",
-                args=[doc_id, ""],
+                args=[doc_id],
                 id_conflict_policy=1,  # USE_EXISTING
             )
             logger.info("Temporal workflow started for document %s", doc_id)
@@ -769,6 +769,12 @@ async def clear_document_events(document_id: str) -> EventsCleared:
         )
 
     try:
+        # Delete document chunks for this document (Phase 8 cascade)
+        await db.query(
+            "DELETE document_chunk WHERE document = $doc_id",
+            {"doc_id": doc_ref},
+        )
+
         # Delete references linked to events for this document
         await db.query(
             "DELETE reference WHERE event IN "
@@ -782,11 +788,12 @@ async def clear_document_events(document_id: str) -> EventsCleared:
             {"doc_id": doc_ref},
         )
 
-        # Reset document status to pending — use inline ref (variable
-        # bindings don't work with UPDATE in SurrealDB v3).
+        # Reset document status to pending — clear text_content so
+        # reprocessing re-extracts from the blob.
         await db.query(
             f"UPDATE {doc_ref} SET status = 'pending', "
-            "error_message = NULL, updated_at = time::now()",
+            "text_content = NULL, error_message = NULL, "
+            "updated_at = time::now()",
         )
 
         logger.info(
