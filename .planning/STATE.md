@@ -2,14 +2,14 @@
 gsd_state_version: "1.0"
 milestone: v2.0
 milestone_name: Blob & Chunk Pipeline
-status: in_progress
-last_updated: "2026-05-31T23:55:00.000Z"
-last_activity: 2026-05-31
+status: complete
+last_updated: "2026-06-01T01:15:00.000Z"
+last_activity: 2026-06-01
 progress:
   total_phases: 3
-  completed_phases: 1
-  total_plans: 4
-  completed_plans: 4
+  completed_phases: 3
+  total_plans: 6
+  completed_plans: 6
   percent: 100
 ---
 
@@ -17,26 +17,26 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-05-31)
+See: .planning/PROJECT.md (updated 2026-06-01)
 
 **Core value:** Every extracted event must be traceable to its exact source text in the original document, and every resolved entity must show its evidential references.
-**Current focus:** v2.0 Blob & Chunk Pipeline — Phase 7 (PDF Text Extraction + Chunking)
+**Current focus:** v2.0 Blob & Chunk Pipeline — Complete (all 3 phases, 6 plans)
 
 ## Current Position
 
-Phase: 7 of 8 (PDF Text Extraction + Chunking)
+Phase: 8 of 8 (Full Workflow Integration + Tests) — COMPLETE
 Plan: 2 of 2 in current phase (COMPLETE)
-Status: Phase complete — both plans executed
-Last activity: 2026-05-31 — Phase 7 fully implemented
+Status: v2.0 milestone complete — all plans executed
+Last activity: 2026-06-01 — Phase 8 fully implemented
 
 Progress: [██████████] 100%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 4
-- Average duration: ~11 min
-- Total execution time: ~45 min
+- Total plans completed: 6
+- Average duration: ~12 min
+- Total execution time: ~72 min
 
 **By Phase:**
 
@@ -44,9 +44,10 @@ Progress: [██████████] 100%
 |-------|-------|-------|----------|
 | 6. MinIO Infrastructure + Blob Upload | 2 | ~25 min | ~12.5 min |
 | 7. PDF Text Extraction + Chunking | 2 | ~22 min | ~11 min |
+| 8. Full Workflow Integration + Tests | 2 | ~25 min | ~12.5 min |
 
 **Recent Trend:**
-- Last 5 plans: 07-02, 07-01, 06-02, 06-01
+- Last 6 plans: 08-02, 08-01, 07-02, 07-01, 06-02, 06-01
 - Trend: Stable
 
 *Updated after each plan completion*
@@ -68,6 +69,11 @@ Recent decisions affecting current work:
 - Chunks are non-overlapping (chunk_overlap=0) — reconstruction uses original text offsets, not concatenation
 - Document status progression: extracting_text → chunking → processed
 - store_chunks_activity uses delete-then-recreate for idempotency
+- Workflow branch condition uses `not has_text_content` (handles all three: new MinIO blobs, legacy base64, direct-text docs)
+- Status progression: processing → extracting_blob → extracting_text → chunking → processed
+- DELETE order: document_chunk → reference → event → document reset (text_content = '' for clean reprocess)
+- Chunk transparency: extract_events_activity always receives full document.text_content
+- text_content field made nullable (TYPE string | null DEFAULT null) for blob-stored docs
 
 ### Pending Todos
 
@@ -91,7 +97,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-05-31 23:55
-Stopped at: Phase 7 fully implemented (PDF text extraction + chunking)
+Last session: 2026-06-01 01:15
+Stopped at: v2.0 Blob & Chunk Pipeline fully implemented (phases 6-8)
 Resume file: None
-
