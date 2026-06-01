@@ -167,8 +167,7 @@ services:
       - eth-pipeline
   cloudflared:
     image: cloudflare/cloudflared:latest
-    command: >
-      sh -c 'if [ -n "$$TUNNEL_TOKEN" ]; then exec tunnel --no-autoupdate run; else echo "TUNNEL_TOKEN not set — cloudflared disabled" && sleep infinity; fi'
+    command: tunnel --no-autoupdate run --token $TUNNEL_TOKEN
     environment:
       TUNNEL_TOKEN: ${TUNNEL_TOKEN:-}
     restart: unless-stopped
