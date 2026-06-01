@@ -17,32 +17,32 @@ Requirements for v2.0 Blob & Chunk Pipeline. Each maps to roadmap phases.
 
 ### PDF Text Extraction
 
-- [ ] **EXTR-01**: `ContentExtractor` protocol with registry — extensible for PDF, future formats (DOCX, images)
-- [ ] **EXTR-02**: `PdfExtractor` using PyMuPDF with page-level metadata extraction
-- [ ] **EXTR-03**: AGPL license mitigation via `pypdf` fallback (env var `USE_PYPDF=true`)
-- [ ] **EXTR-04**: Quality gate — detects empty/scanned PDFs with actionable error message
-- [ ] **EXTR-05**: `extract_text_activity` reads blob from MinIO, runs extractor, returns extracted text with page metadata
+- [x] **EXTR-01**: `ContentExtractor` protocol with registry — extensible for PDF, future formats (DOCX, images)
+- [x] **EXTR-02**: `PdfExtractor` using pypdfium2 (BSD-3) with page-level metadata extraction
+- [x] **EXTR-03**: AGPL license mitigation via `pypdf` fallback (env var `USE_PYPDF=true`)
+- [x] **EXTR-04**: Quality gate — detects empty/scanned PDFs with actionable error message
+- [x] **EXTR-05**: `extract_text_activity` reads blob from MinIO, runs extractor, returns extracted text with page metadata
 
 ### Document Chunking
 
-- [ ] **CHNK-01**: `DocumentChunker` wraps `RecursiveCharacterTextSplitter` with ~128k-char chunks
-- [ ] **CHNK-02**: Chunking splits at punctuation/paragraph boundaries (smart boundaries, not byte-level)
-- [ ] **CHNK-03**: Page provenance tracked per chunk: `chunk_index`, `page_start`, `page_end`, `offset_start`, `offset_end`
-- [ ] **CHNK-04**: `document_chunk` SurrealDB table stores chunk records linked to document
-- [ ] **CHNK-05**: `chunk_text_activity` + `store_chunks_activity` with delete-then-recreate idempotency
+- [x] **CHNK-01**: `DocumentChunker` wraps `RecursiveCharacterTextSplitter` with ~128k-char chunks
+- [x] **CHNK-02**: Chunking splits at punctuation/paragraph boundaries (smart boundaries, not byte-level)
+- [x] **CHNK-03**: Page provenance tracked per chunk: `chunk_index`, `page_start`, `page_end`, `offset_start`, `offset_end`
+- [x] **CHNK-04**: `document_chunk` SurrealDB table stores chunk records linked to document
+- [x] **CHNK-05**: `chunk_text_activity` + `store_chunks_activity` with delete-then-recreate idempotency
 
 ### Workflow Integration
 
-- [ ] **WFLW-01**: `DocumentProcessingWorkflow` conditional branch — blob path vs direct text path
-- [ ] **WFLW-02**: Extended processing status values: `extracting_blob`, `extracting_text`, `chunking`
-- [ ] **WFLW-03**: Worker registers all new activities
-- [ ] **WFLW-04**: All new activities follow per-activity connection pattern (D012)
+- [x] **WFLW-01**: `DocumentProcessingWorkflow` conditional branch — blob path vs direct text path
+- [x] **WFLW-02**: Extended processing status values: `extracting_blob`, `extracting_text`, `chunking`
+- [x] **WFLW-03**: Worker registers all new activities
+- [x] **WFLW-04**: All new activities follow per-activity connection pattern (D012)
 
 ### Tests
 
-- [ ] **TEST-01**: All existing 11/11 integration tests continue to pass
-- [ ] **TEST-02**: New integration tests verify upload → extract → chunk → events pipeline
-- [ ] **TEST-03**: Chunk transparency verified — `extract_events_activity` receives reconstructed full text, never sees individual chunks
+- [x] **TEST-01**: All existing 11/11 integration tests continue to pass
+- [x] **TEST-02**: New integration tests verify upload → extract → chunk → events pipeline
+- [x] **TEST-03**: Chunk transparency verified — `extract_events_activity` receives reconstructed full text, never sees individual chunks
 
 ## v3 Requirements
 
@@ -78,23 +78,23 @@ Explicitly excluded. Documented to prevent scope creep.
 | BLOB-03 | Phase 6 | Complete |
 | BLOB-04 | Phase 6 | Complete |
 | BLOB-05 | Phase 6 | Complete |
-| EXTR-01 | Phase 7 | Pending |
-| EXTR-02 | Phase 7 | Pending |
-| EXTR-03 | Phase 7 | Pending |
-| EXTR-04 | Phase 7 | Pending |
-| EXTR-05 | Phase 7 | Pending |
-| CHNK-01 | Phase 7 | Pending |
-| CHNK-02 | Phase 7 | Pending |
-| CHNK-03 | Phase 7 | Pending |
-| CHNK-04 | Phase 7 | Pending |
-| CHNK-05 | Phase 7 | Pending |
-| WFLW-01 | Phase 8 | Pending |
-| WFLW-02 | Phase 8 | Pending |
-| WFLW-03 | Phase 8 | Pending |
-| WFLW-04 | Phase 8 | Pending |
-| TEST-01 | Phase 8 | Pending |
-| TEST-02 | Phase 8 | Pending |
-| TEST-03 | Phase 8 | Pending |
+| EXTR-01 | Phase 7 | Complete |
+| EXTR-02 | Phase 7 | Complete |
+| EXTR-03 | Phase 7 | Complete |
+| EXTR-04 | Phase 7 | Complete |
+| EXTR-05 | Phase 7 | Complete |
+| CHNK-01 | Phase 7 | Complete |
+| CHNK-02 | Phase 7 | Complete |
+| CHNK-03 | Phase 7 | Complete |
+| CHNK-04 | Phase 7 | Complete |
+| CHNK-05 | Phase 7 | Complete |
+| WFLW-01 | Phase 8 | Complete |
+| WFLW-02 | Phase 8 | Complete |
+| WFLW-03 | Phase 8 | Complete |
+| WFLW-04 | Phase 8 | Complete |
+| TEST-01 | Phase 8 | Complete |
+| TEST-02 | Phase 8 | Complete |
+| TEST-03 | Phase 8 | Complete |
 
 **Coverage:**
 - v2 requirements: 22 total
@@ -103,4 +103,4 @@ Explicitly excluded. Documented to prevent scope creep.
 
 ---
 *Requirements defined: 2026-05-31*
-*Last updated: 2026-05-31 after initial definition*
+*Last updated: 2026-05-31 after v2.0 completion*
