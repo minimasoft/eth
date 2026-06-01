@@ -5,13 +5,13 @@
 - ✅ **v1.0 Planning Migration** — Phases (shipped 2026-05-31)
 - ✅ **v1.1 Documentation & Infrastructure** — Phases 2 (shipped 2026-05-31)
 - ✅ **v1.2 M002 Integration Test Fixes** — Phases 3-5 (shipped 2026-05-31)
-- 🚧 **v2.0 Blob & Chunk Pipeline** — Phases 6-8 (in progress)
+- 🚧 **v2.0 Blob & Chunk Pipeline** — Phases 6-8 (shipped 2026-05-31)
 
 ## Phases
 
 - [x] **Phase 6: MinIO Infrastructure + Blob Upload** — MinIO Docker service, storage client, blob upload endpoint, bucket auto-init
 - [x] **Phase 7: PDF Text Extraction + Chunking** — ContentExtractor protocol, PdfExtractor, DocumentChunker, chunk storage activities
-- [ ] **Phase 8: Full Workflow Integration + Tests** — Workflow conditional branch, status tracking, reprocess safety, backward compat, integration tests
+- [x] **Phase 8: Full Workflow Integration + Tests** — Workflow conditional branch, status tracking, reprocess safety, backward compat, integration tests
 
 <details>
 <summary>✅ v1.2 M002 Integration Test Fixes (Phases 3-5) — SHIPPED 2026-05-31</summary>
@@ -112,7 +112,11 @@ Plans:
   5. All 11/11 existing integration tests pass; new v2.0 pipeline integration tests pass
   6. Chunk transparency verified — `extract_events_activity` receives full reconstructed text from `document.text_content`, never sees individual chunk records
 
-**Plans**: TBD
+**Plans**: 2 plans
+
+Plans:
+- [x] 08-01-PLAN.md — Workflow conditional branch, status schema, DELETE cascade, helper activities
+- [x] 08-02-PLAN.md — v2.0 pipeline integration tests
 
 ---
 
@@ -125,4 +129,4 @@ Plans:
 | 5. Regression Verification | — | Complete | 2026-05-31 |
 | 6. MinIO Infrastructure + Blob Upload | 2/2 | Complete | 2026-05-31 |
 | 7. PDF Text Extraction + Chunking | 2/2 | Complete | 2026-05-31 |
-| 8. Full Workflow Integration + Tests | 0/0 | Not started | - |
+| 8. Full Workflow Integration + Tests | 2/2 | Complete | 2026-05-31 |
