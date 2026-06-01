@@ -174,7 +174,7 @@ ENTITY_RESOLUTION_SYSTEM_PROMPT: str = (
 # ---------------------------------------------------------------------------
 
 DEFAULT_MODEL = "google/gemini-2.0-flash-001"
-OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
+OPENROUTER_BASE_URL = "https://openrouter.ai"
 
 # ---------------------------------------------------------------------------
 # Provider protocol
@@ -291,7 +291,7 @@ class OpenRouterProvider:
         async with httpx.AsyncClient() as client:
             try:
                 response = await client.post(
-                    f"{self._base_url}/v1/chat/completions",
+                    f"{self._base_url}/api/v1/chat/completions",
                     headers=self._headers(),
                     json=payload,
                     timeout=120.0,
@@ -350,7 +350,7 @@ class OpenRouterProvider:
         async with httpx.AsyncClient() as client:
             try:
                 response = await client.post(
-                    f"{self._base_url}/v1/chat/completions",
+                    f"{self._base_url}/api/v1/chat/completions",
                     headers=self._headers(),
                     json=payload,
                     timeout=120.0,
