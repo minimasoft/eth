@@ -21,6 +21,7 @@ This project is a experiment coded 100% by Deepseek v4 Flash using opencode + op
 - [Docker](https://docs.docker.com/get-docker/) and [Docker Compose](https://docs.docker.com/compose/install/)
 - [httpie](https://httpie.io/) (for API testing — optional, you can use any HTTP client)
 - An [OpenRouter](https://openrouter.ai/) API key (for LLM-based event extraction)
+- (Optional) A [Cloudflare Tunnel token](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/) to expose the API via a secure tunnel
 
 ### Setup
 
@@ -54,6 +55,7 @@ This project is a experiment coded 100% by Deepseek v4 Flash using opencode + op
    - **Bucket Init** — MinIO bucket creation (runs once, then exits)
    - **API** — FastAPI server on host port 1985
    - **Worker** — Temporal worker for document processing
+   - **Cloudflared** — Cloudflare Tunnel (only active when `TUNNEL_TOKEN` is set in `.env`)
 
    > `--build` rebuilds images from source. On subsequent startups you can omit it:
    > ```bash
@@ -346,6 +348,7 @@ Copy `.env.example` to `.env` and configure the following variables:
 | `SURREAL_PASS` | SurrealDB authentication password | `root` |
 | `SURREAL_NS` | SurrealDB namespace | `eth` |
 | `SURREAL_DB` | SurrealDB database name | `pipeline` |
+| `TUNNEL_TOKEN` | Cloudflare Tunnel token (optional — enables cloudflared) | `—` (unset to disable) |
 
 ## Troubleshooting
 
