@@ -42,15 +42,27 @@ This project is a experiment coded 100% by Deepseek v4 Flash using opencode + op
 3. **Build and start all services:**
 
    ```bash
-   docker-compose up --build
+   docker compose up -d --build
    ```
 
    This launches:
    - **SurrealDB** — multi-model database on port 8000
+   - **MinIO** — S3-compatible blob storage on ports 9000 (API) and 9001 (console)
    - **Temporal Server** — workflow engine on port 7233 (UI on port 8080)
+   - **Temporal UI** — workflow dashboard on port 8080
    - **Schema Init** — database schema migration (runs once, then exits)
+   - **Bucket Init** — MinIO bucket creation (runs once, then exits)
    - **API** — FastAPI server on host port 1985
    - **Worker** — Temporal worker for document processing
+
+   > `--build` rebuilds images from source. On subsequent startups you can omit it:
+   > ```bash
+   > docker compose up -d
+   > ```
+   > After code changes, rebuild only the affected services:
+   > ```bash
+   > docker compose up -d --build api worker schema-init
+   > ```
 
 4. **Verify the API is running:**
 
@@ -66,13 +78,18 @@ This project is a experiment coded 100% by Deepseek v4 Flash using opencode + op
    }
    ```
 
-5. **(Optional) Run integration tests:**
+5. **Run integration tests:**
 
    ```bash
    docker compose run --rm integration-tests
    ```
 
-   This compiles and runs the TypeScript integration test suite against the running services (API health, document CRUD, GraphQL queries, entity merge/split). Requires the `api` service to be healthy.
+   This compiles and runs the TypeScript integration test suite against all running services (API health, document CRUD, GraphQL queries, entity merge/split, blob upload, chunk transparency). Dependencies (`surrealdb`, `api`, etc.) are automatically started and health-checked before tests run.
+
+   To stop all services after testing:
+   ```bash
+   docker compose down
+   ```
 
 ## Architecture
 
@@ -334,7 +351,7 @@ Copy `.env.example` to `.env` and configure the following variables:
 
 ### Docker Compose fails to start
 
-**Symptom:** `docker-compose up --build` exits with errors.
+**Symptom:** `docker compose up` exits with errors.
 
 **Check:** Ensure Docker is running and ports 1985, 8000, 7233, and 8080 are not already in use:
 
@@ -352,16 +369,26 @@ lsof -i :1985 -i :8000 -i :7233 -i :8080
 
 **Symptom:** A submitted document never transitions to `processing` or `completed`.
 
-**Check:** Verify Temporal Server is running and the worker is connected:
+**Checks:**
 
+1. Verify the worker is running:
+   ```bash
+   docker compose ps worker
+   ```
+
+2. Verify Temporal Server is reachable:
+   ```bash
+   http http://localhost:7233/
+   ```
+
+3. Check worker logs for activity errors:
+   ```bash
+   docker compose logs worker --tail 50
+   ```
+
+If the worker is not running, start it:
 ```bash
-http http://localhost:7233/  # Temporal Server liveness
-```
-
-If Temporal is running but the document remains pending, the workflow may have failed. Check the worker logs:
-
-```bash
-docker-compose logs worker
+docker compose up -d worker
 ```
 
 ### Entity extraction produces no events
@@ -371,10 +398,14 @@ docker-compose logs worker
 **Cause:** The LLM may have returned an unexpected response format. Check the extraction activity logs in the worker:
 
 ```bash
-docker-compose logs worker | grep extract
+docker compose logs worker | grep extract
 ```
 
-If the issue persists, verify your `OPENROUTER_API_KEY` is valid and the model is available.
+If the issue persists, verify your `OPENROUTER_API_KEY` is valid and the model is available. After changing `.env`, rebuild and restart:
+
+```bash
+docker compose up -d --build worker
+```
 
 ### "Cannot perform subtraction with 'record' and 'table'"
 
