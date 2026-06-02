@@ -218,6 +218,10 @@ class PdfExtractor:
             offset = page_offsets[-1] + len(page_texts[-1])
             page_offsets.append(offset)
 
+        # Account for \f separators inserted by "\f".join() below
+        for i in range(2, len(page_offsets)):
+            page_offsets[i] += i - 1
+
         text = "\f".join(page_texts)
         result = ExtractionResult(
             text=text,
@@ -266,6 +270,10 @@ class PdfExtractor:
             page_texts.append(page_text)
             offset = page_offsets[-1] + len(page_text)
             page_offsets.append(offset)
+
+        # Account for \f separators inserted by "\f".join() below
+        for i in range(2, len(page_offsets)):
+            page_offsets[i] += i - 1
 
         text = "\f".join(page_texts)
         result = ExtractionResult(
