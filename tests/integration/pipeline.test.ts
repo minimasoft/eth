@@ -683,8 +683,8 @@ describe("eth-pipeline integration tests", () => {
 /**
  * Clean up test documents created during the test run.
  *
- * For each document ID in {@link testDocIds}, attempts to clear events
- * via DELETE /documents/{id}/events. Errors are logged but do not fail
+ * For each document ID in {@link testDocIds}, attempts to delete the document
+ * via DELETE /documents/{id}. Errors are logged but do not fail
  * the test suite (cleanup is best-effort).
  */
 async function cleanupTestDocuments(): Promise<void> {
@@ -693,13 +693,13 @@ async function cleanupTestDocuments(): Promise<void> {
   console.log(`\nCleaning up ${testDocIds.length} test document(s)...`);
   for (const docId of testDocIds) {
     const [status, body, error] = await httpDelete(
-      `${API_BASE}/documents/${docId}/events`,
-      5_000,
+      `${API_BASE}/documents/${docId}`,
+      10_000,
     );
     if (error) {
       console.warn(`  ⚠️  Cleanup error for ${docId}: ${error}`);
     } else {
-      console.log(`  ✓ Cleared events for ${docId} (HTTP ${status})`);
+      console.log(`  ✓ Deleted document ${docId} (HTTP ${status})`);
     }
   }
 }
