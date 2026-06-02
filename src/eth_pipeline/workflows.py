@@ -50,11 +50,11 @@ class DocumentProcessingWorkflow:
     document.  It supports two paths determined at runtime:
 
     **Blob path** (binary PDF / legacy base64 without text_content):
-    ``extracting_blob`` → ``extracting_text`` → ``processed``
-    (chunk_document_activity handles chunking + storage)
+    ``extracting_blob`` → ``extracting_text`` → ``chunking`` →
+    ``extracting_text`` (LLM) → ``processed``
 
     **Text path** (document already has text_content):
-    ``processing`` → ``processed`` (extract events directly)
+    ``processing`` → ``chunking`` → ``extracting_text`` (LLM) → ``processed``
 
     Chunk transparency is guaranteed: ``extract_events_activity`` always
     queries ``document.text_content`` from SurrealDB internally,
@@ -73,16 +73,18 @@ class DocumentProcessingWorkflow:
         3. If ``has_text_content`` is ``False`` (blob path):
            - ``extracting_blob`` → ``extract_text_activity``
            - ``extracting_text`` (set by extract_text_activity)
-           - ``chunk_document_activity`` → chunks stored + ``processed``
-             set by chunk_document_activity
+           - ``chunk_document_activity`` → chunks stored + ``chunking``
         4. If ``has_text_content`` is ``True`` (text path):
            - Use text_content directly from metadata
-        5. ``extract_events_activity(document_id)`` — queries text from
+           - ``chunk_document_activity`` → chunks stored + ``chunking``
+        5. ``extracting_text`` (LLM) — set before event extraction
+        6. ``extract_events_activity(document_id)`` — queries text from
            SurrealDB internally (avoids large Temporal payloads)
-        6. ``store_extraction_results_activity(document_id, result)``
-        7. ``resolve_entities_activity(document_id, result)``
-        8. Return summary dict with ``document_id``, ``event_count``,
-           and ``status``.
+        7. ``store_extraction_results_activity(document_id, result)``
+        8. ``resolve_entities_activity(document_id, result)``
+        9. ``processed`` — set only after ALL steps complete
+        10. Return summary dict with ``document_id``, ``event_count``,
+            and ``status``.
 
         Parameters
         ----------
@@ -168,7 +170,14 @@ class DocumentProcessingWorkflow:
                         chunk_result["error"],
                     )
 
-            # Step 4: Extract events from full text (same for both paths)
+            # Step 4: Mark as extracting events via LLM
+            await workflow.execute_activity(
+                update_document_status_activity,
+                args=[document_id, "extracting_text"],
+                start_to_close_timeout=timedelta(seconds=10),
+            )
+
+            # Step 5: Extract events from full text (same for both paths)
             # extract_events_activity queries text_content from SurrealDB
             # internally to avoid passing large payloads through Temporal.
             result = await workflow.execute_activity(
@@ -196,7 +205,14 @@ class DocumentProcessingWorkflow:
                 start_to_close_timeout=timedelta(seconds=30),
             )
 
-            # Step 7: Return summary
+            # Step 7: Mark as fully processed (only after all steps complete)
+            await workflow.execute_activity(
+                update_document_status_activity,
+                args=[document_id, "processed"],
+                start_to_close_timeout=timedelta(seconds=10),
+            )
+
+            # Step 8: Return summary
             events = result.get("events", [])
             return {
                 "document_id": document_id,

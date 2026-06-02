@@ -784,9 +784,6 @@ async def store_extraction_results_activity(
         await update_document_status_activity(document_id, "failed", str(exc))
         return {"error": str(exc), "document_id": document_id}
 
-    # Mark document as processed
-    await update_document_status_activity(document_id, "processed")
-
     return {
         "document_id": document_id,
         "events_stored": len(events),
@@ -1072,20 +1069,16 @@ async def chunk_document_activity(document_id: str, extraction_result: dict) -> 
                 )
 
             # ---- Update document status ----
-            if chunks:
-                await db.query(
-                    f"UPDATE {doc_ref} SET status = 'processed', "
-                    f"updated_at = time::now()",
-                )
-            else:
+            if not chunks:
                 activity.logger.warning(
                     "No chunks to store [document_id=%s]",
                     document_id,
                 )
-                await db.query(
-                    f"UPDATE {doc_ref} SET status = 'processed', "
-                    f"updated_at = time::now()",
-                )
+
+            await db.query(
+                f"UPDATE {doc_ref} SET status = 'chunking', "
+                "updated_at = time::now()",
+            )
 
             activity.logger.info(
                 "chunk_document_activity completed [document_id=%s] "

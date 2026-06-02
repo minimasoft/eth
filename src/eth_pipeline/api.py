@@ -120,6 +120,18 @@ class DocumentStatus(BaseModel):
     blob_path: str | None = None
     """S3 object path when blob_format='minio'; None for legacy inline-stored documents."""
 
+    reference_count: int = 0
+    """Total number of verbatim references linked to this document via events."""
+
+    entity_count: int = 0
+    """Total number of distinct canonical entities linked to this document's references."""
+
+    chunk_count: int = 0
+    """Number of text chunks created from this document."""
+
+    text_word_count: int = 0
+    """Word count of the document's extracted text content."""
+
 
 class DocumentListItem(BaseModel):
     """A single document entry in the paginated document list."""
@@ -138,6 +150,18 @@ class DocumentListItem(BaseModel):
 
     error_message: str | None = None
     """Human-readable error description when status is ``failed``."""
+
+    reference_count: int = 0
+    """Total number of verbatim references linked to this document via events."""
+
+    entity_count: int = 0
+    """Total number of distinct canonical entities linked to this document's references."""
+
+    chunk_count: int = 0
+    """Number of text chunks created from this document."""
+
+    text_word_count: int = 0
+    """Word count of the document's extracted text content."""
 
 
 class DocumentListResponse(BaseModel):
@@ -383,6 +407,24 @@ class APIInfo(BaseModel):
     version: str
     description: str
     endpoints: dict[str, str]
+
+
+# =======================================================================
+# Helpers
+# =======================================================================
+
+
+def _parse_count(raw_result: list | dict | None) -> int:
+    """Extract count integer from a SurrealDB count query result."""
+    records = [r for r in (raw_result or []) if isinstance(r, dict)]
+    if not records:
+        return 0
+    cnt = records[0].get("total")
+    if isinstance(cnt, dict):
+        return int(cnt.get("value", 0))
+    if cnt is not None:
+        return int(cnt)
+    return 0
 
 
 # =======================================================================
@@ -858,6 +900,39 @@ async def get_document(document_id: str) -> DocumentStatus:
     else:
         created_at_str = None
 
+    # Query visibility counts (non-fatal — defaults to 0 on failure)
+    ref_count = 0
+    ent_count = 0
+    chunk_count = 0
+    text_word_count = 0
+    doc_ref_str = f"document:{document_id}"
+    try:
+        ref_result = await db.query(
+            "SELECT count() AS total FROM reference "
+            "WHERE event IN (SELECT id FROM event WHERE document = $doc_ref)",
+            {"doc_ref": doc_ref_str},
+        )
+        ref_count = _parse_count(ref_result)
+
+        ent_result = await db.query(
+            "SELECT count() AS total FROM reference "
+            "WHERE event IN (SELECT id FROM event WHERE document = $doc_ref) "
+            "AND canonical_entity IS NOT NONE",
+            {"doc_ref": doc_ref_str},
+        )
+        ent_count = _parse_count(ent_result)
+
+        chunk_result = await db.query(
+            "SELECT count() AS total FROM document_chunk WHERE document = $doc_ref",
+            {"doc_ref": doc_ref_str},
+        )
+        chunk_count = _parse_count(chunk_result)
+
+        text_content = record.get("text_content", "") or ""
+        text_word_count = len(text_content.split()) if text_content.strip() else 0
+    except Exception as exc:
+        logger.warning("Failed to query document counts for %s: %s", document_id, exc)
+
     return DocumentStatus(
         document_id=document_id,
         status=record.get("status", "unknown"),
@@ -866,6 +941,10 @@ async def get_document(document_id: str) -> DocumentStatus:
         created_at=created_at_str,
         blob_format=record.get("blob_format"),
         blob_path=record.get("blob_path"),
+        reference_count=ref_count,
+        entity_count=ent_count,
+        chunk_count=chunk_count,
+        text_word_count=text_word_count,
     )
 
 
@@ -984,12 +1063,49 @@ async def list_documents(
         else:
             created_at_str = None
 
+        # Query visibility counts for this document
+        ref_count = 0
+        ent_count = 0
+        chunk_count = 0
+        twc = 0
+        try:
+            doc_ref_str = f"document:{doc_id}"
+            ref_result = await db.query(
+                "SELECT count() AS total FROM reference "
+                "WHERE event IN (SELECT id FROM event WHERE document = $doc_ref)",
+                {"doc_ref": doc_ref_str},
+            )
+            ref_count = _parse_count(ref_result)
+
+            ent_result = await db.query(
+                "SELECT count() AS total FROM reference "
+                "WHERE event IN (SELECT id FROM event WHERE document = $doc_ref) "
+                "AND canonical_entity IS NOT NONE",
+                {"doc_ref": doc_ref_str},
+            )
+            ent_count = _parse_count(ent_result)
+
+            chunk_result = await db.query(
+                "SELECT count() AS total FROM document_chunk WHERE document = $doc_ref",
+                {"doc_ref": doc_ref_str},
+            )
+            chunk_count = _parse_count(chunk_result)
+
+            text_content = record.get("text_content", "") or ""
+            twc = len(text_content.split()) if text_content.strip() else 0
+        except Exception as exc:
+            logger.warning("Failed to query counts for document %s: %s", doc_id, exc)
+
         items.append(DocumentListItem(
             document_id=doc_id,
             status=record.get("status", "unknown"),
             filename=record.get("filename", ""),
             created_at=created_at_str,
             error_message=record.get("error_message"),
+            reference_count=ref_count,
+            entity_count=ent_count,
+            chunk_count=chunk_count,
+            text_word_count=twc,
         ))
 
     logger.info(
