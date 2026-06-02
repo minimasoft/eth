@@ -12,6 +12,8 @@ import base64
 import io
 import os
 
+from surrealdb.data.types.record_id import RecordID
+
 from temporalio import activity
 
 from eth_pipeline.chunker import DocumentChunker
@@ -979,6 +981,7 @@ async def chunk_document_activity(document_id: str, extraction_result: dict) -> 
             )
 
             # ---- Insert new chunks ----
+            doc_rid = RecordID("document", document_id)
             for chunk in chunks:
                 await db.create(
                     "document_chunk",
@@ -989,7 +992,7 @@ async def chunk_document_activity(document_id: str, extraction_result: dict) -> 
                         "page_end": chunk["page_end"],
                         "offset_start": chunk["offset_start"],
                         "offset_end": chunk["offset_end"],
-                        "document": doc_ref,
+                        "document": doc_rid,
                     },
                 )
 
