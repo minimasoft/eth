@@ -150,7 +150,7 @@ class DocumentProcessingWorkflow:
                     raise RuntimeError(chunk_result["error"])
             else:
                 # ---- TEXT PATH (Direct text) ----
-                activity.logger.info(
+                workflow.logger.info(
                     "Text path: document %s already has text_content",
                     document_id,
                 )
