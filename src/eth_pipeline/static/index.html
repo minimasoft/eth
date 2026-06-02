@@ -503,6 +503,20 @@
       color: #991b1b;
     }
 
+    /* ---- Entity type labels ---- */
+
+    .entity-type-label {
+      display: inline-block;
+      font-size: 13px;
+      font-weight: 500;
+      line-height: 1.4;
+      padding: 2px 8px;
+      border-radius: 4px;
+      background: #f1f5f9;
+      color: #475569;
+      text-transform: capitalize;
+    }
+
     /* ---- Loading state ---- */
 
     .documents-loading {
@@ -618,10 +632,44 @@
     </section>
 
     <section id="tab-entities" role="tabpanel" aria-labelledby="tab-btn-entities" class="tab-content">
-      <div class="placeholder-card">
-        <div class="icon" aria-hidden="true">🔍</div>
-        <h2>Entities</h2>
-        <p>Browse extracted entities</p>
+      <div id="entities-container">
+        <div class="documents-header">
+          <h2>Entities</h2>
+        </div>
+        <div class="documents-toolbar">
+          <div class="search-wrapper">
+            <input type="text" id="entity-search" class="search-input" placeholder="Search by name..." aria-label="Search entities by name" />
+            <button id="entity-search-clear" class="search-clear" aria-label="Clear search" style="display:none">&times;</button>
+          </div>
+          <select id="entity-type-filter" class="status-filter" aria-label="Filter by entity type">
+            <option value="">All types</option>
+            <option value="place">Place</option>
+            <option value="person">Person</option>
+            <option value="object">Object</option>
+          </select>
+        </div>
+        <div id="entities-loading" class="documents-loading">Loading entities...</div>
+        <div id="entities-table-container" class="table-container" style="display:none">
+          <table class="documents-table">
+            <thead>
+              <tr>
+                <th style="width:auto">Name</th>
+                <th style="width:140px">Type</th>
+                <th style="width:120px">References</th>
+              </tr>
+            </thead>
+            <tbody id="entities-tbody"></tbody>
+          </table>
+        </div>
+        <div id="entities-empty" class="placeholder-card" style="display:none">
+          <h2>No entities found</h2>
+          <p>Entities will appear here after documents are processed</p>
+        </div>
+        <div id="entities-pagination" class="documents-pagination" style="display:none">
+          <button id="entity-prev-btn" class="btn-outline" disabled>&larr; Previous</button>
+          <span id="entity-page-info" class="page-info">Page 1 of 1</span>
+          <button id="entity-next-btn" class="btn-outline" disabled>Next &rarr;</button>
+        </div>
       </div>
     </section>
   </main>
@@ -949,6 +997,178 @@
     if (activeTab && activeTab.dataset.tab === 'documents') {
       docsFirstLoad = false;
       fetchDocuments();
+    }
+
+    // ===== Entities tab =====
+
+    const entitySearch = document.getElementById('entity-search');
+    const entitySearchClear = document.getElementById('entity-search-clear');
+    const entityTypeFilter = document.getElementById('entity-type-filter');
+    const entityTbody = document.getElementById('entities-tbody');
+    const entityTableContainer = document.getElementById('entities-table-container');
+    const entityLoading = document.getElementById('entities-loading');
+    const entityEmpty = document.getElementById('entities-empty');
+    const entityPagination = document.getElementById('entities-pagination');
+    const entityPrevBtn = document.getElementById('entity-prev-btn');
+    const entityNextBtn = document.getElementById('entity-next-btn');
+    const entityPageInfo = document.getElementById('entity-page-info');
+
+    let entitiesCurrentPage = 1;
+    let entitiesSearchTerm = '';
+    let entitiesTypeFilter = '';
+    let entitiesLoadingFlag = false;
+    let entitiesFirstLoad = true;
+
+    function showEntityLoading() {
+      entityLoading.style.display = 'flex';
+      entityTableContainer.style.display = 'none';
+      entityEmpty.style.display = 'none';
+      entityPagination.style.display = 'none';
+    }
+
+    function hideEntityLoading() {
+      entityLoading.style.display = 'none';
+    }
+
+    function entityTypeLabel(type) {
+      if (!type) return '';
+      return type.charAt(0).toUpperCase() + type.slice(1);
+    }
+
+    async function fetchEntities() {
+      if (entitiesLoadingFlag) return;
+      entitiesLoadingFlag = true;
+      showEntityLoading();
+
+      const params = new URLSearchParams();
+      params.set('page', String(entitiesCurrentPage));
+      params.set('per_page', '20');
+      if (entitiesSearchTerm) params.set('search', entitiesSearchTerm);
+      if (entitiesTypeFilter) params.set('entity_type', entitiesTypeFilter);
+
+      try {
+        const res = await fetch('/entities?' + params.toString());
+        if (!res.ok) {
+          let detail = 'Failed to fetch entities';
+          try {
+            const errData = await res.json();
+            if (errData && errData.detail) detail = errData.detail;
+          } catch (_pe) { /* ignore parse error */ }
+          throw new Error(detail);
+        }
+        const data = await res.json();
+        renderEntities(data);
+      } catch (err) {
+        console.error('fetchEntities error:', err);
+        hideEntityLoading();
+        entityTableContainer.style.display = 'none';
+        entityPagination.style.display = 'none';
+        entityEmpty.style.display = 'block';
+        entityEmpty.querySelector('p').textContent = 'Error loading entities: ' + err.message;
+        showBanner('Failed to load entities: ' + err.message, 'error', false);
+      } finally {
+        entitiesLoadingFlag = false;
+      }
+    }
+
+    function renderEntities(data) {
+      hideEntityLoading();
+
+      if (!data || !data.items || data.items.length === 0) {
+        entityTableContainer.style.display = 'none';
+        entityPagination.style.display = 'none';
+        entityEmpty.style.display = 'block';
+        entityEmpty.querySelector('p').textContent = entitiesSearchTerm || entitiesTypeFilter
+          ? 'No entities match your search criteria'
+          : 'Entities will appear here after documents are processed';
+        return;
+      }
+
+      entityEmpty.style.display = 'none';
+      entityTableContainer.style.display = '';
+      entityPagination.style.display = 'flex';
+
+      // Render table rows
+      entityTbody.innerHTML = '';
+      data.items.forEach(function(item) {
+        var tr = document.createElement('tr');
+        tr.innerHTML =
+          '<td>' + escapeHtml(item.name || '') + '</td>' +
+          '<td><span class="entity-type-label">' + escapeHtml(entityTypeLabel(item.entity_type)) + '</span></td>' +
+          '<td>' + escapeHtml(String(item.reference_count || 0)) + '</td>';
+        entityTbody.appendChild(tr);
+      });
+
+      // Update pagination
+      var page = data.page || 1;
+      var pages = data.pages || 0;
+
+      entityPageInfo.textContent = 'Page ' + page + ' of ' + pages;
+
+      entityPrevBtn.disabled = page <= 1;
+      entityNextBtn.disabled = page >= pages;
+    }
+
+    // Search with debounce
+    entitySearch.addEventListener('input', function() {
+      if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
+      var val = entitySearch.value;
+      entitySearchClear.style.display = val ? '' : 'none';
+      searchDebounceTimer = setTimeout(function() {
+        entitiesSearchTerm = val;
+        entitiesCurrentPage = 1;
+        fetchEntities();
+      }, 300);
+    });
+
+    // Clear search
+    entitySearchClear.addEventListener('click', function() {
+      entitySearch.value = '';
+      entitySearchClear.style.display = 'none';
+      entitiesSearchTerm = '';
+      entitiesCurrentPage = 1;
+      if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
+      fetchEntities();
+    });
+
+    // Entity type filter change
+    entityTypeFilter.addEventListener('change', function() {
+      entitiesTypeFilter = entityTypeFilter.value;
+      entitiesCurrentPage = 1;
+      fetchEntities();
+    });
+
+    // Pagination
+    entityPrevBtn.addEventListener('click', function() {
+      if (entityPrevBtn.disabled) return;
+      entitiesCurrentPage = Math.max(1, entitiesCurrentPage - 1);
+      fetchEntities();
+    });
+
+    entityNextBtn.addEventListener('click', function() {
+      if (entityNextBtn.disabled) return;
+      entitiesCurrentPage = entitiesCurrentPage + 1;
+      fetchEntities();
+    });
+
+    // Trigger entity fetch when Entities tab is shown
+    var _origSwitchTab2 = switchTab;
+    switchTab = function(tabName) {
+      _origSwitchTab2(tabName);
+      if (tabName === 'documents' && docsFirstLoad) {
+        docsFirstLoad = false;
+        fetchDocuments();
+      }
+      if (tabName === 'entities' && entitiesFirstLoad) {
+        entitiesFirstLoad = false;
+        fetchEntities();
+      }
+    };
+
+    // If Entities is the active tab on page load (won't be, but handle edge case)
+    if (activeTab && activeTab.dataset.tab === 'entities') {
+      entitiesFirstLoad = false;
+      fetchEntities();
     }
   </script>
 </body>
