@@ -135,7 +135,7 @@ class DocumentProcessingWorkflow:
                 extraction_result = await workflow.execute_activity(
                     extract_text_activity,
                     args=[document_id],
-                    start_to_close_timeout=timedelta(seconds=120),
+                    start_to_close_timeout=timedelta(seconds=300),
                 )
                 if "error" in extraction_result:
                     raise RuntimeError(extraction_result["error"])
@@ -174,7 +174,7 @@ class DocumentProcessingWorkflow:
             result = await workflow.execute_activity(
                 extract_events_activity,
                 args=[document_id],
-                start_to_close_timeout=timedelta(seconds=180),
+                start_to_close_timeout=timedelta(seconds=900),
                 retry_policy=RetryPolicy(
                     maximum_attempts=3,
                     initial_interval=timedelta(seconds=5),
