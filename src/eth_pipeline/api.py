@@ -177,6 +177,41 @@ class HealthResponse(BaseModel):
     status: str = "ok"
 
 
+class EntityListItem(BaseModel):
+    """A single entity entry in the paginated entity list."""
+
+    entity_id: str
+    """Unique identifier (hex portion of the RecordID) of the canonical entity."""
+
+    name: str
+    """Display name of the entity."""
+
+    entity_type: str
+    """Type of the entity (place/person/object)."""
+
+    reference_count: int = 0
+    """Number of references pointing to this entity."""
+
+
+class EntityListResponse(BaseModel):
+    """Paginated response body for ``GET /entities``."""
+
+    items: list[EntityListItem]
+    """List of entity entries on the current page."""
+
+    total: int
+    """Total number of entities matching the query."""
+
+    page: int
+    """Current page number (1-based)."""
+
+    per_page: int
+    """Number of items per page."""
+
+    pages: int
+    """Total number of pages available."""
+
+
 class GraphQLRequest(BaseModel):
     """Request body for ``POST /graphql``.
 
@@ -403,6 +438,7 @@ async def root() -> APIInfo:
             "/documents/upload": "Upload a binary document file (POST, multipart)",
             "/documents/{document_id}": "Get document status (GET)",
             "/documents/{document_id}/events": "Clear extraction results (DELETE)",
+            "/entities": "List canonical entities with pagination, search, and type filter (GET)",
             "/entities/merge": "Merge two canonical entities of the same type (POST)",
             "/entities/{entity_type}/{entity_id}/split": "Partition references across new canonical entities (POST)",
         },
@@ -897,6 +933,164 @@ async def list_documents(
     )
 
     return DocumentListResponse(
+        items=items,
+        total=total,
+        page=page,
+        per_page=per_page,
+        pages=pages,
+    )
+
+
+# =======================================================================
+# List entities (paginated)
+# =======================================================================
+@app.get("/entities", response_model=EntityListResponse)
+async def list_entities(
+    page: int = Query(1, ge=1),
+    per_page: int = Query(20, ge=1, le=100),
+    search: str | None = Query(None),
+    entity_type: str | None = Query(None),
+) -> EntityListResponse:
+    """List canonical entities with pagination, search, and type filtering.
+
+    Queries SurrealDB for canonical entity records matching the optional
+    search (by name) and entity_type filters, returning a paginated response
+    with metadata and reference counts.
+
+    Returns HTTP 503 if the database is unavailable and HTTP 502 if a
+    query fails.
+    """
+    db: AsyncWsSurrealConnection | None = app.state.db
+
+    if db is None:
+        logger.error("GET /entities rejected — SurrealDB unavailable")
+        raise HTTPException(
+            status_code=503,
+            detail="SurrealDB is not available. Please try again later.",
+        )
+
+    offset = (page - 1) * per_page
+
+    # Build dynamic WHERE clause — bind values via $params (safe).
+    where_parts: list[str] = ["superseded_by IS NONE"]
+    query_params: dict[str, object] = {}
+
+    if search:
+        where_parts.append("name LIKE $search")
+        query_params["search"] = f"%{search}%"
+
+    if entity_type:
+        where_parts.append("entity_type = $entity_type")
+        query_params["entity_type"] = entity_type
+
+    where_clause = " AND ".join(where_parts)
+    query_params["per_page"] = per_page
+    query_params["offset"] = offset
+
+    try:
+        # Count total matching entities
+        count_result = await db.query(
+            f"SELECT count() AS total FROM canonical_entity WHERE {where_clause}",
+            query_params,
+        )
+    except Exception as exc:
+        logger.error("Failed to count entities: %s", exc)
+        raise HTTPException(
+            status_code=502,
+            detail="Failed to query database.",
+        ) from exc
+
+    # Parse count from SurrealDB response
+    total = 0
+    count_records: list[dict] = [
+        r for r in (count_result or []) if isinstance(r, dict)
+    ]
+    if count_records:
+        cnt_val = count_records[0].get("total")
+        if isinstance(cnt_val, dict):
+            total = int(cnt_val.get("value", 0))
+        elif cnt_val is not None:
+            total = int(cnt_val)
+
+    if total == 0:
+        pages = 0
+    else:
+        pages = max(1, (total + per_page - 1) // per_page)
+
+    try:
+        # Fetch paginated entity records
+        data_result = await db.query(
+            f"SELECT * FROM canonical_entity WHERE {where_clause} "
+            "ORDER BY name ASC LIMIT $per_page START $offset",
+            query_params,
+        )
+    except Exception as exc:
+        logger.error("Failed to query entities: %s", exc)
+        raise HTTPException(
+            status_code=502,
+            detail="Failed to query database.",
+        ) from exc
+
+    from surrealdb.data.types.record_id import RecordID
+
+    data_records: list[dict] = [
+        r for r in (data_result or []) if isinstance(r, dict)
+    ]
+
+    items: list[EntityListItem] = []
+    for record in data_records:
+        # Parse entity_id from the RecordID or string id field
+        ent_id_val = record.get("id")
+        entity_id: str = ""
+        if isinstance(ent_id_val, RecordID):
+            entity_id = ent_id_val.id
+        elif isinstance(ent_id_val, str):
+            entity_id = ent_id_val.split(":", 1)[1] if ":" in ent_id_val else ent_id_val
+
+        # Count references for this entity
+        ent_rid = RecordID("canonical_entity", entity_id)
+        ref_count = 0
+        try:
+            ref_result = await db.query(
+                "SELECT count() AS total FROM reference WHERE canonical_entity = $entity_ref GROUP ALL",
+                {"entity_ref": ent_rid},
+            )
+        except Exception as exc:
+            logger.warning(
+                "Failed to count references for entity %s: %s",
+                entity_id,
+                exc,
+            )
+            ref_count = 0
+        else:
+            ref_records: list[dict] = [
+                r for r in (ref_result or []) if isinstance(r, dict)
+            ]
+            if ref_records:
+                cnt_val = ref_records[0].get("total")
+                if isinstance(cnt_val, dict):
+                    ref_count = int(cnt_val.get("value", 0))
+                elif cnt_val is not None:
+                    ref_count = int(cnt_val)
+
+        items.append(EntityListItem(
+            entity_id=entity_id,
+            name=record.get("name", ""),
+            entity_type=record.get("entity_type", ""),
+            reference_count=ref_count,
+        ))
+
+    logger.info(
+        "Listed entities (page=%d, per_page=%d, search=%s, type=%s) — %d items of %d total",
+        page,
+        per_page,
+        search or "",
+        entity_type or "",
+        len(items),
+        total,
+    )
+
+    return EntityListResponse(
         items=items,
         total=total,
         page=page,
