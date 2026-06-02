@@ -109,6 +109,200 @@
       font-size: 16px;
       line-height: 1.5;
     }
+
+    .upload-area {
+      background: #f8fafc;
+      border: 2px dashed #e2e8f0;
+      border-radius: 8px;
+      padding: 48px;
+      text-align: center;
+    }
+
+    .upload-area.dragover {
+      border-color: #2563eb;
+      background: #eff6ff;
+    }
+
+    .upload-area .icon {
+      font-size: 48px;
+      margin-bottom: 16px;
+    }
+
+    .upload-area h2 {
+      font-size: 24px;
+      font-weight: 600;
+      line-height: 1.3;
+      color: #1e293b;
+      margin-bottom: 8px;
+    }
+
+    .upload-area p {
+      font-size: 16px;
+      line-height: 1.5;
+      color: #64748b;
+      margin-bottom: 24px;
+    }
+
+    .btn-outline {
+      display: inline-block;
+      font-family: inherit;
+      font-size: 14px;
+      font-weight: 500;
+      line-height: 1.4;
+      color: #2563eb;
+      background: #ffffff;
+      border: 1px solid #2563eb;
+      border-radius: 6px;
+      padding: 8px 16px;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    .btn-outline:hover {
+      background: #eff6ff;
+    }
+
+    .btn-primary {
+      display: inline-block;
+      font-family: inherit;
+      font-size: 14px;
+      font-weight: 500;
+      line-height: 1.4;
+      color: #ffffff;
+      background: #2563eb;
+      border: none;
+      border-radius: 6px;
+      padding: 8px 16px;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    .btn-primary:hover {
+      background: #1d4ed8;
+    }
+
+    .btn-primary:disabled {
+      background: #94a3b8;
+      cursor: not-allowed;
+    }
+
+    .file-list {
+      list-style: none;
+      margin: 16px 0;
+      padding: 0;
+    }
+
+    .file-list li {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+      margin-bottom: 8px;
+      font-size: 14px;
+    }
+
+    .file-list .file-name {
+      font-weight: 600;
+      color: #1e293b;
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .file-list .file-size {
+      color: #64748b;
+      flex-shrink: 0;
+    }
+
+    .file-list .file-status {
+      flex-shrink: 0;
+      width: 20px;
+      height: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .spinner {
+      width: 20px;
+      height: 20px;
+      border: 3px solid #e2e8f0;
+      border-top-color: #2563eb;
+      border-radius: 50%;
+      animation: spin 0.6s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .file-status .check { color: #16a34a; font-weight: 700; }
+    .file-status .cross { color: #dc2626; font-weight: 700; }
+
+    .banner {
+      position: fixed;
+      top: 100px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 20;
+      padding: 12px 24px;
+      border-radius: 8px;
+      font-size: 14px;
+      line-height: 1.4;
+      max-width: 600px;
+      width: 90%;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+      animation: slideDown 0.3s ease-out;
+    }
+
+    @keyframes slideDown {
+      from { transform: translateX(-50%) translateY(-20px); opacity: 0; }
+      to { transform: translateX(-50%) translateY(0); opacity: 1; }
+    }
+
+    .banner-success {
+      background: #f0fdf4;
+      border: 1px solid #bbf7d0;
+      color: #166534;
+    }
+
+    .banner-error {
+      background: #fef2f2;
+      border: 1px solid #fecaca;
+      color: #991b1b;
+    }
+
+    .banner .banner-close {
+      margin-left: auto;
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-size: 16px;
+      color: inherit;
+      opacity: 0.6;
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+
+    .banner .banner-close:hover {
+      opacity: 1;
+      background: rgba(0,0,0,0.05);
+    }
+
+    .upload-actions {
+      display: flex;
+      gap: 8px;
+      justify-content: center;
+      margin-top: 16px;
+    }
   </style>
 </head>
 <body>
@@ -124,10 +318,17 @@
 
   <main>
     <section id="tab-upload" role="tabpanel" aria-labelledby="tab-btn-upload" class="tab-content">
-      <div class="placeholder-card">
+      <div id="banner-container"></div>
+      <div class="upload-area" id="upload-area">
         <div class="icon" aria-hidden="true">📄</div>
         <h2>Upload Documents</h2>
-        <p>Upload documents to the extraction pipeline</p>
+        <p>Select files to upload to the extraction pipeline</p>
+        <input type="file" id="file-input" multiple hidden />
+        <button class="btn-outline" id="choose-files-btn" type="button">Choose Files</button>
+        <ul class="file-list" id="file-list" style="display:none"></ul>
+        <div class="upload-actions" style="display:none" id="upload-actions">
+          <button class="btn-primary" id="upload-btn" type="button">Upload</button>
+        </div>
       </div>
     </section>
 
@@ -178,6 +379,98 @@
     });
 
     switchTab('upload');
+
+    const fileInput = document.getElementById('file-input');
+    const chooseBtn = document.getElementById('choose-files-btn');
+    const fileList = document.getElementById('file-list');
+    const uploadBtn = document.getElementById('upload-btn');
+    const uploadActions = document.getElementById('upload-actions');
+    const bannerContainer = document.getElementById('banner-container');
+
+    let selectedFiles = [];
+
+    function formatSize(bytes) {
+      if (bytes < 1024) return bytes + ' B';
+      if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+      return (bytes / 1048576).toFixed(1) + ' MB';
+    }
+
+    function renderFileList() {
+      fileList.innerHTML = '';
+      selectedFiles.forEach((file, i) => {
+        const li = document.createElement('li');
+        li.innerHTML = '<span class="file-name">' + escapeHtml(file.name) + '</span><span class="file-size">' + formatSize(file.size) + '</span><span class="file-status" id="status-' + i + '"></span>';
+        fileList.appendChild(li);
+      });
+      fileList.style.display = selectedFiles.length ? '' : 'none';
+      uploadActions.style.display = selectedFiles.length ? '' : 'none';
+      uploadBtn.disabled = false;
+    }
+
+    function escapeHtml(text) {
+      const d = document.createElement('div');
+      d.textContent = text;
+      return d.innerHTML;
+    }
+
+    chooseBtn.addEventListener('click', () => fileInput.click());
+
+    fileInput.addEventListener('change', () => {
+      selectedFiles = Array.from(fileInput.files);
+      renderFileList();
+    });
+
+    function showBanner(message, type, autoDismiss) {
+      const div = document.createElement('div');
+      div.className = 'banner banner-' + type;
+      div.innerHTML = '<span>' + escapeHtml(message) + '</span><button class="banner-close" aria-label="Dismiss">&times;</button>';
+      div.querySelector('.banner-close').addEventListener('click', () => div.remove());
+      bannerContainer.appendChild(div);
+      if (autoDismiss) {
+        setTimeout(() => { if (div.parentNode) div.remove(); }, 5000);
+      }
+    }
+
+    uploadBtn.addEventListener('click', async () => {
+      uploadBtn.disabled = true;
+      let allSuccess = true;
+
+      for (let i = 0; i < selectedFiles.length; i++) {
+        const file = selectedFiles[i];
+        const statusEl = document.getElementById('status-' + i);
+        statusEl.innerHTML = '<div class="spinner"></div>';
+
+        const formData = new FormData();
+        formData.append('file', file);
+
+        try {
+          const res = await fetch('/documents/upload', { method: 'POST', body: formData });
+          const data = await res.json();
+          if (res.ok && data.document_id) {
+            const shortId = data.document_id.slice(0, 8);
+            statusEl.innerHTML = '<span class="check">&#10003;</span>';
+            showBanner('Uploaded: ' + file.name + ' (ID: ' + shortId + ')', 'success', true);
+          } else {
+            statusEl.innerHTML = '<span class="cross">&#10007;</span>';
+            showBanner('Failed: ' + file.name + ' — ' + (data.detail || 'Unknown error'), 'error', false);
+            allSuccess = false;
+          }
+        } catch (err) {
+          statusEl.innerHTML = '<span class="cross">&#10007;</span>';
+          showBanner('Failed: ' + file.name + ' — ' + err.message, 'error', false);
+          allSuccess = false;
+        }
+      }
+
+      if (allSuccess && selectedFiles.length > 0) {
+        setTimeout(() => {
+          selectedFiles = [];
+          renderFileList();
+        }, 3000);
+      }
+
+      uploadBtn.disabled = false;
+    });
   </script>
 </body>
 </html>
