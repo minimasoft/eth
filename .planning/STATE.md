@@ -70,7 +70,7 @@ None.
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
 | 260601-vg4 | Integration tests need a cascading document DELETE endpoint (DELETE /documents/{id}) that removes events, references, chunks, and orphaned canonical_entities, plus update cleanupTestDocuments in all 3 test files to use it instead of DELETE /documents/{id}/events | 2026-06-02 | a8480a1 | [260601-vg4-integration-tests-need-a-cascading-docum](./quick/260601-vg4-integration-tests-need-a-cascading-docum/) |
-| 260602-430 | Add delete button (SVG icon) to documents view in the HTML UI | 2026-06-02 | 60f6de4 | [260602-430-add-delete-button-documents-ui](./quick/260602-430-add-delete-button-documents-ui/) |
+| 260602-430 | Add delete button (SVG icon) to documents view in the HTML UI | 2026-06-02 | f063637 | [260602-430-add-delete-button-documents-ui](./quick/260602-430-add-delete-button-documents-ui/) |
 
 ## Deferred Items
 
