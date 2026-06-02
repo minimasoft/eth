@@ -38,7 +38,7 @@ from urllib.parse import urlparse
 
 import httpx
 
-from fastapi import FastAPI, File, HTTPException, Request, UploadFile
+from fastapi import FastAPI, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import Response as FastAPIResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -118,6 +118,44 @@ class DocumentStatus(BaseModel):
 
     blob_path: str | None = None
     """S3 object path when blob_format='minio'; None for legacy inline-stored documents."""
+
+
+class DocumentListItem(BaseModel):
+    """A single document entry in the paginated document list."""
+
+    document_id: str
+    """Unique identifier of the document."""
+
+    status: str
+    """Current processing status (pending/processing/processed/failed)."""
+
+    filename: str
+    """Original filename submitted at creation time."""
+
+    created_at: str | None = None
+    """ISO-8601 timestamp of document creation (if available)."""
+
+    error_message: str | None = None
+    """Human-readable error description when status is ``failed``."""
+
+
+class DocumentListResponse(BaseModel):
+    """Paginated response body for ``GET /documents``."""
+
+    items: list[DocumentListItem]
+    """List of document entries on the current page."""
+
+    total: int
+    """Total number of documents matching the query."""
+
+    page: int
+    """Current page number (1-based)."""
+
+    per_page: int
+    """Number of items per page."""
+
+    pages: int
+    """Total number of pages available."""
 
 
 class EventsCleared(BaseModel):
@@ -361,7 +399,7 @@ async def root() -> APIInfo:
             "/": "This information",
             "/health": "Liveness check",
             "/graphql": "Proxy to SurrealDB auto-GraphQL (POST)",
-            "/documents": "Submit a document for processing (POST)",
+            "/documents": "List documents (GET) or submit for processing (POST)",
             "/documents/upload": "Upload a binary document file (POST, multipart)",
             "/documents/{document_id}": "Get document status (GET)",
             "/documents/{document_id}/events": "Clear extraction results (DELETE)",
@@ -722,6 +760,148 @@ async def get_document(document_id: str) -> DocumentStatus:
         created_at=created_at_str,
         blob_format=record.get("blob_format"),
         blob_path=record.get("blob_path"),
+    )
+
+
+# =======================================================================
+# List documents (paginated)
+# =======================================================================
+@app.get("/documents", response_model=DocumentListResponse)
+async def list_documents(
+    page: int = Query(1, ge=1),
+    per_page: int = Query(20, ge=1, le=100),
+    search: str | None = Query(None),
+    status: str | None = Query(None),
+) -> DocumentListResponse:
+    """List documents with pagination, search, and status filtering.
+
+    Queries SurrealDB for document records matching the optional search
+    and status filters, returning a paginated response with metadata.
+
+    Returns HTTP 503 if the database is unavailable and HTTP 502 if a
+    query fails.
+    """
+    db: AsyncWsSurrealConnection | None = app.state.db
+
+    if db is None:
+        logger.error("GET /documents rejected — SurrealDB unavailable")
+        raise HTTPException(
+            status_code=503,
+            detail="SurrealDB is not available. Please try again later.",
+        )
+
+    offset = (page - 1) * per_page
+
+    # Build dynamic WHERE clause — bind values via $params (safe).
+    where_parts: list[str] = ["1 = 1"]
+    query_params: dict[str, object] = {}
+
+    if search:
+        where_parts.append("filename LIKE $search")
+        query_params["search"] = f"%{search}%"
+
+    if status:
+        where_parts.append("status = $status")
+        query_params["status"] = status
+
+    where_clause = " AND ".join(where_parts)
+    query_params["per_page"] = per_page
+    query_params["offset"] = offset
+
+    try:
+        # Count total matching documents
+        count_result = await db.query(
+            f"SELECT count() AS total FROM document WHERE {where_clause}",
+            query_params,
+        )
+    except Exception as exc:
+        logger.error("Failed to count documents: %s", exc)
+        raise HTTPException(
+            status_code=502,
+            detail="Failed to query database.",
+        ) from exc
+
+    # Parse count from SurrealDB response
+    total = 0
+    count_records: list[dict] = [
+        r for r in (count_result or []) if isinstance(r, dict)
+    ]
+    if count_records:
+        cnt_val = count_records[0].get("total")
+        if isinstance(cnt_val, dict):
+            total = int(cnt_val.get("value", 0))
+        elif cnt_val is not None:
+            total = int(cnt_val)
+
+    if total == 0:
+        pages = 0
+    else:
+        pages = max(1, (total + per_page - 1) // per_page)
+
+    try:
+        # Fetch paginated document records
+        data_result = await db.query(
+            f"SELECT * FROM document WHERE {where_clause} "
+            "ORDER BY created_at DESC LIMIT $per_page START $offset",
+            query_params,
+        )
+    except Exception as exc:
+        logger.error("Failed to query documents: %s", exc)
+        raise HTTPException(
+            status_code=502,
+            detail="Failed to query database.",
+        ) from exc
+
+    from surrealdb.data.types.record_id import RecordID
+
+    data_records: list[dict] = [
+        r for r in (data_result or []) if isinstance(r, dict)
+    ]
+
+    items: list[DocumentListItem] = []
+    for record in data_records:
+        # Parse document_id from the RecordID or string id field
+        doc_id_val = record.get("id")
+        doc_id: str = ""
+        if isinstance(doc_id_val, RecordID):
+            doc_id = doc_id_val.id
+        elif isinstance(doc_id_val, str):
+            doc_id = doc_id_val.split(":", 1)[1] if ":" in doc_id_val else doc_id_val
+
+        created_at_raw = record.get("created_at")
+        if created_at_raw is not None:
+            created_at_str = (
+                created_at_raw.isoformat()
+                if hasattr(created_at_raw, "isoformat")
+                else str(created_at_raw)
+            )
+        else:
+            created_at_str = None
+
+        items.append(DocumentListItem(
+            document_id=doc_id,
+            status=record.get("status", "unknown"),
+            filename=record.get("filename", ""),
+            created_at=created_at_str,
+            error_message=record.get("error_message"),
+        ))
+
+    logger.info(
+        "Listed documents (page=%d, per_page=%d, search=%s, status=%s) — %d items of %d total",
+        page,
+        per_page,
+        search or "",
+        status or "",
+        len(items),
+        total,
+    )
+
+    return DocumentListResponse(
+        items=items,
+        total=total,
+        page=page,
+        per_page=per_page,
+        pages=pages,
     )
 
 

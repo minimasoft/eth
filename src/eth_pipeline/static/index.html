@@ -303,6 +303,247 @@
       justify-content: center;
       margin-top: 16px;
     }
+
+    /* ===== Documents tab ===== */
+
+    .documents-header h2 {
+      font-size: 24px;
+      font-weight: 600;
+      line-height: 1.3;
+      color: #1e293b;
+      margin: 0 0 16px 0;
+    }
+
+    .documents-toolbar {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 16px;
+      align-items: center;
+    }
+
+    .search-wrapper {
+      position: relative;
+      flex: 1;
+    }
+
+    .search-input {
+      width: 100%;
+      font-family: inherit;
+      font-size: 16px;
+      line-height: 1.5;
+      color: #1e293b;
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 8px 36px 8px 12px;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+
+    .search-input:focus {
+      border-color: #2563eb;
+      box-shadow: 0 0 0 2px rgba(37,99,235,0.15);
+    }
+
+    .search-input::placeholder {
+      color: #94a3b8;
+    }
+
+    .search-clear {
+      position: absolute;
+      right: 4px;
+      top: 50%;
+      transform: translateY(-50%);
+      background: none;
+      border: none;
+      font-size: 18px;
+      line-height: 1;
+      color: #64748b;
+      cursor: pointer;
+      padding: 4px 8px;
+      border-radius: 4px;
+    }
+
+    .search-clear:hover {
+      background: #f1f5f9;
+      color: #1e293b;
+    }
+
+    .status-filter {
+      width: 160px;
+      flex-shrink: 0;
+      font-family: inherit;
+      font-size: 16px;
+      line-height: 1.5;
+      color: #1e293b;
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 8px 12px;
+      outline: none;
+      cursor: pointer;
+      transition: border-color 0.15s;
+    }
+
+    .status-filter:focus {
+      border-color: #2563eb;
+      box-shadow: 0 0 0 2px rgba(37,99,235,0.15);
+    }
+
+    .table-container {
+      overflow-x: auto;
+    }
+
+    .documents-table {
+      width: 100%;
+      border-collapse: separate;
+      border-spacing: 0;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      overflow: hidden;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    .documents-table thead {
+      background: #f8fafc;
+    }
+
+    .documents-table th {
+      text-align: left;
+      padding: 10px 12px;
+      font-weight: 600;
+      color: #1e293b;
+      border-bottom: 1px solid #e2e8f0;
+      white-space: nowrap;
+    }
+
+    .documents-table th.col-id {
+      width: 100px;
+    }
+
+    .documents-table th.col-filename {
+      width: auto;
+    }
+
+    .documents-table th.col-date {
+      width: 180px;
+    }
+
+    .documents-table th.col-status {
+      width: 120px;
+    }
+
+    .documents-table td {
+      padding: 10px 12px;
+      border-bottom: 1px solid #e2e8f0;
+      color: #1e293b;
+    }
+
+    .documents-table tbody tr:last-child td {
+      border-bottom: none;
+    }
+
+    .documents-table tbody tr:hover {
+      background: #f8fafc;
+    }
+
+    .doc-id {
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+      font-size: 13px;
+      color: #64748b;
+    }
+
+    .doc-filename {
+      max-width: 400px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .doc-date {
+      color: #64748b;
+      white-space: nowrap;
+    }
+
+    /* ---- Status badges ---- */
+
+    .status-badge {
+      display: inline-block;
+      font-size: 13px;
+      font-weight: 500;
+      line-height: 1.4;
+      padding: 2px 8px;
+      border-radius: 4px;
+      border: 1px solid;
+      white-space: nowrap;
+    }
+
+    .status-badge.status-pending {
+      background: #f8fafc;
+      border-color: #e2e8f0;
+      color: #64748b;
+    }
+
+    .status-badge.status-processing {
+      background: #eff6ff;
+      border-color: #bfdbfe;
+      color: #1d4ed8;
+    }
+
+    .status-badge.status-processed {
+      background: #f0fdf4;
+      border-color: #bbf7d0;
+      color: #166534;
+    }
+
+    .status-badge.status-failed {
+      background: #fef2f2;
+      border-color: #fecaca;
+      color: #991b1b;
+    }
+
+    /* ---- Loading state ---- */
+
+    .documents-loading {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 48px;
+      color: #64748b;
+      font-size: 16px;
+      gap: 8px;
+    }
+
+    .documents-loading .loading-spinner {
+      width: 20px;
+      height: 20px;
+      border: 3px solid #e2e8f0;
+      border-top-color: #2563eb;
+      border-radius: 50%;
+      animation: spin 0.6s linear infinite;
+    }
+
+    /* ---- Pagination ---- */
+
+    .documents-pagination {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      padding-top: 16px;
+    }
+
+    .page-info {
+      font-size: 14px;
+      color: #64748b;
+    }
+
+    /* ---- Empty state override ---- */
+
+    #documents-empty .placeholder-card {
+      margin-top: 16px;
+    }
   </style>
 </head>
 <body>
@@ -333,10 +574,46 @@
     </section>
 
     <section id="tab-documents" role="tabpanel" aria-labelledby="tab-btn-documents" class="tab-content">
-      <div class="placeholder-card">
-        <div class="icon" aria-hidden="true">📋</div>
-        <h2>Documents</h2>
-        <p>View your uploaded documents</p>
+      <div id="documents-container">
+        <div class="documents-header">
+          <h2>Documents</h2>
+        </div>
+        <div class="documents-toolbar">
+          <div class="search-wrapper">
+            <input type="text" id="doc-search" class="search-input" placeholder="Search by filename..." aria-label="Search documents by filename" />
+            <button id="doc-search-clear" class="search-clear" aria-label="Clear search" style="display:none">&times;</button>
+          </div>
+          <select id="doc-status-filter" class="status-filter" aria-label="Filter by status">
+            <option value="">All statuses</option>
+            <option value="pending">Pending</option>
+            <option value="processing">Processing</option>
+            <option value="processed">Processed</option>
+            <option value="failed">Failed</option>
+          </select>
+        </div>
+        <div id="documents-loading" class="documents-loading">Loading documents...</div>
+        <div id="documents-table-container" class="table-container" style="display:none">
+          <table class="documents-table">
+            <thead>
+              <tr>
+                <th class="col-id">ID</th>
+                <th class="col-filename">Filename</th>
+                <th class="col-date">Upload Date</th>
+                <th class="col-status">Status</th>
+              </tr>
+            </thead>
+            <tbody id="documents-tbody"></tbody>
+          </table>
+        </div>
+        <div id="documents-empty" class="placeholder-card" style="display:none">
+          <h2>No documents found</h2>
+          <p>Upload a document to get started</p>
+        </div>
+        <div id="documents-pagination" class="documents-pagination" style="display:none">
+          <button id="doc-prev-btn" class="btn-outline" disabled>&larr; Previous</button>
+          <span id="doc-page-info" class="page-info">Page 1 of 1</span>
+          <button id="doc-next-btn" class="btn-outline" disabled>Next &rarr;</button>
+        </div>
       </div>
     </section>
 
@@ -478,6 +755,201 @@
       uploadBtn.disabled = false;
       chooseBtn.disabled = false;
     });
+
+    // ===== Documents tab =====
+
+    const docSearch = document.getElementById('doc-search');
+    const docSearchClear = document.getElementById('doc-search-clear');
+    const docStatusFilter = document.getElementById('doc-status-filter');
+    const docTbody = document.getElementById('documents-tbody');
+    const docTableContainer = document.getElementById('documents-table-container');
+    const docLoading = document.getElementById('documents-loading');
+    const docEmpty = document.getElementById('documents-empty');
+    const docPagination = document.getElementById('documents-pagination');
+    const docPrevBtn = document.getElementById('doc-prev-btn');
+    const docNextBtn = document.getElementById('doc-next-btn');
+    const docPageInfo = document.getElementById('doc-page-info');
+
+    let docsCurrentPage = 1;
+    let docsSearchTerm = '';
+    let docsStatusFilter = '';
+    let docsLoadingFlag = false;
+    let docsFirstLoad = true;
+    let searchDebounceTimer = null;
+
+    function formatDate(isoStr) {
+      if (!isoStr) return '—';
+      try {
+        const d = new Date(isoStr);
+        if (isNaN(d.getTime())) return isoStr;
+        return d.toLocaleDateString('en-US', {
+          year: 'numeric',
+          month: 'short',
+          day: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+        });
+      } catch (_e) {
+        return isoStr;
+      }
+    }
+
+    function statusClass(status) {
+      return 'status-badge status-' + (status || 'unknown');
+    }
+
+    function statusLabel(status) {
+      if (!status) return 'Unknown';
+      return status.charAt(0).toUpperCase() + status.slice(1);
+    }
+
+    function showDocLoading() {
+      docLoading.style.display = 'flex';
+      docTableContainer.style.display = 'none';
+      docEmpty.style.display = 'none';
+      docPagination.style.display = 'none';
+    }
+
+    function hideDocLoading() {
+      docLoading.style.display = 'none';
+    }
+
+    async function fetchDocuments() {
+      if (docsLoadingFlag) return;
+      docsLoadingFlag = true;
+      showDocLoading();
+
+      const params = new URLSearchParams();
+      params.set('page', String(docsCurrentPage));
+      params.set('per_page', '20');
+      if (docsSearchTerm) params.set('search', docsSearchTerm);
+      if (docsStatusFilter) params.set('status', docsStatusFilter);
+
+      try {
+        const res = await fetch('/documents?' + params.toString());
+        if (!res.ok) {
+          let detail = 'Failed to fetch documents';
+          try {
+            const errData = await res.json();
+            if (errData && errData.detail) detail = errData.detail;
+          } catch (_pe) { /* ignore parse error */ }
+          throw new Error(detail);
+        }
+        const data = await res.json();
+        renderDocuments(data);
+      } catch (err) {
+        console.error('fetchDocuments error:', err);
+        hideDocLoading();
+        docTableContainer.style.display = 'none';
+        docPagination.style.display = 'none';
+        docEmpty.style.display = 'block';
+        docEmpty.querySelector('p').textContent = 'Error loading documents: ' + err.message;
+        showBanner('Failed to load documents: ' + err.message, 'error', false);
+      } finally {
+        docsLoadingFlag = false;
+      }
+    }
+
+    function renderDocuments(data) {
+      hideDocLoading();
+
+      if (!data || !data.items || data.items.length === 0) {
+        docTableContainer.style.display = 'none';
+        docPagination.style.display = 'none';
+        docEmpty.style.display = 'block';
+        docEmpty.querySelector('p').textContent = docsSearchTerm || docsStatusFilter
+          ? 'No documents match your search criteria'
+          : 'Upload a document to get started';
+        return;
+      }
+
+      docEmpty.style.display = 'none';
+      docTableContainer.style.display = '';
+      docPagination.style.display = 'flex';
+
+      // Render table rows
+      docTbody.innerHTML = '';
+      data.items.forEach(function(item) {
+        var tr = document.createElement('tr');
+        var shortId = (item.document_id || '').slice(0, 8);
+
+        tr.innerHTML =
+          '<td class="doc-id">' + escapeHtml(shortId) + '</td>' +
+          '<td class="doc-filename">' + escapeHtml(item.filename || '') + '</td>' +
+          '<td class="doc-date">' + escapeHtml(formatDate(item.created_at)) + '</td>' +
+          '<td><span class="' + statusClass(item.status) + '">' + escapeHtml(statusLabel(item.status)) + '</span></td>';
+
+        docTbody.appendChild(tr);
+      });
+
+      // Update pagination
+      var page = data.page || 1;
+      var pages = data.pages || 0;
+
+      docPageInfo.textContent = 'Page ' + page + ' of ' + pages;
+
+      docPrevBtn.disabled = page <= 1;
+      docNextBtn.disabled = page >= pages;
+    }
+
+    // Search with debounce
+    docSearch.addEventListener('input', function() {
+      if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
+      var val = docSearch.value;
+      docSearchClear.style.display = val ? '' : 'none';
+      searchDebounceTimer = setTimeout(function() {
+        docsSearchTerm = val;
+        docsCurrentPage = 1;
+        fetchDocuments();
+      }, 300);
+    });
+
+    // Clear search
+    docSearchClear.addEventListener('click', function() {
+      docSearch.value = '';
+      docSearchClear.style.display = 'none';
+      docsSearchTerm = '';
+      docsCurrentPage = 1;
+      if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
+      fetchDocuments();
+    });
+
+    // Status filter change
+    docStatusFilter.addEventListener('change', function() {
+      docsStatusFilter = docStatusFilter.value;
+      docsCurrentPage = 1;
+      fetchDocuments();
+    });
+
+    // Pagination
+    docPrevBtn.addEventListener('click', function() {
+      if (docPrevBtn.disabled) return;
+      docsCurrentPage = Math.max(1, docsCurrentPage - 1);
+      fetchDocuments();
+    });
+
+    docNextBtn.addEventListener('click', function() {
+      if (docNextBtn.disabled) return;
+      docsCurrentPage = docsCurrentPage + 1;
+      fetchDocuments();
+    });
+
+    // Trigger document fetch when Documents tab is shown
+    var _origSwitchTab = switchTab;
+    switchTab = function(tabName) {
+      _origSwitchTab(tabName);
+      if (tabName === 'documents' && docsFirstLoad) {
+        docsFirstLoad = false;
+        fetchDocuments();
+      }
+    };
+
+    // If Documents is the active tab on page load (won't be, but handle edge case)
+    var activeTab = document.querySelector('nav button.active');
+    if (activeTab && activeTab.dataset.tab === 'documents') {
+      docsFirstLoad = false;
+      fetchDocuments();
+    }
   </script>
 </body>
 </html>
