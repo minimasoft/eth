@@ -287,33 +287,64 @@ class OpenRouterProvider:
             Parsed JSON response body matching ``EVENT_EXTRACTION_SCHEMA``.
         """
         payload = self._build_payload(text)
+        url = f"{self._base_url}/api/v1/chat/completions"
+        headers = self._headers()
+
+        logger.info(
+            "LLM request [model=%s] [url=%s] [payload_keys=%s] [text_length=%d]",
+            self._model,
+            url,
+            list(payload.keys()),
+            len(text),
+        )
+        logger.debug("LLM request payload: %s", json.dumps(payload, indent=2, ensure_ascii=False)[:2000])
+        logger.debug("LLM request headers (key suffix): ...%s", headers.get("Authorization", "")[-8:])
 
         async with httpx.AsyncClient() as client:
             try:
                 response = await client.post(
-                    f"{self._base_url}/api/v1/chat/completions",
-                    headers=self._headers(),
+                    url,
+                    headers=headers,
                     json=payload,
                     timeout=120.0,
                 )
+                if not response.is_success:
+                    logger.warning(
+                        "LLM API non-200 [status=%d] [response_body=%s]",
+                        response.status_code,
+                        response.text[:1000],
+                    )
                 response.raise_for_status()
                 data = response.json()
             except httpx.HTTPStatusError as exc:
                 status = exc.response.status_code
-                body = exc.response.text[:500]
+                body = exc.response.text[:1000]
+                logger.error(
+                    "LLM API error [status=%d] [model=%s] [url=%s] "
+                    "[request_body=%s] [response_body=%s]",
+                    status,
+                    self._model,
+                    url,
+                    json.dumps(payload, indent=2, ensure_ascii=False)[:1000],
+                    body,
+                )
                 msg = f"OpenRouter API returned HTTP {status}: {body}"
-                logger.error("LLM API error [status=%d] [model=%s]", status, self._model)
                 raise RuntimeError(msg) from exc
             except httpx.TimeoutException as exc:
                 msg = f"OpenRouter API timed out after 120s (model={self._model})"
                 logger.error("LLM API timeout [model=%s]", self._model)
                 raise TimeoutError(msg) from exc
             except json.JSONDecodeError as exc:
-                body = response.text[:500] if response else "(no response)"
+                body = response.text[:1000] if response else "(no response)"
                 msg = f"OpenRouter returned invalid JSON: {body}"
-                logger.error("LLM API invalid JSON [model=%s]", self._model)
+                logger.error("LLM API invalid JSON [model=%s] [body=%s]", self._model, body)
                 raise RuntimeError(msg) from exc
 
+        logger.info(
+            "LLM request succeeded [model=%s] [response_keys=%s]",
+            self._model,
+            list(data.keys()),
+        )
         return self._parse_choice(data)
 
     async def resolve_references(
@@ -346,33 +377,64 @@ class OpenRouterProvider:
             (top-level key ``"resolutions"``).
         """
         payload = self._build_resolution_payload(references, existing_entities, document_context)
+        url = f"{self._base_url}/api/v1/chat/completions"
+        headers = self._headers()
+
+        logger.info(
+            "LLM resolution request [model=%s] [url=%s] [ref_count=%d] [entity_count=%d]",
+            self._model,
+            url,
+            len(references),
+            len(existing_entities),
+        )
+        logger.debug("LLM resolution payload: %s", json.dumps(payload, indent=2, ensure_ascii=False)[:2000])
+        logger.debug("LLM resolution headers (key suffix): ...%s", headers.get("Authorization", "")[-8:])
 
         async with httpx.AsyncClient() as client:
             try:
                 response = await client.post(
-                    f"{self._base_url}/api/v1/chat/completions",
-                    headers=self._headers(),
+                    url,
+                    headers=headers,
                     json=payload,
                     timeout=120.0,
                 )
+                if not response.is_success:
+                    logger.warning(
+                        "LLM resolution non-200 [status=%d] [response_body=%s]",
+                        response.status_code,
+                        response.text[:1000],
+                    )
                 response.raise_for_status()
                 data = response.json()
             except httpx.HTTPStatusError as exc:
                 status = exc.response.status_code
-                body = exc.response.text[:500]
+                body = exc.response.text[:1000]
+                logger.error(
+                    "LLM resolution error [status=%d] [model=%s] [url=%s] "
+                    "[request_body=%s] [response_body=%s]",
+                    status,
+                    self._model,
+                    url,
+                    json.dumps(payload, indent=2, ensure_ascii=False)[:1000],
+                    body,
+                )
                 msg = f"OpenRouter API returned HTTP {status}: {body}"
-                logger.error("LLM resolution error [status=%d] [model=%s]", status, self._model)
                 raise RuntimeError(msg) from exc
             except httpx.TimeoutException as exc:
                 msg = f"OpenRouter API timed out during resolution after 120s (model={self._model})"
                 logger.error("LLM resolution timeout [model=%s]", self._model)
                 raise TimeoutError(msg) from exc
             except json.JSONDecodeError as exc:
-                body = response.text[:500] if response else "(no response)"
+                body = response.text[:1000] if response else "(no response)"
                 msg = f"OpenRouter returned invalid JSON during resolution: {body}"
-                logger.error("LLM resolution invalid JSON [model=%s]", self._model)
+                logger.error("LLM resolution invalid JSON [model=%s] [body=%s]", self._model, body)
                 raise RuntimeError(msg) from exc
 
+        logger.info(
+            "LLM resolution succeeded [model=%s] [response_keys=%s]",
+            self._model,
+            list(data.keys()),
+        )
         return self._parse_choice(data)
 
     # ------------------------------------------------------------------
