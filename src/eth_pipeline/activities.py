@@ -533,7 +533,7 @@ async def update_document_status_activity(
             # Use inline UPDATE with f-string — SurrealDB v3 does not
             # accept variable-bound doc_refs in UPDATE statements.
             # For error_message, pass null directly via string for None.
-            err_literal = "null" if error_message is None else f"'{error_message}'"
+            err_literal = "null" if error_message is None else f"'{error_message.replace(chr(39), chr(39)+chr(39))}'"
             await db.query(
                 f"UPDATE {doc_ref} SET status = '{status}', "
                 f"error_message = {err_literal}, updated_at = time::now()",

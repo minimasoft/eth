@@ -55,6 +55,10 @@ DEFINE FIELD blob_path ON TABLE document TYPE string | null
     DEFAULT null
     COMMENT 'S3 object path within the eth-documents bucket when blob_format="minio" (e.g. doc/{id}.pdf); null for legacy inline-stored documents';
 
+DEFINE FIELD _page_count ON TABLE document TYPE int | null
+    DEFAULT null
+    COMMENT 'Number of pages in the source document (set after text extraction or PDF parsing; null for unprocessed documents)';
+
 DEFINE FIELD error_message ON TABLE document TYPE string | null
     DEFAULT null
     COMMENT 'Human-readable error description when status is "failed" (null otherwise)';
