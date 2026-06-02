@@ -1,16 +1,11 @@
 ---
-gsd_state_version: 1.0
-milestone: v3.0
-milestone_name: Web UI
-status: Awaiting next milestone
-stopped_at: "Phase 11: Document List completed"
-last_updated: "2026-06-02T01:11:11.420Z"
-last_activity: 2026-06-02 — Milestone v3.0 completed and archived
+gsd_state_version: '1.0'
+status: complete
 progress:
-  total_phases: 4
-  completed_phases: 4
-  total_plans: 4
-  completed_plans: 4
+  total_phases: 10
+  completed_phases: 10
+  total_plans: 14
+  completed_plans: 14
   percent: 100
 ---
 
@@ -18,56 +13,57 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-06-01)
+See: .planning/PROJECT.md (updated 2026-06-02)
 
 **Core value:** Every extracted event must be traceable to its exact source text in the original document, and every resolved entity must show its evidential references.
 
-**Current focus:** v3.0 Web UI
+**Current focus:** Milestone v3.0 Web UI complete
 
 ## Current Position
 
-Phase: Milestone v3.0 complete
-Plan: —
-Status: Awaiting next milestone
-Last activity: 2026-06-02 — Milestone v3.0 completed and archived
+Milestone: v3.0 (Web UI) — SHIPPED 2026-06-02
+Phases: 9-12 (4 phases)
+Plans: 4/4 complete
+Status: COMPLETE
+Last activity: 2026-06-02 — v3.0 Web UI milestone archived and shipped
+
+Progress: [████████████████████] 100%
 
 ## Performance Metrics
 
-**Velocity:**
+### v3.0 Web UI
 
-- Total plans completed: 6 (across v2.0 Phases 6-8)
-- Average duration: (historical — see previous session data)
-- Total execution time: (historical)
+| Phase | Plans | Status | Completed |
+|-------|-------|--------|-----------|
+| 9. UI Foundation | 1/1 | Complete | 2026-06-01 |
+| 10. Document Upload | 1/1 | Complete | 2026-06-01 |
+| 11. Document List | 1/1 | Complete | 2026-06-01 |
+| 12. Entity List | 1/1 | Complete | 2026-06-01 |
 
-**By Phase:**
-
-| Phase | Plans | Total | Avg/Plan |
-|-------|-------|-------|----------|
-| (v3.0 not yet started) | — | — | — |
-
-**Recent Trend:**
-
-- Last 5 plans: (from v2.0 execution)
-- Trend: (stable — inferred from v2.0 completeness)
-
-*Updated after each plan completion*
+**Totals:** 4 phases, 4 plans, 19 commits, 21 files changed (+3529/-81)
+**Timeline:** 5 days (2026-05-27 → 2026-06-01)
 
 ## Accumulated Context
 
 ### Decisions
 
-Decisions are logged in PROJECT.md Key Decisions table.
+Decisions are logged in PROJECT.md.
 Recent decisions affecting current work:
 
-- (none yet for v3.0)
+- Paginated API envelope pattern: `{ items, total, page, per_page, pages }`
+- Static SPA served via FastAPI StaticFiles — no build step
+- 20 items per page for list endpoints
+- 300ms search debounce for both document and entity lists
+- Tab-triggered lazy data loading
+- Parameterized dynamic WHERE clauses for safe search/filter
 
 ### Pending Todos
 
-None yet.
+None — milestone complete.
 
 ### Blockers/Concerns
 
-None yet.
+None.
 
 ## Deferred Items
 
@@ -79,10 +75,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-01
-Stopped at: Phase 11: Document List completed
+Last session: 2026-06-02
+Stopped at: v3.0 Web UI milestone complete
 Resume file: None
-
-## Operator Next Steps
-
-- Start the next milestone with /gsd-new-milestone
