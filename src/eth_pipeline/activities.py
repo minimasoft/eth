@@ -724,17 +724,25 @@ async def store_extraction_results_activity(
 
 @activity.defn
 async def extract_text_activity(document_id: str) -> dict:
-    """Extract text from a blob-stored document using ``PdfExtractor``.
+    """Extract text from a blob-stored document.
 
-    Reads the document record from SurrealDB to get ``blob_format`` and
-    ``blob_path``.  If ``blob_format == "minio"``, fetches the blob from
-    MinIO and runs ``PdfExtractor``.  If ``blob_format`` is ``None``
-    (legacy), decodes ``original_blob`` from the document record and runs
-    ``PdfExtractor``.
+    Reads the document record from SurrealDB to get ``blob_format``,
+    ``blob_path``, ``filename``, and ``mime_type``.  If
+    ``blob_format == "minio"``, fetches the blob from MinIO; otherwise
+    decodes ``original_blob`` (legacy base64).
+
+    Then detects the document format from the filename extension and
+    mime type and branches accordingly:
+
+    * **PDF** (``.pdf`` / ``application/pdf``) — runs ``PdfExtractor``.
+    * **Plain text** (``.txt``, ``.md``, extensionless with text mime,
+      or unknown) — decodes as UTF-8 with synthetic ``page_offsets``.
+    * **Unsupported** — marks the document as ``failed`` with a clear
+      error message.
 
     Updates ``document.status`` to ``"extracting_text"`` and populates
     ``text_content`` on success.  Sets ``status`` to ``"failed"`` with
-    ``error_message`` on quality-gate failure.
+    ``error_message`` on extraction failure.
 
     Parameters
     ----------
@@ -783,27 +791,85 @@ async def extract_text_activity(document_id: str) -> dict:
                 # Legacy: base64-encoded inline blob
                 content = base64.b64decode(original_blob.encode("ascii"))
 
-            # ---- Run PdfExtractor ----
-            extractor = PdfExtractor()
-            try:
-                result = extractor.extract(content, filename=filename)
-            except ExtractorQualityError as exc:
+            # ---- Detect format from filename / mime_type ----
+            ext = os.path.splitext(filename)[1].lower() if filename else ""
+            mime = (mime_type or "").lower()
+
+            if ext == ".pdf" or mime == "application/pdf":
+                doc_format = "pdf"
+            elif ext in (".txt", ".md") or mime in ("text/plain", "text/markdown"):
+                doc_format = "plain_text"
+            elif not ext and (not mime or mime in ("text/plain", "application/octet-stream", "")):
+                doc_format = "plain_text"
+            else:
+                doc_format = "unsupported"
+
+            # ---- Branch on format ----
+            if doc_format == "pdf":
+                extractor = PdfExtractor()
+                try:
+                    result = extractor.extract(content, filename=filename)
+                except ExtractorQualityError as exc:
+                    await db.query(
+                        f"UPDATE {doc_ref} SET status = 'failed', "
+                        f"error_message = $msg, updated_at = time::now()",
+                        {"msg": str(exc)},
+                    )
+                    activity.logger.warning(
+                        "Quality gate failed [document_id=%s] [reason=%s]: %s",
+                        document_id,
+                        exc.reason,
+                        exc,
+                    )
+                    return {
+                        "error": str(exc),
+                        "document_id": document_id,
+                        "reason": exc.reason,
+                    }
+
+                text = result.text
+                page_count = result.page_count
+                page_offsets = result.page_offsets
+
+            elif doc_format == "plain_text":
+                try:
+                    text = content.decode("utf-8")
+                except UnicodeDecodeError as exc:
+                    msg = f"Failed to decode plain-text file as UTF-8: {exc}"
+                    activity.logger.warning(
+                        "Text decode failed [document_id=%s]: %s",
+                        document_id,
+                        msg,
+                    )
+                    await db.query(
+                        f"UPDATE {doc_ref} SET status = 'failed', "
+                        f"error_message = $msg, updated_at = time::now()",
+                        {"msg": msg},
+                    )
+                    return {"error": msg, "document_id": document_id}
+
+                page_count = 1
+                page_offsets = [0, len(text)]
+
+            else:
+                ext_display = ext if ext else "(none)"
+                msg = (
+                    f"Unsupported document format: extension '{ext_display}' "
+                    f"(mime: {mime_type or '(none)'}). "
+                    f"Only PDF and plain text are supported."
+                )
+                activity.logger.warning(
+                    "Unsupported format [document_id=%s] [ext=%s] [mime=%s]",
+                    document_id,
+                    ext_display,
+                    mime_type,
+                )
                 await db.query(
                     f"UPDATE {doc_ref} SET status = 'failed', "
                     f"error_message = $msg, updated_at = time::now()",
-                    {"msg": str(exc)},
+                    {"msg": msg},
                 )
-                activity.logger.warning(
-                    "Quality gate failed [document_id=%s] [reason=%s]: %s",
-                    document_id,
-                    exc.reason,
-                    exc,
-                )
-                return {
-                    "error": str(exc),
-                    "document_id": document_id,
-                    "reason": exc.reason,
-                }
+                return {"error": msg, "document_id": document_id}
 
             # ---- Update document record ----
             await db.query(
@@ -812,8 +878,8 @@ async def extract_text_activity(document_id: str) -> dict:
                 f"_page_count = $page_count, "
                 f"updated_at = time::now()",
                 {
-                    "text": result.text,
-                    "page_count": result.page_count,
+                    "text": text,
+                    "page_count": page_count,
                 },
             )
 
@@ -821,15 +887,15 @@ async def extract_text_activity(document_id: str) -> dict:
                 "extract_text_activity completed [document_id=%s] "
                 "[text_length=%d] [page_count=%d]",
                 document_id,
-                len(result.text),
-                result.page_count,
+                len(text),
+                page_count,
             )
 
             return {
                 "document_id": document_id,
-                "text_length": len(result.text),
-                "page_count": result.page_count,
-                "page_offsets": result.page_offsets,
+                "text_length": len(text),
+                "page_count": page_count,
+                "page_offsets": page_offsets,
             }
 
     except ConnectionError as exc:
