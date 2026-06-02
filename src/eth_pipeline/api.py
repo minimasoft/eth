@@ -171,6 +171,19 @@ class EventsCleared(BaseModel):
     """Whether any events were actually cleared."""
 
 
+class DocumentDeleted(BaseModel):
+    """Response body for ``DELETE /documents/{document_id}`` (full cascade)."""
+
+    document_id: str
+    """Unique identifier of the deleted document."""
+
+    document_deleted: bool = True
+    """Whether the document record was deleted."""
+
+    orphaned_entities_cleaned: int = 0
+    """Number of canonical_entities that were orphaned and removed."""
+
+
 class HealthResponse(BaseModel):
     """Response body for ``GET /health``."""
 
@@ -1204,6 +1217,145 @@ async def clear_document_events(document_id: str) -> EventsCleared:
         ) from exc
 
     return EventsCleared(document_id=document_id, status="pending", events_cleared=True)
+
+
+# =======================================================================
+# Delete document endpoint (full cascade)
+# =======================================================================
+
+
+@app.delete(
+    "/documents/{document_id}",
+    response_model=DocumentDeleted,
+)
+async def delete_document(document_id: str) -> DocumentDeleted:
+    """Delete a document and all its associated data (full cascade).
+
+    Performs a full cascading delete:
+    1.  Deletes all ``document_chunk`` records for the document.
+    2.  Deletes all ``reference`` records linked to events that belong to the
+        document.
+    3.  Deletes all ``event`` records for the document.
+    4.  Removes the document record itself.
+    5.  Cleans up any ``canonical_entity`` records that have become orphaned
+        (zero remaining references).
+
+    Returns HTTP 404 if the document does not exist and HTTP 503 if the
+    database is unavailable.
+    """
+    db: AsyncWsSurrealConnection | None = app.state.db
+
+    if db is None:
+        logger.error(
+            "DELETE /documents/%s rejected — SurrealDB unavailable",
+            document_id,
+        )
+        raise HTTPException(
+            status_code=503,
+            detail="SurrealDB is not available. Please try again later.",
+        )
+
+    doc_ref = f"document:{document_id}"
+
+    # Verify document exists — use RecordID parameter to avoid SurrealDB v3
+    # subtraction error on nonexistent records in SCHEMAFULL tables.
+    try:
+        from surrealdb.data.types.record_id import RecordID
+
+        doc_id_obj = RecordID("document", document_id)
+        exists_result = await db.query(
+            "SELECT * FROM document WHERE id = $doc_id",
+            {"doc_id": doc_id_obj},
+        )
+    except Exception as exc:
+        logger.error("Failed to query document %s: %s", document_id, exc)
+        raise HTTPException(
+            status_code=502,
+            detail="Failed to query database.",
+        ) from exc
+
+    exists_records: list[dict] = [
+        r for r in (exists_result or []) if isinstance(r, dict)
+    ]
+    if not exists_records:
+        logger.warning("Document %s not found for cascade delete", document_id)
+        raise HTTPException(
+            status_code=404,
+            detail=f"Document {document_id} not found.",
+        )
+
+    try:
+        # Collect canonical_entity RIDs that may become orphaned
+        affected_ce_query = await db.query(
+            "SELECT VALUE canonical_entity FROM reference "
+            "WHERE event IN (SELECT id FROM event WHERE document = $doc_id) "
+            "AND canonical_entity IS NOT NONE",
+            {"doc_id": doc_ref},
+        )
+        affected_ce_rids = list({
+            r for r in (affected_ce_query or [])
+            if isinstance(r, str)
+        })
+
+        # 1. Delete document chunks for this document
+        await db.query(
+            "DELETE document_chunk WHERE document = $doc_id",
+            {"doc_id": doc_ref},
+        )
+
+        # 2. Delete references linked to events for this document
+        await db.query(
+            "DELETE reference WHERE event IN "
+            "(SELECT id FROM event WHERE document = $doc_id)",
+            {"doc_id": doc_ref},
+        )
+
+        # 3. Delete events for this document
+        await db.query(
+            "DELETE event WHERE document = $doc_id",
+            {"doc_id": doc_ref},
+        )
+
+        # 4. Delete the document record itself
+        await db.query(
+            "DELETE document WHERE id = $doc_id",
+            {"doc_id": doc_id_obj},
+        )
+
+        # 5. Clean up orphaned canonical_entities
+        orphaned = 0
+        if affected_ce_rids:
+            params = {f"ce_{i}": rid for i, rid in enumerate(affected_ce_rids)}
+            rid_list = ", ".join(f"$ce_{i}" for i in range(len(affected_ce_rids)))
+
+            result = await db.query(
+                f"DELETE canonical_entity WHERE id IN [{rid_list}] "
+                f"AND count((SELECT id FROM reference WHERE canonical_entity = parent.id)) = 0",
+                params,
+            )
+            orphaned = result[0].get("count", 0) if result and isinstance(result[0], dict) else 0
+
+        logger.info(
+            "Deleted document %s (cascade complete, %d orphaned entities cleaned)",
+            document_id,
+            orphaned,
+        )
+    except Exception as exc:
+        logger.error(
+            "Failed to delete document %s: %s",
+            document_id,
+            exc,
+        )
+        raise HTTPException(
+            status_code=502,
+            detail="Failed to delete document.",
+        ) from exc
+
+    return DocumentDeleted(
+        document_id=document_id,
+        document_deleted=True,
+        orphaned_entities_cleaned=orphaned,
+    )
 
 
 # =======================================================================
