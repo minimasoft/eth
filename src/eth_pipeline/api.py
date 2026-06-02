@@ -927,7 +927,7 @@ async def get_document(document_id: str) -> DocumentStatus:
         ent_count = _parse_count(ent_result)
 
         chunk_result = await db.query(
-            "SELECT count() AS total FROM document_chunk WHERE document = $doc_ref",
+            "SELECT count() AS total FROM document_chunk WHERE document = $doc_ref GROUP ALL",
             {"doc_ref": doc_id_obj},
         )
         chunk_count = _parse_count(chunk_result)
@@ -1000,7 +1000,7 @@ async def list_documents(
     try:
         # Count total matching documents
         count_result = await db.query(
-            f"SELECT count() AS total FROM document WHERE {where_clause}",
+            f"SELECT count() AS total FROM document WHERE {where_clause} GROUP ALL",
             query_params,
         )
     except Exception as exc:
@@ -1092,7 +1092,7 @@ async def list_documents(
             ent_count = _parse_count(ent_result)
 
             chunk_result = await db.query(
-                "SELECT count() AS total FROM document_chunk WHERE document = $doc_ref",
+                "SELECT count() AS total FROM document_chunk WHERE document = $doc_ref GROUP ALL",
                 {"doc_ref": doc_ref_obj},
             )
             chunk_count = _parse_count(chunk_result)
@@ -1182,7 +1182,7 @@ async def list_entities(
     try:
         # Count total matching entities
         count_result = await db.query(
-            f"SELECT count() AS total FROM canonical_entity WHERE {where_clause}",
+            f"SELECT count() AS total FROM canonical_entity WHERE {where_clause} GROUP ALL",
             query_params,
         )
     except Exception as exc:
@@ -2153,7 +2153,7 @@ async def list_references(
     try:
         # Count total matching references
         count_result = await db.query(
-            f"SELECT count() AS total FROM reference WHERE {where_clause}",
+            f"SELECT count() AS total FROM reference WHERE {where_clause} GROUP ALL",
             query_params,
         )
     except Exception as exc:
