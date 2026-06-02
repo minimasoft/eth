@@ -648,7 +648,7 @@ async def upload_document(file: UploadFile = File(...)) -> DocumentUploadCreated
 
     # 6. Prepare document record
     if minio_available:
-        original_blob = None
+        original_blob = ""
         blob_format = "minio"
         stored_blob_path = blob_path
     else:
