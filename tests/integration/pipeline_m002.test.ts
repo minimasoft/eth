@@ -26,6 +26,7 @@ import {
   assertGraphqlOk,
   skipIfDegraded,
   createDocument,
+  httpDelete,
   httpGet,
   httpPost,
   getSchemaTypeNames,
@@ -883,10 +884,9 @@ async function cleanupTestData(): Promise<void> {
     }
   }
 
-  // Delete test documents (best-effort)
+  // Delete test documents via API endpoint (cascades to events, references, chunks, orphaned entities)
   for (const docId of testDocIds) {
-    const sql = `DELETE document:${docId};`;
-    const [, , error] = await sqlExecute(sql, 5_000);
+    const [, , error] = await httpDelete(`${API_BASE}/documents/${docId}`, 10_000);
     if (error) {
       console.warn(`  ⚠️  Cleanup error for document:${docId}: ${error}`);
     }
