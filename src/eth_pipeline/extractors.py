@@ -209,7 +209,7 @@ class PdfExtractor:
         for i in range(len(pdf)):
             try:
                 page = pdf[i]
-                text_page = page.get_text_page()
+                text_page = page.get_textpage()
                 page_text = text_page.get_text_bounded()
                 page_texts.append(page_text)
             except Exception as exc:
