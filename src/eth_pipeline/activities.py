@@ -914,12 +914,14 @@ async def extract_text_activity(document_id: str) -> dict:
 
 @activity.defn
 async def chunk_document_activity(document_id: str, extraction_result: dict) -> dict:
-    """Chunk a document's extracted text with page-provenance tracking.
+    """Chunk a document's extracted text and store chunks in SurrealDB.
 
     Takes the extraction result dict (from ``extract_text_activity``)
     containing ``text_length``, ``page_count``, and ``page_offsets``.
     Queries ``text_content`` from SurrealDB, runs ``DocumentChunker``,
-    and returns chunk payloads.
+    deletes any existing chunks for this document, inserts fresh chunk
+    records, and returns lightweight metadata (no chunk text in the
+    return payload — avoids Temporal 2 MB payload limit).
 
     Parameters
     ----------
@@ -931,8 +933,8 @@ async def chunk_document_activity(document_id: str, extraction_result: dict) -> 
     Returns
     -------
     dict
-        ``{"document_id": ..., "chunks": [...], "chunk_count": N}`` on
-        success, or ``{"error": ..., "document_id": ...}`` on failure.
+        ``{"document_id": ..., "chunk_count": N}`` on success, or
+        ``{"error": ..., "document_id": ...}`` on failure.
     """
     params = _db_params()
     doc_ref = f"document:{document_id}"
@@ -970,82 +972,6 @@ async def chunk_document_activity(document_id: str, extraction_result: dict) -> 
                     "offset_end": c.offset_end,
                 })
 
-            # ---- Update document status ----
-            await db.query(
-                f"UPDATE {doc_ref} SET status = 'chunking', "
-                f"updated_at = time::now()",
-            )
-
-            activity.logger.info(
-                "chunk_document_activity completed [document_id=%s] "
-                "[chunk_count=%d]",
-                document_id,
-                len(chunks),
-            )
-
-            return {
-                "document_id": document_id,
-                "chunks": chunks,
-                "chunk_count": len(chunks),
-            }
-
-    except ConnectionError as exc:
-        activity.logger.error(
-            "Connection failed in chunk_document_activity: %s",
-            exc,
-        )
-        return {"error": str(exc), "document_id": document_id}
-    except Exception as exc:
-        activity.logger.error(
-            "Unexpected error in chunk_document_activity: %s",
-            exc,
-        )
-        # Mark document as failed on unexpected error
-        try:
-            async with get_db(**params) as db:
-                await db.query(
-                    f"UPDATE {doc_ref} SET status = 'failed', "
-                    f"error_message = $msg, updated_at = time::now()",
-                    {"msg": str(exc)},
-                )
-        except Exception:
-            pass
-        return {"error": str(exc), "document_id": document_id}
-
-
-@activity.defn
-async def store_chunks_activity(document_id: str, chunk_payload: dict) -> dict:
-    """Store document chunk records in SurrealDB.
-
-    **Idempotent:** First deletes any existing ``document_chunk`` records
-    for this document, then inserts fresh chunks from
-    ``chunk_payload["chunks"]``.
-
-    Parameters
-    ----------
-    document_id:
-        SurrealDB record ID of the source document.
-    chunk_payload:
-        Dict from ``chunk_document_activity`` with a ``"chunks"`` array.
-
-    Returns
-    -------
-    dict
-        ``{"document_id": ..., "chunks_stored": N}`` on success, or
-        ``{"error": ..., "document_id": ...}`` on failure.
-    """
-    params = _db_params()
-    doc_ref = f"document:{document_id}"
-
-    activity.logger.info(
-        "store_chunks_activity called [document_id=%s]",
-        document_id,
-    )
-
-    try:
-        async with get_db(**params) as db:
-            chunks_data = chunk_payload.get("chunks", [])
-
             # ---- Idempotent: delete existing chunks ----
             await db.query(
                 "DELETE document_chunk WHERE document = $doc_ref",
@@ -1053,7 +979,7 @@ async def store_chunks_activity(document_id: str, chunk_payload: dict) -> dict:
             )
 
             # ---- Insert new chunks ----
-            for chunk in chunks_data:
+            for chunk in chunks:
                 await db.create(
                     "document_chunk",
                     {
@@ -1068,7 +994,7 @@ async def store_chunks_activity(document_id: str, chunk_payload: dict) -> dict:
                 )
 
             # ---- Update document status ----
-            if chunks_data:
+            if chunks:
                 await db.query(
                     f"UPDATE {doc_ref} SET status = 'processed', "
                     f"updated_at = time::now()",
@@ -1084,29 +1010,28 @@ async def store_chunks_activity(document_id: str, chunk_payload: dict) -> dict:
                 )
 
             activity.logger.info(
-                "store_chunks_activity completed [document_id=%s] "
-                "[chunks_stored=%d]",
+                "chunk_document_activity completed [document_id=%s] "
+                "[chunk_count=%d]",
                 document_id,
-                len(chunks_data),
+                len(chunks),
             )
 
             return {
                 "document_id": document_id,
-                "chunks_stored": len(chunks_data),
+                "chunk_count": len(chunks),
             }
 
     except ConnectionError as exc:
         activity.logger.error(
-            "Connection failed in store_chunks_activity: %s",
+            "Connection failed in chunk_document_activity: %s",
             exc,
         )
         return {"error": str(exc), "document_id": document_id}
     except Exception as exc:
         activity.logger.error(
-            "Unexpected error in store_chunks_activity: %s",
+            "Unexpected error in chunk_document_activity: %s",
             exc,
         )
-        # Mark document as failed on unexpected error
         try:
             async with get_db(**params) as db:
                 await db.query(

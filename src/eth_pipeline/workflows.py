@@ -8,8 +8,7 @@ The top-level ``DocumentProcessingWorkflow`` handles two document paths:
 
 * **Blob path** (``has_text_content=False``): binary PDF uploaded via MinIO
   or legacy base64 → ``extract_text_activity`` → ``chunk_document_activity``
-  → ``store_chunks_activity`` → ``get_document_text_activity`` →
-  ``extract_events_activity``
+  → ``get_document_text_activity`` → ``extract_events_activity``
 * **Text path** (``has_text_content=True``): plain-text document submitted
   directly → ``extract_events_activity``
 
@@ -34,7 +33,6 @@ with workflow.unsafe.imports_passed_through():
         get_document_metadata_activity,
         get_document_text_activity,
         resolve_entities_activity,
-        store_chunks_activity,
         store_extraction_results_activity,
         update_document_status_activity,
     )
@@ -53,8 +51,8 @@ class DocumentProcessingWorkflow:
     document.  It supports two paths determined at runtime:
 
     **Blob path** (binary PDF / legacy base64 without text_content):
-    ``extracting_blob`` → ``extracting_text`` → ``chunking`` →
-    ``processed``
+    ``extracting_blob`` → ``extracting_text`` → ``processed``
+    (chunk_document_activity handles chunking + storage)
 
     **Text path** (document already has text_content):
     ``processing`` → ``processed`` (extract events directly)
@@ -76,10 +74,8 @@ class DocumentProcessingWorkflow:
         3. If ``has_text_content`` is ``False`` (blob path):
            - ``extracting_blob`` → ``extract_text_activity``
            - ``extracting_text`` (set by extract_text_activity)
-           - ``chunk_document_activity`` → ``chunking`` (set by
-             chunk_document_activity)
-           - ``store_chunks_activity`` → ``processed`` (set by
-             store_chunks_activity)
+           - ``chunk_document_activity`` → chunks stored + ``processed``
+             set by chunk_document_activity
            - ``get_document_text_activity`` to obtain full text
         4. If ``has_text_content`` is ``True`` (text path):
            - Use text_content directly from metadata
@@ -153,13 +149,6 @@ class DocumentProcessingWorkflow:
                 )
                 if "error" in chunk_result:
                     raise RuntimeError(chunk_result["error"])
-
-                # Store chunks
-                await workflow.execute_activity(
-                    store_chunks_activity,
-                    args=[document_id, chunk_result],
-                    start_to_close_timeout=timedelta(seconds=30),
-                )
 
                 # Get the full reconstructed text from the document
                 text_data = await workflow.execute_activity(

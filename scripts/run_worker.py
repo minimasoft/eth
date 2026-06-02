@@ -21,7 +21,6 @@ from eth_pipeline.activities import (
     get_document_metadata_activity,
     get_document_text_activity,
     resolve_entities_activity,
-    store_chunks_activity,
     store_extraction_results_activity,
     update_document_status_activity,
 )
@@ -50,7 +49,6 @@ async def main():
             get_document_metadata_activity,
             get_document_text_activity,
             resolve_entities_activity,
-            store_chunks_activity,
             store_extraction_results_activity,
             update_document_status_activity,
         ],
@@ -58,8 +56,8 @@ async def main():
     print("✅ Worker registered for task_queue 'event-extraction'")
     print("   Activities: chunk_document_activity, extract_events_activity, extract_text_activity, "
           "get_document_metadata_activity, get_document_text_activity, "
-          "resolve_entities_activity, store_chunks_activity, "
-          "store_extraction_results_activity, update_document_status_activity")
+          "resolve_entities_activity, store_extraction_results_activity, "
+          "update_document_status_activity")
 
     # Start the worker (runs until shutdown)
     await worker.run()
