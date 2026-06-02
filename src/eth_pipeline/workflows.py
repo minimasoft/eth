@@ -151,9 +151,22 @@ class DocumentProcessingWorkflow:
             else:
                 # ---- TEXT PATH (Direct text) ----
                 workflow.logger.info(
-                    "Text path: document %s already has text_content",
+                    "Text path: document %s already has text_content — chunking",
                     document_id,
                 )
+
+                # Chunk the text (same as blob path, no page offsets)
+                chunk_result = await workflow.execute_activity(
+                    chunk_document_activity,
+                    args=[document_id, {"page_offsets": [0]}],
+                    start_to_close_timeout=timedelta(seconds=30),
+                )
+                if "error" in chunk_result:
+                    workflow.logger.warning(
+                        "Chunking failed for text-path document %s: %s",
+                        document_id,
+                        chunk_result["error"],
+                    )
 
             # Step 4: Extract events from full text (same for both paths)
             # extract_events_activity queries text_content from SurrealDB

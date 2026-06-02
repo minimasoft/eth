@@ -22,7 +22,7 @@ from eth_pipeline.extractors import (
     ExtractorQualityError,
     PdfExtractor,
 )
-from eth_pipeline.llm import DEFAULT_MODEL, OpenRouterProvider
+from eth_pipeline.llm import DEFAULT_MODEL, MAX_INPUT_CHARS, OpenRouterProvider
 from eth_pipeline.storage import get_storage
 
 # ---------------------------------------------------------------------------
@@ -147,6 +147,16 @@ async def extract_events_activity(document_id: str) -> dict:
         len(text),
         model,
     )
+
+    if len(text) > MAX_INPUT_CHARS:
+        activity.logger.warning(
+            "Truncating text from %d to %d chars for document %s "
+            "(exceeds model context budget)",
+            len(text),
+            MAX_INPUT_CHARS,
+            document_id,
+        )
+        text = text[:MAX_INPUT_CHARS]
 
     result = await provider.extract_events(text)
     events = result.get("events", [])

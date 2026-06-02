@@ -176,6 +176,14 @@ ENTITY_RESOLUTION_SYSTEM_PROMPT: str = (
 DEFAULT_MODEL = "deepseek/deepseek-v4-flash"
 OPENROUTER_BASE_URL = "https://openrouter.ai"
 
+# Maximum characters for document text sent to the LLM in a single call.
+# deepseek-v4-flash has a 1,048,576 token context window.  After accounting
+# for the system prompt, user message structure, JSON schema (~65K overhead),
+# roughly ~980K tokens remain for document text.  At ~4 chars per token for
+# Spanish text this is ~3.9M chars.  Using 3,500,000 as a safe limit (~875K
+# tokens, ~100K headroom).
+MAX_INPUT_CHARS = 3_500_000
+
 # ---------------------------------------------------------------------------
 # Provider protocol
 # ---------------------------------------------------------------------------
