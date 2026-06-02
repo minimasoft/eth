@@ -5,13 +5,18 @@
 - ✅ **v1.0 Planning Migration** — Phases (shipped 2026-05-31)
 - ✅ **v1.1 Documentation & Infrastructure** — Phases 2 (shipped 2026-05-31)
 - ✅ **v1.2 M002 Integration Test Fixes** — Phases 3-5 (shipped 2026-05-31)
-- 🚧 **v2.0 Blob & Chunk Pipeline** — Phases 6-8 (shipped 2026-05-31)
+- ✅ **v2.0 Blob & Chunk Pipeline** — Phases 6-8 (shipped 2026-06-01)
+- 🚧 **v3.0 Web UI** — Phases 9-12 (in progress)
 
 ## Phases
 
 - [x] **Phase 6: MinIO Infrastructure + Blob Upload** — MinIO Docker service, storage client, blob upload endpoint, bucket auto-init
 - [x] **Phase 7: PDF Text Extraction + Chunking** — ContentExtractor protocol, PdfExtractor, DocumentChunker, chunk storage activities
 - [x] **Phase 8: Full Workflow Integration + Tests** — Workflow conditional branch, status tracking, reprocess safety, backward compat, integration tests
+- [ ] **Phase 9: UI Foundation** — FastAPI serves static HTML/CSS/JS SPA with three-tab navigation at `/ui`
+- [ ] **Phase 10: Document Upload** — File picker calling POST /documents/upload with success/error feedback
+- [ ] **Phase 11: Document List** — Paginated document table (20/page) with search/filter and pagination controls
+- [ ] **Phase 12: Entity List** — Paginated entity table (20/page) with search/filter and pagination controls
 
 <details>
 <summary>✅ v1.2 M002 Integration Test Fixes (Phases 3-5) — SHIPPED 2026-05-31</summary>
@@ -48,7 +53,8 @@
 
 </details>
 
-## Phase Details
+<details>
+<summary>✅ v2.0 Blob & Chunk Pipeline (Phases 6-8) — SHIPPED 2026-06-01</summary>
 
 ### Phase 6: MinIO Infrastructure + Blob Upload
 
@@ -59,11 +65,11 @@
 **Requirements**: BLOB-01, BLOB-02, BLOB-03, BLOB-04, BLOB-05
 
 **Success Criteria** (what must be TRUE):
-  1. Docker Compose starts MinIO service with healthcheck passing (`mc ready` succeeds)
-  2. `eth-documents` bucket is auto-created on startup via init container script (`scripts/init_bucket.py`)
-  3. `POST /documents/upload` accepts a multipart file upload and returns HTTP 201 with `{ document_id }`
-  4. Uploaded document blob is retrievable from MinIO via `storage.py` client factory with path `doc/{id}.pdf`
-  5. Document record shows `blob_format: "minio"` and `blob_path` reference (not base64-encoded blob)
+   1. Docker Compose starts MinIO service with healthcheck passing (`mc ready` succeeds)
+   2. `eth-documents` bucket is auto-created on startup via init container script (`scripts/init_bucket.py`)
+   3. `POST /documents/upload` accepts a multipart file upload and returns HTTP 201 with `{ document_id }`
+   4. Uploaded document blob is retrievable from MinIO via `storage.py` client factory with path `doc/{id}.pdf`
+   5. Document record shows `blob_format: "minio"` and `blob_path` reference (not base64-encoded blob)
 
 **Plans**: 2 plans
 
@@ -82,11 +88,11 @@ Plans:
 **Requirements**: EXTR-01, EXTR-02, EXTR-03, EXTR-04, EXTR-05, CHNK-01, CHNK-02, CHNK-03, CHNK-04, CHNK-05
 
 **Success Criteria** (what must be TRUE):
-  1. PDF uploaded via `POST /documents/upload` has its `text_content` populated automatically after Temporal processing
-  2. Extracted text preserves page-level metadata — individual chunks report `page_start`/`page_end` correct for their content range
-  3. Document chunks are stored in `document_chunk` SurrealDB table with `chunk_index`, `page_start`, `page_end`, `offset_start`, `offset_end`
-  4. When `USE_PYPDF=true` env var is set, extraction falls back to `pypdf` successfully (license mitigation works)
-  5. Empty/scanned PDFs fail with a clear actionable error message (not a generic crash) — quality gate triggers
+   1. PDF uploaded via `POST /documents/upload` has its `text_content` populated automatically after Temporal processing
+   2. Extracted text preserves page-level metadata — individual chunks report `page_start`/`page_end` correct for their content range
+   3. Document chunks are stored in `document_chunk` SurrealDB table with `chunk_index`, `page_start`, `page_end`, `offset_start`, `offset_end`
+   4. When `USE_PYPDF=true` env var is set, extraction falls back to `pypdf` successfully (license mitigation works)
+   5. Empty/scanned PDFs fail with a clear actionable error message (not a generic crash) — quality gate triggers
 
 **Plans**: 2 plans
 
@@ -105,12 +111,12 @@ Plans:
 **Requirements**: WFLW-01, WFLW-02, WFLW-03, WFLW-04, TEST-01, TEST-02, TEST-03
 
 **Success Criteria** (what must be TRUE):
-  1. `DocumentProcessingWorkflow` handles both blob-path (binary PDF) and direct-text-path documents via conditional branch
-  2. Processing status transitions through `extracting_blob` → `extracting_text` → `chunking` → `extracting_events` correctly
-  3. `DELETE /documents/{id}/events` also clears `document_chunk` records — reprocess cycle leaves zero orphaned chunks
-  4. Old base64-stored documents remain fully accessible alongside new MinIO-stored documents (lazy migration)
-  5. All 11/11 existing integration tests pass; new v2.0 pipeline integration tests pass
-  6. Chunk transparency verified — `extract_events_activity` receives full reconstructed text from `document.text_content`, never sees individual chunk records
+   1. `DocumentProcessingWorkflow` handles both blob-path (binary PDF) and direct-text-path documents via conditional branch
+   2. Processing status transitions through `extracting_blob` → `extracting_text` → `chunking` → `extracting_events` correctly
+   3. `DELETE /documents/{id}/events` also clears `document_chunk` records — reprocess cycle leaves zero orphaned chunks
+   4. Old base64-stored documents remain fully accessible alongside new MinIO-stored documents (lazy migration)
+   5. All 11/11 existing integration tests pass; new v2.0 pipeline integration tests pass
+   6. Chunk transparency verified — `extract_events_activity` receives full reconstructed text from `document.text_content`, never sees individual chunk records
 
 **Plans**: 2 plans
 
@@ -118,7 +124,90 @@ Plans:
 - [x] 08-01-PLAN.md — Workflow conditional branch, status schema, DELETE cascade, helper activities
 - [x] 08-02-PLAN.md — v2.0 pipeline integration tests
 
+</details>
+
+## Phase Details
+
+### 🚧 v3.0 Web UI (In Progress)
+
+**Milestone Goal:** Users can upload documents, view document lists, and browse entities through a web browser at `/ui` — no authentication required.
+
+#### Phase 9: UI Foundation
+
+**Goal**: Users can access the web UI application with three-tab navigation from their browser at `/ui`
+
+**Depends on**: Nothing (mounts static directory on FastAPI)
+
+**Requirements**: UI-01, UI-02, UI-03
+
+**Success Criteria** (what must be TRUE):
+   1. Loading `http://localhost:8001/ui` in a browser shows a styled single-page application
+   2. The page has three visible tabs labeled "Upload", "Documents", and "Entities"
+   3. The page title (HTML `<title>`) and main heading display "ETH Pipeline"
+   4. Clicking each tab shows the corresponding tab content and hides the others
+   5. The page renders without JavaScript errors in DevTools console
+
+**Plans**: TBD
+**UI hint**: yes
+
 ---
+
+#### Phase 10: Document Upload
+
+**Goal**: Users can upload documents to the pipeline through the web UI
+
+**Depends on**: Phase 9
+
+**Requirements**: UPLD-01, UPLD-02
+
+**Success Criteria** (what must be TRUE):
+   1. User can click a file picker button, select one or more document files, and see them listed for upload
+   2. Clicking "Upload" sends the file(s) to `POST /documents/upload` and shows a success message with the returned document ID
+   3. If the upload fails (network error, server error), user sees an error message explaining what went wrong
+   4. Upload progress/state is visible while the request is in-flight (e.g., spinner or disabled button)
+
+**Plans**: TBD
+**UI hint**: yes
+
+---
+
+#### Phase 11: Document List
+
+**Goal**: Users can browse, search, and paginate through uploaded documents
+
+**Depends on**: Phase 9
+
+**Requirements**: DOCL-01, DOCL-02, DOCL-03
+
+**Success Criteria** (what must be TRUE):
+   1. Documents tab shows a table/list with columns: ID, filename, upload date, and processing status
+   2. Table shows the first 20 documents, with a "Next" button to load the next page
+   3. User can type in a search box and filter documents by filename or processing status
+   4. Pagination controls show "Page X of Y" with Previous/Next navigation buttons
+   5. If the documents API returns no results, a "No documents found" empty state is shown
+
+**Plans**: TBD
+**UI hint**: yes
+
+---
+
+#### Phase 12: Entity List
+
+**Goal**: Users can browse, search, and paginate through canonical entities
+
+**Depends on**: Phase 9
+
+**Requirements**: ENTL-01, ENTL-02, ENTL-03
+
+**Success Criteria** (what must be TRUE):
+   1. Entities tab shows a table/list with columns: name, entity type, and reference count
+   2. Table shows the first 20 entities, with a "Next" button to load the next page
+   3. User can type in a search box and filter entities by name or entity type
+   4. Pagination controls show "Page X of Y" with Previous/Next navigation buttons
+   5. If the entities API returns no results, a "No entities found" empty state is shown
+
+**Plans**: TBD
+**UI hint**: yes
 
 ## Progress
 
@@ -127,6 +216,10 @@ Plans:
 | 3. GraphQL Proxy Fixes | — | Complete | 2026-05-31 |
 | 4. Merge/Split Endpoint Fixes | — | Complete | 2026-05-31 |
 | 5. Regression Verification | — | Complete | 2026-05-31 |
-| 6. MinIO Infrastructure + Blob Upload | 2/2 | Complete | 2026-05-31 |
-| 7. PDF Text Extraction + Chunking | 2/2 | Complete | 2026-05-31 |
-| 8. Full Workflow Integration + Tests | 2/2 | Complete | 2026-05-31 |
+| 6. MinIO Infrastructure + Blob Upload | 2/2 | Complete | 2026-06-01 |
+| 7. PDF Text Extraction + Chunking | 2/2 | Complete | 2026-06-01 |
+| 8. Full Workflow Integration + Tests | 2/2 | Complete | 2026-06-01 |
+| 9. UI Foundation | 0/0 | Not started | - |
+| 10. Document Upload | 0/0 | Not started | - |
+| 11. Document List | 0/0 | Not started | - |
+| 12. Entity List | 0/0 | Not started | - |

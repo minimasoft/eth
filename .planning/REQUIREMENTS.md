@@ -120,11 +120,22 @@ Explicitly excluded. Documented to prevent scope creep.
 | TEST-01 | Phase 8 | Complete |
 | TEST-02 | Phase 8 | Complete |
 | TEST-03 | Phase 8 | Complete |
+| UI-01 | Phase 9 | Pending |
+| UI-02 | Phase 9 | Pending |
+| UI-03 | Phase 9 | Pending |
+| UPLD-01 | Phase 10 | Pending |
+| UPLD-02 | Phase 10 | Pending |
+| DOCL-01 | Phase 11 | Pending |
+| DOCL-02 | Phase 11 | Pending |
+| DOCL-03 | Phase 11 | Pending |
+| ENTL-01 | Phase 12 | Pending |
+| ENTL-02 | Phase 12 | Pending |
+| ENTL-03 | Phase 12 | Pending |
 
 **Coverage:**
 - v2 requirements: 22 total ✓
-- v3 requirements: 10 total
-- Mapped to phases: Pending (roadmap creation)
+- v3 requirements: 10 total ✓
+- Mapped to phases: 10/10
 
 ---
 *Requirements defined: 2026-05-31*

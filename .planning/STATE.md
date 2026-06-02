@@ -1,12 +1,8 @@
 ---
-gsd_state_version: 1.0
-milestone: v3.0
-milestone_name: Web UI
+gsd_state_version: '1.0'
 status: planning
-last_updated: "2026-06-01T21:43:50.428Z"
-last_activity: 2026-06-01
 progress:
-  total_phases: 0
+  total_phases: 4
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -20,35 +16,34 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-01)
 
 **Core value:** Every extracted event must be traceable to its exact source text in the original document, and every resolved entity must show its evidential references.
-**Current focus:** v2.0 Blob & Chunk Pipeline — Complete (all 3 phases, 6 plans)
+
+**Current focus:** v3.0 Web UI
 
 ## Current Position
 
-Phase: Not started (defining requirements)
-Plan: —
-Status: Defining requirements
-Last activity: 2026-06-01 — Milestone v3.0 started
+Phase: 9 of 12 (UI Foundation)
+Plan: — of — (not yet planned)
+Status: Ready to plan
+Last activity: 2026-06-01 — ROADMAP.md created for v3.0 Web UI milestone
+
+Progress: [░░░░░░░░░░] 0%
 
 ## Performance Metrics
 
 **Velocity:**
-
-- Total plans completed: 6
-- Average duration: ~12 min
-- Total execution time: ~72 min
+- Total plans completed: 6 (across v2.0 Phases 6-8)
+- Average duration: (historical — see previous session data)
+- Total execution time: (historical)
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| 6. MinIO Infrastructure + Blob Upload | 2 | ~25 min | ~12.5 min |
-| 7. PDF Text Extraction + Chunking | 2 | ~22 min | ~11 min |
-| 8. Full Workflow Integration + Tests | 2 | ~25 min | ~12.5 min |
+| (v3.0 not yet started) | — | — | — |
 
 **Recent Trend:**
-
-- Last 6 plans: 08-02, 08-01, 07-02, 07-01, 06-02, 06-01
-- Trend: Stable
+- Last 5 plans: (from v2.0 execution)
+- Trend: (stable — inferred from v2.0 completeness)
 
 *Updated after each plan completion*
 
@@ -59,21 +54,7 @@ Last activity: 2026-06-01 — Milestone v3.0 started
 Decisions are logged in PROJECT.md Key Decisions table.
 Recent decisions affecting current work:
 
-- MinIO healthcheck uses curl to /minio/health/live instead of mc (mc not bundled in minio/minio image)
-- storage.py provides both sync and async context managers (sync for scripts, async for FastAPI)
-- Blob path format: doc/{uuid}{ext} — extension derived from filename, defaults to .bin
-- Degraded mode: if MinIO fails, store blob as base64-encoded original_blob in SurrealDB
-- Failed MinIO storage after SurrealDB create failure: cleanup blob to avoid orphaned objects
-- MinIO credentials default to minioadmin:minioadmin in dev; documented in .env.example that production must use strong secrets
-- pypdfium2 is primary PDF extractor (BSD-3-Clause); pypdf is AGPL-mitigation fallback via USE_PYPDF env var
-- Chunks are non-overlapping (chunk_overlap=0) — reconstruction uses original text offsets, not concatenation
-- Document status progression: extracting_text → chunking → processed
-- store_chunks_activity uses delete-then-recreate for idempotency
-- Workflow branch condition uses `not has_text_content` (handles all three: new MinIO blobs, legacy base64, direct-text docs)
-- Status progression: processing → extracting_blob → extracting_text → chunking → processed
-- DELETE order: document_chunk → reference → event → document reset (text_content = '' for clean reprocess)
-- Chunk transparency: extract_events_activity always receives full document.text_content
-- text_content field made nullable (TYPE string | null DEFAULT null) for blob-stored docs
+- (none yet for v3.0)
 
 ### Pending Todos
 
@@ -89,18 +70,10 @@ Items acknowledged and carried forward from previous milestone close:
 
 | Category | Item | Status | Deferred At |
 |----------|------|--------|-------------|
-| M003 Scope | Geospatial queries (radius/bounding box) | Deferred | v2.0 start |
-| M003 Scope | Event type taxonomy | Deferred | v2.0 start |
-| M003 Scope | Full-text search via SurrealDB FT index | Deferred | v2.0 start |
-| v3.0 Scope | OCR for scanned PDFs (Tesseract + Spanish) | Deferred | v2.0 start |
-| v3.0 Scope | DOCX/image content extractors | Deferred | v2.0 start |
+| *(none)* | | | |
 
 ## Session Continuity
 
-Last session: 2026-06-01 01:15
-Stopped at: v2.0 Blob & Chunk Pipeline fully implemented (phases 6-8)
+Last session: 2026-06-01
+Stopped at: ROADMAP.md created for v3.0 Web UI milestone
 Resume file: None
-
-## Operator Next Steps
-
-- Start the next milestone with /gsd-new-milestone
