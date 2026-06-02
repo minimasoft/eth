@@ -448,6 +448,12 @@ class OpenRouterProvider:
         }
 
     def _build_payload(self, text: str) -> dict:
+        schema_json = json.dumps(EVENT_EXTRACTION_SCHEMA, indent=2, ensure_ascii=False)
+        user_content = (
+            f"Responde ÚNICAMENTE con un objeto JSON que se ajuste a este esquema:\n"
+            f"```json\n{schema_json}\n```\n\n"
+            f"{text}"
+        )
         return {
             "model": self._model,
             "messages": [
@@ -472,20 +478,14 @@ class OpenRouterProvider:
                 },
                 {
                     "role": "user",
-                    "content": text,
+                    "content": user_content,
                 },
             ],
             "response_format": {
-                "type": "json_schema",
-                "json_schema": {
-                    "name": "event_extraction",
-                    "strict": True,
-                    "schema": EVENT_EXTRACTION_SCHEMA,
-                },
+                "type": "json_object",
             },
             "max_tokens": 64000,
             "temperature": 0.7,
-            "extra_body": {"reasoning": {"enabled": True}},
         }
 
     def _build_resolution_payload(
@@ -495,7 +495,10 @@ class OpenRouterProvider:
         document_context: str,
     ) -> dict:
         """Build the API payload for entity resolution."""
+        schema_json = json.dumps(ENTITY_RESOLUTION_SCHEMA, indent=2, ensure_ascii=False)
         user_content = (
+            f"Responde ÚNICAMENTE con un objeto JSON que se ajuste a este esquema:\n"
+            f"```json\n{schema_json}\n```\n\n"
             "DOCUMENTO (contexto):\n"
             f"{document_context}\n\n"
             "REFERENCIAS A RESOLVER:\n"
@@ -511,16 +514,10 @@ class OpenRouterProvider:
                 {"role": "user", "content": user_content},
             ],
             "response_format": {
-                "type": "json_schema",
-                "json_schema": {
-                    "name": "entity_resolution",
-                    "strict": True,
-                    "schema": ENTITY_RESOLUTION_SCHEMA,
-                },
+                "type": "json_object",
             },
             "max_tokens": 64000,
             "temperature": 0.7,
-            "extra_body": {"reasoning": {"enabled": True}},
         }
 
     @staticmethod
