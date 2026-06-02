@@ -6,17 +6,17 @@
 - ✅ **v1.1 Documentation & Infrastructure** — Phases 2 (shipped 2026-05-31)
 - ✅ **v1.2 M002 Integration Test Fixes** — Phases 3-5 (shipped 2026-05-31)
 - ✅ **v2.0 Blob & Chunk Pipeline** — Phases 6-8 (shipped 2026-06-01)
-- 🚧 **v3.0 Web UI** — Phases 9-12 (in progress)
+- 🚧 **v3.0 Web UI** — Phases 9-12 (shipped 2026-06-01)
 
 ## Phases
 
 - [x] **Phase 6: MinIO Infrastructure + Blob Upload** — MinIO Docker service, storage client, blob upload endpoint, bucket auto-init
 - [x] **Phase 7: PDF Text Extraction + Chunking** — ContentExtractor protocol, PdfExtractor, DocumentChunker, chunk storage activities
 - [x] **Phase 8: Full Workflow Integration + Tests** — Workflow conditional branch, status tracking, reprocess safety, backward compat, integration tests
-- [ ] **Phase 9: UI Foundation** — FastAPI serves static HTML/CSS/JS SPA with three-tab navigation at `/ui`
-- [ ] **Phase 10: Document Upload** — File picker calling POST /documents/upload with success/error feedback
-- [ ] **Phase 11: Document List** — Paginated document table (20/page) with search/filter and pagination controls
-- [ ] **Phase 12: Entity List** — Paginated entity table (20/page) with search/filter and pagination controls
+- [x] **Phase 9: UI Foundation** — FastAPI serves static HTML/CSS/JS SPA with three-tab navigation at `/ui`
+- [x] **Phase 10: Document Upload** — File picker calling POST /documents/upload with success/error feedback
+- [x] **Phase 11: Document List** — Paginated document table (20/page) with search/filter and pagination controls
+- [x] **Phase 12: Entity List** — Paginated entity table (20/page) with search/filter and pagination controls
 
 <details>
 <summary>✅ v1.2 M002 Integration Test Fixes (Phases 3-5) — SHIPPED 2026-05-31</summary>
@@ -150,9 +150,11 @@ Plans:
 **Plans**: 1 plan
 
 Plans:
-- [ ] 09-01-PLAN.md — FastAPI static mount + single index.html with three-tab navigation
+- [x] 09-01-PLAN.md — FastAPI static mount + single index.html with three-tab navigation
 
 ---
+
+
 
 #### Phase 10: Document Upload
 
@@ -171,9 +173,11 @@ Plans:
 **Plans**: 1 plan
 
 Plans:
-- [ ] 10-01-PLAN.md — File picker, sequential upload to POST /documents/upload, success/error banners, loading state
+- [x] 10-01-PLAN.md — File picker, sequential upload to POST /documents/upload, success/error banners, loading state
 
 ---
+
+
 
 #### Phase 11: Document List
 
@@ -206,14 +210,18 @@ Plans:
 **Requirements**: ENTL-01, ENTL-02, ENTL-03
 
 **Success Criteria** (what must be TRUE):
-   1. Entities tab shows a table/list with columns: name, entity type, and reference count
-   2. Table shows the first 20 entities, with a "Next" button to load the next page
-   3. User can type in a search box and filter entities by name or entity type
-   4. Pagination controls show "Page X of Y" with Previous/Next navigation buttons
-   5. If the entities API returns no results, a "No entities found" empty state is shown
+    1. Entities tab shows a table/list with columns: name, entity type, and reference count
+    2. Table shows the first 20 entities, with a "Next" button to load the next page
+    3. User can type in a search box and filter entities by name or entity type
+    4. Pagination controls show "Page X of Y" with Previous/Next navigation buttons
+    5. If the entities API returns no results, a "No entities found" empty state is shown
 
-**Plans**: TBD
-**UI hint**: yes
+**Plans**: 1 plan
+
+Plans:
+- [x] 12-01-PLAN.md — GET /entities endpoint, table UI with search/filter/pagination, entity type labels
+
+--- 
 
 ## Progress
 
@@ -225,7 +233,7 @@ Plans:
 | 6. MinIO Infrastructure + Blob Upload | 2/2 | Complete | 2026-06-01 |
 | 7. PDF Text Extraction + Chunking | 2/2 | Complete | 2026-06-01 |
 | 8. Full Workflow Integration + Tests | 2/2 | Complete | 2026-06-01 |
-| 9. UI Foundation | 1/0 | In progress | - |
-| 10. Document Upload | 1/0 | Planning | - |
+| 9. UI Foundation | 1/1 | Complete | 2026-06-01 |
+| 10. Document Upload | 1/1 | Complete | 2026-06-01 |
 | 11. Document List | 1/1 | Complete | 2026-06-01 |
-| 12. Entity List | 0/0 | Not started | - |
+| 12. Entity List | 1/1 | Complete | 2026-06-01 |

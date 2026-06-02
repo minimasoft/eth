@@ -50,26 +50,26 @@ Requirements for v3.0 Web UI milestone. Each maps to roadmap phases.
 
 ### UI Infrastructure
 
-- [ ] **UI-01**: FastAPI serves static HTML/CSS/JS files at `/ui` endpoint
-- [ ] **UI-02**: Single-page application with three-tab navigation: Upload, Documents, Entities
-- [ ] **UI-03**: Page title and heading reflect application name ("ETH Pipeline")
+- [x] **UI-01**: FastAPI serves static HTML/CSS/JS files at `/ui` endpoint
+- [x] **UI-02**: Single-page application with three-tab navigation: Upload, Documents, Entities
+- [x] **UI-03**: Page title and heading reflect application name ("ETH Pipeline")
 
 ### Upload
 
-- [ ] **UPLD-01**: User can select and upload one or more document files via file picker
-- [ ] **UPLD-02**: Upload calls existing `POST /documents/upload` endpoint and shows success/error feedback
+- [x] **UPLD-01**: User can select and upload one or more document files via file picker
+- [x] **UPLD-02**: Upload calls existing `POST /documents/upload` endpoint and shows success/error feedback
 
 ### Document List
 
-- [ ] **DOCL-01**: User can view paginated list of documents (20 per page) with ID, filename, upload date, and processing status
-- [ ] **DOCL-02**: User can search/filter documents by filename or processing status
-- [ ] **DOCL-03**: Pagination controls show current page, total pages, and allow navigation
+- [x] **DOCL-01**: User can view paginated list of documents (20 per page) with ID, filename, upload date, and processing status
+- [x] **DOCL-02**: User can search/filter documents by filename or processing status
+- [x] **DOCL-03**: Pagination controls show current page, total pages, and allow navigation
 
 ### Entity List
 
-- [ ] **ENTL-01**: User can view paginated list of canonical entities (20 per page) with name, type, and reference count
-- [ ] **ENTL-02**: User can search/filter entities by name or type
-- [ ] **ENTL-03**: Pagination controls show current page, total pages, and allow navigation
+- [x] **ENTL-01**: User can view paginated list of canonical entities (20 per page) with name, type, and reference count
+- [x] **ENTL-02**: User can search/filter entities by name or type
+- [x] **ENTL-03**: Pagination controls show current page, total pages, and allow navigation
 
 ## Future Requirements
 
@@ -120,17 +120,17 @@ Explicitly excluded. Documented to prevent scope creep.
 | TEST-01 | Phase 8 | Complete |
 | TEST-02 | Phase 8 | Complete |
 | TEST-03 | Phase 8 | Complete |
-| UI-01 | Phase 9 | Pending |
-| UI-02 | Phase 9 | Pending |
-| UI-03 | Phase 9 | Pending |
-| UPLD-01 | Phase 10 | Pending |
-| UPLD-02 | Phase 10 | Pending |
-| DOCL-01 | Phase 11 | Pending |
-| DOCL-02 | Phase 11 | Pending |
-| DOCL-03 | Phase 11 | Pending |
-| ENTL-01 | Phase 12 | Pending |
-| ENTL-02 | Phase 12 | Pending |
-| ENTL-03 | Phase 12 | Pending |
+| UI-01 | Phase 9 | Complete |
+| UI-02 | Phase 9 | Complete |
+| UI-03 | Phase 9 | Complete |
+| UPLD-01 | Phase 10 | Complete |
+| UPLD-02 | Phase 10 | Complete |
+| DOCL-01 | Phase 11 | Complete |
+| DOCL-02 | Phase 11 | Complete |
+| DOCL-03 | Phase 11 | Complete |
+| ENTL-01 | Phase 12 | Complete |
+| ENTL-02 | Phase 12 | Complete |
+| ENTL-03 | Phase 12 | Complete |
 
 **Coverage:**
 - v2 requirements: 22 total ✓
@@ -138,5 +138,6 @@ Explicitly excluded. Documented to prevent scope creep.
 - Mapped to phases: 10/10
 
 ---
+
 *Requirements defined: 2026-05-31*
-*Last updated: 2026-06-01 after v3.0 requirements definition*
+*Last updated: 2026-06-01 after v3.0 completion*
