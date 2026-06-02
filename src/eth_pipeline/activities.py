@@ -559,14 +559,18 @@ async def update_document_status_activity(
 
     try:
         async with get_db(**params) as db:
-            # Use inline UPDATE with f-string — SurrealDB v3 does not
-            # accept variable-bound doc_refs in UPDATE statements.
-            # For error_message, pass null directly via string for None.
-            err_literal = "null" if error_message is None else f"'{error_message.replace(chr(39), chr(39)+chr(39))}'"
-            await db.query(
-                f"UPDATE {doc_ref} SET status = '{status}', "
-                f"error_message = {err_literal}, updated_at = time::now()",
-            )
+            if error_message is None:
+                await db.query(
+                    f"UPDATE {doc_ref} SET status = $status, "
+                    "error_message = null, updated_at = time::now()",
+                    {"status": status},
+                )
+            else:
+                await db.query(
+                    f"UPDATE {doc_ref} SET status = $status, "
+                    "error_message = $error_message, updated_at = time::now()",
+                    {"status": status, "error_message": error_message},
+                )
     except ConnectionError as exc:
         activity.logger.error(
             "SurrealDB connection failed in update_document_status_activity: %s",
@@ -627,6 +631,7 @@ async def store_extraction_results_activity(
     """
     params = _db_params()
     doc_ref = f"document:{document_id}"
+    doc_record = RecordID("document", document_id)
     events = result.get("events", [])
 
     activity.logger.info(
@@ -676,7 +681,7 @@ async def store_extraction_results_activity(
                         "tiempo": event_data.get("tiempo"),
                         "humanos": event_data.get("humanos"),
                         "objetos": event_data.get("objetos"),
-                        "document": doc_ref,
+                        "document": doc_record,
                         "extraction_confidence": 1.0,
                     },
                 )
