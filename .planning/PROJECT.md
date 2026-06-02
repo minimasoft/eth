@@ -27,6 +27,54 @@ Every extracted event must be traceable to its exact source text in the original
 
 **v3.0: Web UI — COMPLETE.** FastAPI serves static HTML/CSS/JS single-page application at `/ui` — no build step, no authentication. Three-tab navigation (Upload, Documents, Entities). Document upload via file picker with success/error feedback and loading states. Paginated document list (20/page) with search, status filter, and colored status badges. Paginated entity list (20/page) with search, type filter, reference counts, and plain-text type labels. 4 phases (9-12), 4 plans, all verified.
 
+**v4.0: Pipeline Quality & Entity Resolution — IN PROGRESS.** Improving extraction quality: reference offsets (character + page), structured event objects as canonical entities (event type with time/place/participants/objects), search-first entity resolution during extraction, per-document processing logs with error/warning accumulation, short legal document test corpus, and README/docs update.
+
+## Current Milestone: v4.0 Pipeline Quality & Entity Resolution
+
+**Goal:** Improve extraction quality with proper offsets, structured event objects, search-first entity resolution, processing logs, and comprehensive tests.
+
+**Target features:**
+- Reference offsets (character + page) in extracted references
+- Structured event objects as canonical entities (event type) with time/place/participants/objects
+- Search-first entity resolution during extraction (query existing entities, LLM-assisted create)
+- Per-document processing log (JSON-like entries per step, error/warning accumulation)
+- Short legal document(s) as test examples
+- README/docs update explaining the core pipeline
+
+## Requirements
+
+### Validated
+
+<!-- Shipped and confirmed valuable. -->
+
+- ✓ M001: Core Pipeline — Document ingestion, LLM event extraction, event/reference storage with provenance, Temporal workflow, GraphQL API
+- ✓ M002: Entity Resolution — Canonical entities (place/person/object/tiempo), reference accumulation, merge/split correction
+- ✓ v2.0: Blob & Chunk Pipeline — MinIO blob storage, PDF extraction, chunking, workflow integration
+- ✓ v3.0: Web UI — Static SPA with Upload/Documents/Entities tabs, pagination, search/filter
+
+### Active
+
+<!-- Current scope. Building toward these. -->
+
+- [ ] Improve reference extraction with character + page offsets
+- [ ] Extract structured event objects as canonical entity type
+- [ ] Link events to canonical entities (search-first, LLM-assisted create)
+- [ ] Per-document processing log with error/warning accumulation
+- [ ] Short legal document test corpus
+- [ ] README/docs update explaining core pipeline
+
+### Out of Scope
+
+<!-- Explicit boundaries. Includes reasoning to prevent re-adding. -->
+
+- Authentication / Multi-user — Not needed for single-user research tool
+- Real-time collaboration — Out of scope until multi-user exists
+- Mobile app — Web-first, defer indefinitely
+
+## Context
+
+Current pipeline extracts raw events with verbatim references. References lack precise text offsets and page provenance. Entity resolution is post-hoc (merge/split after extraction) rather than search-first during extraction. Event objects are flat — no structured time/place/participants fields. Processing errors cause hard failures rather than accumulating warnings.
+
 ## Architecture / Key Patterns
 
 - **Database:** SurrealDB (multi-model: document + graph + geospatial, auto-GraphQL from schema COMMENT annotations)
@@ -45,7 +93,7 @@ Every extracted event must be traceable to its exact source text in the original
 
 ## Capability Contract
 
-See `.gsd/REQUIREMENTS.md` for the explicit capability contract, requirement status, and coverage mapping.
+See `.planning/REQUIREMENTS.md` for the explicit capability contract, requirement status, and coverage mapping.
 
 ## Milestone Sequence
 
@@ -53,6 +101,7 @@ See `.gsd/REQUIREMENTS.md` for the explicit capability contract, requirement sta
 - [x] M002: Entity Resolution — Canonical places/persons/objects, reference accumulation via LLM-powered per-type batching (place/person/object, skip tiempo), merge/split correction operations. Temporal integration with nullify-then-recreate replay safety. Validated: 14/14 Python checks, 6/6 TypeScript tests, all cross-slice boundaries honored.
 - [x] v2.0: Blob & Chunk Pipeline — MinIO blob storage, PDF extraction, chunking, workflow integration. 3 phases (6-8), 6 plans.
 - [x] v3.0: Web UI — Static HTML/CSS/JS SPA served at /ui with three-tab navigation, document upload, paginated document list, and paginated entity list. 4 phases (9-12), 4 plans.
+- [ ] v4.0: Pipeline Quality & Entity Resolution — IN PROGRESS
 
 ## Evolution
 
@@ -72,4 +121,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---  
-*Last updated: 2026-06-01 after v3.0 milestone completion*
+*Last updated: 2026-06-02 after v4.0 milestone start*
