@@ -25,7 +25,7 @@ Milestone: v3.0 (Web UI) — SHIPPED 2026-06-02
 Phases: 9-12 (4 phases)
 Plans: 4/4 complete
 Status: COMPLETE
-Last activity: 2026-06-02 - Completed quick task 260602-gjq: improve workflow visibility - fix premature processed status, add reference/entity/chunk/word counts to API and UI
+Last activity: 2026-06-02 - Completed quick task 260602-j53: Fix cascade delete in m002 test cleanup — delete events/references/chunks before documents
 
 Progress: [████████████████████] 100%
 
@@ -74,6 +74,7 @@ None.
 | 260602-430 | Add delete button (SVG icon) to documents view in the HTML UI | 2026-06-02 | f063637 | [260602-430-add-delete-button-documents-ui](./quick/260602-430-add-delete-button-documents-ui/) |
 | 260602-fis | UI improvements: refresh buttons, always-refresh on tab switch, references tab, detailed status | 2026-06-02 | 85e4a22 | [260602-fis-improve-the-single-page-ui-served-by-fas](./quick/260602-fis-improve-the-single-page-ui-served-by-fas/) |
 | 260602-gjq | Improve workflow visibility - fix premature processed status, add reference/entity/chunk/word counts to API and UI | 2026-06-02 | e3b5f17 | [260602-gjq-improve-workflow-visibility-some-documen](./quick/260602-gjq-improve-workflow-visibility-some-documen/) |
+| 260602-j53 | Fix cascade delete in m002 test cleanup — delete events/references/chunks before documents | 2026-06-02 | | [260602-j53-fix-cascade-delete-in-m002-test-cleanup-](./quick/260602-j53-fix-cascade-delete-in-m002-test-cleanup-/) |
 
 ## Deferred Items
 
