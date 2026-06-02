@@ -461,7 +461,7 @@
     }
 
     .documents-table th.col-status {
-      width: 120px;
+      width: 160px;
     }
 
     .documents-table td {
@@ -533,6 +533,25 @@
       color: #991b1b;
     }
 
+    .status-badge.status-extracted {
+      background: #f0fdf4;
+      border-color: #bbf7d0;
+      color: #166534;
+    }
+
+    .status-badge.status-extracting_blob,
+    .status-badge.status-extracting_text,
+    .status-badge.status-chunking {
+      background: #eff6ff;
+      border-color: #bfdbfe;
+      color: #1d4ed8;
+    }
+
+    .btn-icon.btn-refresh:hover {
+      color: #2563eb;
+      background: #eff6ff;
+    }
+
     /* ---- Entity type labels ---- */
 
     .entity-type-label {
@@ -599,6 +618,7 @@
     <button role="tab" aria-selected="true" aria-controls="tab-upload" id="tab-btn-upload" data-tab="upload">Upload</button>
     <button role="tab" aria-selected="false" aria-controls="tab-documents" id="tab-btn-documents" data-tab="documents">Documents</button>
     <button role="tab" aria-selected="false" aria-controls="tab-entities" id="tab-btn-entities" data-tab="entities">Entities</button>
+    <button role="tab" aria-selected="false" aria-controls="tab-references" id="tab-btn-references" data-tab="references">References</button>
   </nav>
 
   <main>
@@ -634,6 +654,9 @@
             <option value="processed">Processed</option>
             <option value="failed">Failed</option>
           </select>
+          <button class="btn-icon btn-refresh" id="doc-refresh-btn" aria-label="Refresh documents" title="Refresh documents">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+          </button>
         </div>
         <div id="documents-loading" class="documents-loading">Loading documents...</div>
         <div id="documents-table-container" class="table-container" style="display:none">
@@ -678,6 +701,9 @@
             <option value="person">Person</option>
             <option value="object">Object</option>
           </select>
+          <button class="btn-icon btn-refresh" id="entity-refresh-btn" aria-label="Refresh entities" title="Refresh entities">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+          </button>
         </div>
         <div id="entities-loading" class="documents-loading">Loading entities...</div>
         <div id="entities-table-container" class="table-container" style="display:none">
@@ -703,6 +729,53 @@
         </div>
       </div>
     </section>
+
+    <section id="tab-references" role="tabpanel" aria-labelledby="tab-btn-references" class="tab-content">
+      <div id="references-container">
+        <div class="documents-header">
+          <h2>References</h2>
+        </div>
+        <div class="documents-toolbar">
+          <div class="search-wrapper">
+            <input type="text" id="ref-search" class="search-input" placeholder="Search by verbatim text..." aria-label="Search references by text" />
+            <button id="ref-search-clear" class="search-clear" aria-label="Clear search" style="display:none">&times;</button>
+          </div>
+          <select id="ref-type-filter" class="status-filter" aria-label="Filter by reference type">
+            <option value="">All types</option>
+            <option value="espacio">Espacio</option>
+            <option value="tiempo">Tiempo</option>
+            <option value="humanos">Humanos</option>
+            <option value="objetos">Objetos</option>
+          </select>
+          <button class="btn-icon btn-refresh" id="ref-refresh-btn" aria-label="Refresh references" title="Refresh references">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+          </button>
+        </div>
+        <div id="references-loading" class="documents-loading">Loading references...</div>
+        <div id="references-table-container" class="table-container" style="display:none">
+          <table class="documents-table">
+            <thead>
+              <tr>
+                <th style="width:auto">Verbatim Text</th>
+                <th style="width:110px">Type</th>
+                <th style="width:auto">Event</th>
+                <th style="width:auto">Document</th>
+              </tr>
+            </thead>
+            <tbody id="references-tbody"></tbody>
+          </table>
+        </div>
+        <div id="references-empty" class="placeholder-card" style="display:none">
+          <h2>No references found</h2>
+          <p>References will appear here after documents are processed</p>
+        </div>
+        <div id="references-pagination" class="documents-pagination" style="display:none">
+          <button id="ref-prev-btn" class="btn-outline" disabled>&larr; Previous</button>
+          <span id="ref-page-info" class="page-info">Page 1 of 1</span>
+          <button id="ref-next-btn" class="btn-outline" disabled>Next &rarr;</button>
+        </div>
+      </div>
+    </section>
   </main>
 
   <script>
@@ -711,6 +784,7 @@
       upload: document.getElementById('tab-upload'),
       documents: document.getElementById('tab-documents'),
       entities: document.getElementById('tab-entities'),
+      references: document.getElementById('tab-references'),
     };
 
     function switchTab(tabName) {
@@ -730,11 +804,18 @@
       tabButton.setAttribute('aria-selected', 'true');
     }
 
-    tabs.forEach(tab => {
-      tab.addEventListener('click', () => switchTab(tab.dataset.tab));
-    });
-
     switchTab('upload');
+
+    function onTabClick(tabName) {
+      switchTab(tabName);
+      if (tabName === 'documents') fetchDocuments();
+      if (tabName === 'entities') fetchEntities();
+      if (tabName === 'references') fetchReferences();
+    }
+
+    tabs.forEach(tab => {
+      tab.addEventListener('click', () => onTabClick(tab.dataset.tab));
+    });
 
     const fileInput = document.getElementById('file-input');
     const chooseBtn = document.getElementById('choose-files-btn');
@@ -853,7 +934,6 @@
     let docsSearchTerm = '';
     let docsStatusFilter = '';
     let docsLoadingFlag = false;
-    let docsFirstLoad = true;
     let searchDebounceTimer = null;
 
     function formatDate(isoStr) {
@@ -956,7 +1036,11 @@
           '<td class="doc-id">' + escapeHtml(shortId) + '</td>' +
           '<td class="doc-filename">' + escapeHtml(item.filename || '') + '</td>' +
           '<td class="doc-date">' + escapeHtml(formatDate(item.created_at)) + '</td>' +
-          '<td><span class="' + statusClass(item.status) + '">' + escapeHtml(statusLabel(item.status)) + '</span></td>' +
+          '<td><span class="' + statusClass(item.status) + '">' + escapeHtml(statusLabel(item.status)) + '</span>' +
+          (item.status === 'failed' && item.error_message
+            ? '<br><span style="font-size:12px;color:#991b1b;max-width:200px;display:inline-block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + escapeHtml(item.error_message) + '">' + escapeHtml(item.error_message) + '</span>'
+            : '') +
+          '</td>' +
           '<td class="col-actions"><button class="btn-icon btn-delete" data-document-id="' + escapeHtml(item.document_id) + '" data-filename="' + escapeHtml(item.filename || '') + '" aria-label="Delete document" title="Delete document">' +
           '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>' +
           '</button></td>';
@@ -1052,22 +1136,7 @@
         });
     });
 
-    // Trigger document fetch when Documents tab is shown
-    var _origSwitchTab = switchTab;
-    switchTab = function(tabName) {
-      _origSwitchTab(tabName);
-      if (tabName === 'documents' && docsFirstLoad) {
-        docsFirstLoad = false;
-        fetchDocuments();
-      }
-    };
-
-    // If Documents is the active tab on page load (won't be, but handle edge case)
-    var activeTab = document.querySelector('nav button.active');
-    if (activeTab && activeTab.dataset.tab === 'documents') {
-      docsFirstLoad = false;
-      fetchDocuments();
-    }
+    // Trigger document fetch when Documents tab is shown (handled in onTabClick)
 
     // ===== Entities tab =====
 
@@ -1087,7 +1156,6 @@
     let entitiesSearchTerm = '';
     let entitiesTypeFilter = '';
     let entitiesLoadingFlag = false;
-    let entitiesFirstLoad = true;
 
     function showEntityLoading() {
       entityLoading.style.display = 'flex';
@@ -1221,25 +1289,163 @@
       fetchEntities();
     });
 
-    // Trigger entity fetch when Entities tab is shown
-    var _origSwitchTab2 = switchTab;
-    switchTab = function(tabName) {
-      _origSwitchTab2(tabName);
-      if (tabName === 'documents' && docsFirstLoad) {
-        docsFirstLoad = false;
-        fetchDocuments();
-      }
-      if (tabName === 'entities' && entitiesFirstLoad) {
-        entitiesFirstLoad = false;
-        fetchEntities();
-      }
-    };
+    // Refresh button handlers
+    document.getElementById('doc-refresh-btn').addEventListener('click', fetchDocuments);
+    document.getElementById('entity-refresh-btn').addEventListener('click', fetchEntities);
 
-    // If Entities is the active tab on page load (won't be, but handle edge case)
-    if (activeTab && activeTab.dataset.tab === 'entities') {
-      entitiesFirstLoad = false;
-      fetchEntities();
+    // ===== References tab =====
+
+    const refSearch = document.getElementById('ref-search');
+    const refSearchClear = document.getElementById('ref-search-clear');
+    const refTypeFilter = document.getElementById('ref-type-filter');
+    const refTbody = document.getElementById('references-tbody');
+    const refTableContainer = document.getElementById('references-table-container');
+    const refLoading = document.getElementById('references-loading');
+    const refEmpty = document.getElementById('references-empty');
+    const refPagination = document.getElementById('references-pagination');
+    const refPrevBtn = document.getElementById('ref-prev-btn');
+    const refNextBtn = document.getElementById('ref-next-btn');
+    const refPageInfo = document.getElementById('ref-page-info');
+
+    let refsCurrentPage = 1;
+    let refsSearchTerm = '';
+    let refsTypeFilter = '';
+    let refsLoadingFlag = false;
+
+    function showRefLoading() {
+      refLoading.style.display = 'flex';
+      refTableContainer.style.display = 'none';
+      refEmpty.style.display = 'none';
+      refPagination.style.display = 'none';
     }
+
+    function hideRefLoading() {
+      refLoading.style.display = 'none';
+    }
+
+    function truncateText(text, maxLen) {
+      if (!text) return '';
+      if (text.length <= maxLen) return text;
+      return text.slice(0, maxLen) + '...';
+    }
+
+    async function fetchReferences() {
+      if (refsLoadingFlag) return;
+      refsLoadingFlag = true;
+      showRefLoading();
+
+      const params = new URLSearchParams();
+      params.set('page', String(refsCurrentPage));
+      params.set('per_page', '20');
+      if (refsSearchTerm) params.set('search', refsSearchTerm);
+      if (refsTypeFilter) params.set('reference_type', refsTypeFilter);
+
+      try {
+        const res = await fetch('/references?' + params.toString());
+        if (!res.ok) {
+          let detail = 'Failed to fetch references';
+          try {
+            const errData = await res.json();
+            if (errData && errData.detail) detail = errData.detail;
+          } catch (_pe) { /* ignore parse error */ }
+          throw new Error(detail);
+        }
+        const data = await res.json();
+        renderReferences(data);
+      } catch (err) {
+        console.error('fetchReferences error:', err);
+        hideRefLoading();
+        refTableContainer.style.display = 'none';
+        refPagination.style.display = 'none';
+        refEmpty.style.display = 'block';
+        refEmpty.querySelector('p').textContent = 'Error loading references: ' + err.message;
+        showBanner('Failed to load references: ' + err.message, 'error', false);
+      } finally {
+        refsLoadingFlag = false;
+      }
+    }
+
+    function renderReferences(data) {
+      hideRefLoading();
+
+      if (!data || !data.items || data.items.length === 0) {
+        refTableContainer.style.display = 'none';
+        refPagination.style.display = 'none';
+        refEmpty.style.display = 'block';
+        refEmpty.querySelector('p').textContent = refsSearchTerm || refsTypeFilter
+          ? 'No references match your search criteria'
+          : 'References will appear here after documents are processed';
+        return;
+      }
+
+      refEmpty.style.display = 'none';
+      refTableContainer.style.display = '';
+      refPagination.style.display = 'flex';
+
+      refTbody.innerHTML = '';
+      data.items.forEach(function(item) {
+        var tr = document.createElement('tr');
+        tr.innerHTML =
+          '<td style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + escapeHtml(item.verbatim_text || '') + '">' + escapeHtml(truncateText(item.verbatim_text, 120)) + '</td>' +
+          '<td><span class="entity-type-label">' + escapeHtml(item.reference_type || '') + '</span></td>' +
+          '<td style="max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + escapeHtml(item.event_que_paso || '') + '">' + escapeHtml(truncateText(item.event_que_paso, 80)) + '</td>' +
+          '<td>' + escapeHtml(item.document_filename || '-') + '</td>';
+        refTbody.appendChild(tr);
+      });
+
+      var page = data.page || 1;
+      var pages = data.pages || 0;
+
+      refPageInfo.textContent = 'Page ' + page + ' of ' + pages;
+
+      refPrevBtn.disabled = page <= 1;
+      refNextBtn.disabled = page >= pages;
+    }
+
+    // Search with debounce
+    refSearch.addEventListener('input', function() {
+      if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
+      var val = refSearch.value;
+      refSearchClear.style.display = val ? '' : 'none';
+      searchDebounceTimer = setTimeout(function() {
+        refsSearchTerm = val;
+        refsCurrentPage = 1;
+        fetchReferences();
+      }, 300);
+    });
+
+    // Clear search
+    refSearchClear.addEventListener('click', function() {
+      refSearch.value = '';
+      refSearchClear.style.display = 'none';
+      refsSearchTerm = '';
+      refsCurrentPage = 1;
+      if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
+      fetchReferences();
+    });
+
+    // Type filter change
+    refTypeFilter.addEventListener('change', function() {
+      refsTypeFilter = refTypeFilter.value;
+      refsCurrentPage = 1;
+      fetchReferences();
+    });
+
+    // Pagination
+    refPrevBtn.addEventListener('click', function() {
+      if (refPrevBtn.disabled) return;
+      refsCurrentPage = Math.max(1, refsCurrentPage - 1);
+      fetchReferences();
+    });
+
+    refNextBtn.addEventListener('click', function() {
+      if (refNextBtn.disabled) return;
+      refsCurrentPage = refsCurrentPage + 1;
+      fetchReferences();
+    });
+
+    // Refresh button
+    document.getElementById('ref-refresh-btn').addEventListener('click', fetchReferences);
   </script>
 </body>
 </html>
