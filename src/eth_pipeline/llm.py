@@ -180,8 +180,8 @@ OPENROUTER_BASE_URL = "https://openrouter.ai"
 # Target characters of document text per extraction chunk.  Each chunk is
 # sent to the LLM sequentially with already-extracted events as context,
 # so the model finds NEW events per chunk without exceeding the context
-# window.  ~200K tokens of text at ~4 chars/token for Spanish.
-EXTRACTION_CHUNK_SIZE = 800_000
+# window.  ~100K tokens of text at ~4 chars/token for Spanish.
+EXTRACTION_CHUNK_SIZE = 400_000
 
 # ---------------------------------------------------------------------------
 # Provider protocol
@@ -320,7 +320,7 @@ class OpenRouterProvider:
                     url,
                     headers=headers,
                     json=payload,
-                    timeout=120.0,
+                    timeout=300.0,
                 )
                 if not response.is_success:
                     logger.warning(
@@ -417,7 +417,7 @@ class OpenRouterProvider:
                     url,
                     headers=headers,
                     json=payload,
-                    timeout=120.0,
+                    timeout=300.0,
                 )
                 if not response.is_success:
                     logger.warning(
