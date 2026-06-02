@@ -30,6 +30,7 @@ import base64
 import io
 import logging
 import os
+from pathlib import Path
 import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -39,6 +40,7 @@ import httpx
 
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.responses import Response as FastAPIResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from surrealdb import AsyncWsSurrealConnection
 
@@ -330,6 +332,15 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan,
 )
+
+# Serve the web UI from /ui (single-page static application)
+STATIC_DIR = Path(__file__).resolve().parent / "static"
+if STATIC_DIR.is_dir():
+    app.mount(
+        "/ui",
+        StaticFiles(directory=str(STATIC_DIR), html=True),
+        name="ui",
+    )
 
 
 # =======================================================================
