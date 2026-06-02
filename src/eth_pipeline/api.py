@@ -1340,6 +1340,26 @@ async def delete_document(document_id: str) -> DocumentDeleted:
             document_id,
             orphaned,
         )
+
+        # ---- Terminate any running Temporal workflow for this document ----
+        temporal = getattr(app.state, "temporal", None)
+        if temporal is not None:
+            workflow_id = f"doc-{document_id}"
+            try:
+                handle = temporal.get_workflow_handle(workflow_id)
+                await handle.terminate(reason="document deleted via API")
+                logger.info(
+                    "Terminated Temporal workflow %s for deleted document %s",
+                    workflow_id,
+                    document_id,
+                )
+            except Exception as exc:
+                # Workflow may not exist (already completed or never started)
+                logger.info(
+                    "No active Temporal workflow to terminate for %s: %s",
+                    workflow_id,
+                    exc,
+                )
     except Exception as exc:
         logger.error(
             "Failed to delete document %s: %s",
