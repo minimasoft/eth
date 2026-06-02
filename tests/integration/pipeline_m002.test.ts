@@ -883,36 +883,12 @@ async function cleanupTestData(): Promise<void> {
     }
   }
 
-  // Delete test documents with cascade (events, references, chunks)
+  // Delete test documents (best-effort)
   for (const docId of testDocIds) {
-    const docRef = `document:${docId}`;
-
-    // Cascade: delete references first (they depend on events)
-    let sql = `DELETE reference WHERE event IN (SELECT id FROM event WHERE document = ${docRef});`;
-    let [, , error] = await sqlExecute(sql, 5_000);
+    const sql = `DELETE document:${docId};`;
+    const [, , error] = await sqlExecute(sql, 5_000);
     if (error) {
-      console.warn(`  ⚠️  Cleanup error (references) for ${docRef}: ${error}`);
-    }
-
-    // Cascade: delete events
-    sql = `DELETE event WHERE document = ${docRef};`;
-    [, , error] = await sqlExecute(sql, 5_000);
-    if (error) {
-      console.warn(`  ⚠️  Cleanup error (events) for ${docRef}: ${error}`);
-    }
-
-    // Cascade: delete document chunks
-    sql = `DELETE document_chunk WHERE document = ${docRef};`;
-    [, , error] = await sqlExecute(sql, 5_000);
-    if (error) {
-      console.warn(`  ⚠️  Cleanup error (chunks) for ${docRef}: ${error}`);
-    }
-
-    // Delete the document itself
-    sql = `DELETE ${docRef};`;
-    [, , error] = await sqlExecute(sql, 5_000);
-    if (error) {
-      console.warn(`  ⚠️  Cleanup error for ${docRef}: ${error}`);
+      console.warn(`  ⚠️  Cleanup error for document:${docId}: ${error}`);
     }
   }
 
