@@ -182,12 +182,13 @@ DEFINE FIELD event ON TABLE reference TYPE record<event>
     COMMENT 'Link to the event that this reference belongs to and substantiates';
 
 DEFINE FIELD canonical_entity ON TABLE reference TYPE record<canonical_entity> | null
+    DEFAULT null
     COMMENT 'Link to the resolved canonical entity record (M002)';
 
 DEFINE FIELD resolution_confidence ON TABLE reference TYPE number | null
     DEFAULT null
-    ASSERT $value IS NONE OR ($value >= 0 AND $value <= 1)
-    COMMENT 'Confidence score (0.0–1.0) for the canonical_entity resolution; null when not yet resolved';
+    ASSERT $value IS NONE OR $value IS NULL OR ($value >= 0 AND $value <= 1)
+    COMMENT 'Confidence score (0.0–1.0) for the canonical_entity resolution; NONE/null when not yet resolved';
 
 DEFINE FIELD created_at ON TABLE reference TYPE datetime
     DEFAULT time::now() READONLY

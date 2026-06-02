@@ -192,18 +192,22 @@ class DocumentProcessingWorkflow:
             )
 
             # Step 5: Store extraction results
-            await workflow.execute_activity(
+            store_result = await workflow.execute_activity(
                 store_extraction_results_activity,
                 args=[document_id, result],
                 start_to_close_timeout=timedelta(seconds=10),
             )
+            if "error" in store_result:
+                raise RuntimeError(store_result["error"])
 
             # Step 6: Resolve verbatim references
-            await workflow.execute_activity(
+            resolve_result = await workflow.execute_activity(
                 resolve_entities_activity,
                 args=[document_id, result],
                 start_to_close_timeout=timedelta(seconds=30),
             )
+            if "error" in resolve_result:
+                raise RuntimeError(resolve_result["error"])
 
             # Step 7: Mark as fully processed (only after all steps complete)
             await workflow.execute_activity(

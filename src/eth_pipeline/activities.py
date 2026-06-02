@@ -716,47 +716,60 @@ async def store_extraction_results_activity(
             # ---- Create events and collect their IDs ----
             total_references = 0
             for event_data in events:
-                created = await db.create(
-                    "event",
+                # Use raw SQL CREATE with explicit null for nullable fields.
+                # SurrealDB Python SDK's db.create() converts Python None to
+                # NONE (field-with-no-value) instead of null, which SCHEMAFULL
+                # rejects for nullable string|record fields.
+                event_result = await db.query(
+                    "CREATE event CONTENT { "
+                    "que_paso: $que_paso, "
+                    "espacio: $espacio, "
+                    "tiempo: $tiempo, "
+                    "humanos: $humanos, "
+                    "objetos: $objetos, "
+                    "document: $document, "
+                    "extraction_confidence: 1.0 "
+                    "} RETURN id",
                     {
                         "que_paso": event_data.get("que_paso", ""),
-                        "espacio": event_data.get("espacio"),
-                        "tiempo": event_data.get("tiempo"),
-                        "humanos": event_data.get("humanos"),
-                        "objetos": event_data.get("objetos"),
+                        "espacio": event_data.get("espacio") or "",
+                        "tiempo": event_data.get("tiempo") or "",
+                        "humanos": event_data.get("humanos") or "",
+                        "objetos": event_data.get("objetos") or "",
                         "document": doc_record,
-                        "extraction_confidence": 1.0,
                     },
                 )
-
-                # The created record's id is typically at created["id"]
-                # or the record itself.  SurrealDB returns the full record.
-                event_id = None
-                if isinstance(created, dict):
-                    event_id = created.get("id")
-                if event_id is None:
-                    # Fallback: create returns a list sometimes
-                    if isinstance(created, list) and len(created) > 0:
-                        event_id = created[0].get("id") if isinstance(created[0], dict) else None
-
-                if event_id is None:
+                created = _extract_query_results(event_result)
+                if not created:
                     activity.logger.error(
                         "Could not extract event id from create result: %s",
-                        created,
+                        event_result,
+                    )
+                    continue
+                event_rid = created[0].get("id")
+                if not isinstance(event_rid, RecordID):
+                    activity.logger.error(
+                        "Unexpected event id type: %s", event_rid,
                     )
                     continue
 
                 # ---- Create references linked to this event ----
                 references = event_data.get("references", [])
                 for ref in references:
-                    await db.create(
-                        "reference",
+                    await db.query(
+                        "CREATE reference CONTENT { "
+                        "reference_type: $ref_type, "
+                        "verbatim_text: $vt, "
+                        "span_start: $ss, "
+                        "span_end: $se, "
+                        "event: $evt "
+                        "}",
                         {
-                            "reference_type": ref.get("reference_type", ""),
-                            "verbatim_text": ref.get("verbatim_text", ""),
-                            "span_start": int(ref.get("span_start", 0)),
-                            "span_end": int(ref.get("span_end", 0)),
-                            "event": event_id,
+                            "ref_type": ref.get("reference_type", ""),
+                            "vt": ref.get("verbatim_text", ""),
+                            "ss": int(ref.get("span_start", 0)),
+                            "se": int(ref.get("span_end", 0)),
+                            "evt": event_rid,
                         },
                     )
                     total_references += 1

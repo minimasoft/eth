@@ -901,30 +901,34 @@ async def get_document(document_id: str) -> DocumentStatus:
         created_at_str = None
 
     # Query visibility counts (non-fatal — defaults to 0 on failure)
+    from surrealdb.data.types.record_id import RecordID
+
+    doc_id_obj = RecordID("document", document_id)
     ref_count = 0
     ent_count = 0
     chunk_count = 0
     text_word_count = 0
-    doc_ref_str = f"document:{document_id}"
     try:
         ref_result = await db.query(
             "SELECT count() AS total FROM reference "
-            "WHERE event IN (SELECT id FROM event WHERE document = $doc_ref)",
-            {"doc_ref": doc_ref_str},
+            "WHERE event.document = $doc_ref GROUP ALL",
+            {"doc_ref": doc_id_obj},
         )
         ref_count = _parse_count(ref_result)
 
         ent_result = await db.query(
             "SELECT count() AS total FROM reference "
-            "WHERE event IN (SELECT id FROM event WHERE document = $doc_ref) "
-            "AND canonical_entity IS NOT NONE",
-            {"doc_ref": doc_ref_str},
+            "WHERE event.document = $doc_ref "
+            "AND canonical_entity IS NOT NONE "
+            "AND canonical_entity IS NOT NULL "
+            "GROUP ALL",
+            {"doc_ref": doc_id_obj},
         )
         ent_count = _parse_count(ent_result)
 
         chunk_result = await db.query(
             "SELECT count() AS total FROM document_chunk WHERE document = $doc_ref",
-            {"doc_ref": doc_ref_str},
+            {"doc_ref": doc_id_obj},
         )
         chunk_count = _parse_count(chunk_result)
 
@@ -1069,25 +1073,27 @@ async def list_documents(
         chunk_count = 0
         twc = 0
         try:
-            doc_ref_str = f"document:{doc_id}"
+            doc_ref_obj = RecordID("document", doc_id)
             ref_result = await db.query(
                 "SELECT count() AS total FROM reference "
-                "WHERE event IN (SELECT id FROM event WHERE document = $doc_ref)",
-                {"doc_ref": doc_ref_str},
+                "WHERE event.document = $doc_ref GROUP ALL",
+                {"doc_ref": doc_ref_obj},
             )
             ref_count = _parse_count(ref_result)
 
             ent_result = await db.query(
                 "SELECT count() AS total FROM reference "
-                "WHERE event IN (SELECT id FROM event WHERE document = $doc_ref) "
-                "AND canonical_entity IS NOT NONE",
-                {"doc_ref": doc_ref_str},
+                "WHERE event.document = $doc_ref "
+                "AND canonical_entity IS NOT NONE "
+                "AND canonical_entity IS NOT NULL "
+                "GROUP ALL",
+                {"doc_ref": doc_ref_obj},
             )
             ent_count = _parse_count(ent_result)
 
             chunk_result = await db.query(
                 "SELECT count() AS total FROM document_chunk WHERE document = $doc_ref",
-                {"doc_ref": doc_ref_str},
+                {"doc_ref": doc_ref_obj},
             )
             chunk_count = _parse_count(chunk_result)
 
@@ -1461,8 +1467,9 @@ async def delete_document(document_id: str) -> DocumentDeleted:
         # Collect canonical_entity RIDs that may become orphaned
         affected_ce_query = await db.query(
             "SELECT VALUE canonical_entity FROM reference "
-            "WHERE event IN (SELECT id FROM event WHERE document = $doc_id) "
-            "AND canonical_entity IS NOT NONE",
+            "WHERE event.document = $doc_id "
+            "AND canonical_entity IS NOT NONE "
+            "AND canonical_entity IS NOT NULL",
             {"doc_id": doc_ref},
         )
         affected_ce_rids = list({
