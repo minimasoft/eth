@@ -432,12 +432,16 @@
     }
 
     uploadBtn.addEventListener('click', async () => {
+      if (uploadBtn.disabled) return;
       uploadBtn.disabled = true;
+      chooseBtn.disabled = true;
+      const files = selectedFiles.slice();
       let allSuccess = true;
 
-      for (let i = 0; i < selectedFiles.length; i++) {
-        const file = selectedFiles[i];
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
         const statusEl = document.getElementById('status-' + i);
+        if (!statusEl) continue;
         statusEl.innerHTML = '<div class="spinner"></div>';
 
         const formData = new FormData();
@@ -462,14 +466,17 @@
         }
       }
 
-      if (allSuccess && selectedFiles.length > 0) {
+      if (allSuccess && files.length > 0) {
+        showBanner('All files uploaded successfully', 'success', true);
         setTimeout(() => {
           selectedFiles = [];
+          fileInput.value = '';
           renderFileList();
         }, 3000);
       }
 
       uploadBtn.disabled = false;
+      chooseBtn.disabled = false;
     });
   </script>
 </body>
