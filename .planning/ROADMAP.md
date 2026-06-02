@@ -163,13 +163,15 @@ Plans:
 **Requirements**: UPLD-01, UPLD-02
 
 **Success Criteria** (what must be TRUE):
-   1. User can click a file picker button, select one or more document files, and see them listed for upload
-   2. Clicking "Upload" sends the file(s) to `POST /documents/upload` and shows a success message with the returned document ID
-   3. If the upload fails (network error, server error), user sees an error message explaining what went wrong
-   4. Upload progress/state is visible while the request is in-flight (e.g., spinner or disabled button)
+    1. User can click a file picker button, select one or more document files, and see them listed for upload
+    2. Clicking "Upload" sends the file(s) to `POST /documents/upload` and shows a success message with the returned document ID
+    3. If the upload fails (network error, server error), user sees an error message explaining what went wrong
+    4. Upload progress/state is visible while the request is in-flight (e.g., spinner or disabled button)
 
-**Plans**: TBD
-**UI hint**: yes
+**Plans**: 1 plan
+
+Plans:
+- [ ] 10-01-PLAN.md — File picker, sequential upload to POST /documents/upload, success/error banners, loading state
 
 ---
 
@@ -222,6 +224,6 @@ Plans:
 | 7. PDF Text Extraction + Chunking | 2/2 | Complete | 2026-06-01 |
 | 8. Full Workflow Integration + Tests | 2/2 | Complete | 2026-06-01 |
 | 9. UI Foundation | 1/0 | In progress | - |
-| 10. Document Upload | 0/0 | Not started | - |
+| 10. Document Upload | 1/0 | Planning | - |
 | 11. Document List | 0/0 | Not started | - |
 | 12. Entity List | 0/0 | Not started | - |
