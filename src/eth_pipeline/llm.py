@@ -176,13 +176,11 @@ ENTITY_RESOLUTION_SYSTEM_PROMPT: str = (
 DEFAULT_MODEL = "deepseek/deepseek-v4-flash"
 OPENROUTER_BASE_URL = "https://openrouter.ai"
 
-# Maximum characters for document text sent to the LLM in a single call.
-# deepseek-v4-flash has a 1,048,576 token context window.  After accounting
-# for the system prompt, user message structure, JSON schema (~65K overhead),
-# roughly ~980K tokens remain for document text.  At ~4 chars per token for
-# Spanish text this is ~3.9M chars.  Using 3,500,000 as a safe limit (~875K
-# tokens, ~100K headroom).
-MAX_INPUT_CHARS = 3_500_000
+# Target characters of document text per extraction chunk.  Each chunk is
+# sent to the LLM sequentially with already-extracted events as context,
+# so the model finds NEW events per chunk without exceeding the context
+# window.  ~200K tokens of text at ~4 chars/token for Spanish.
+EXTRACTION_CHUNK_SIZE = 800_000
 
 # ---------------------------------------------------------------------------
 # Provider protocol
@@ -192,8 +190,12 @@ MAX_INPUT_CHARS = 3_500_000
 class LLMProvider(Protocol):
     """Protocol for LLM providers that extract structured events from text."""
 
-    async def extract_events(self, text: str) -> dict:
+    async def extract_events(self, text: str, prior_events: list[dict] | None = None) -> dict:
         """Extract structured events from *text*.
+
+        When *prior_events* is provided, the model is instructed to find
+        NEW events not already present in the prior list — enabling
+        sequential chunk-by-chunk processing of large documents.
 
         Returns a dict matching ``EVENT_EXTRACTION_SCHEMA`` (top-level key
         ``"events"`` containing a list of event objects with verbatim
@@ -281,20 +283,23 @@ class OpenRouterProvider:
     # Public API
     # ------------------------------------------------------------------
 
-    async def extract_events(self, text: str) -> dict:
+    async def extract_events(self, text: str, prior_events: list[dict] | None = None) -> dict:
         """Call OpenRouter and return parsed JSON matching the extraction schema.
 
         Parameters
         ----------
         text:
             Raw document text (typically Spanish legal/court document text).
+        prior_events:
+            Events already extracted from earlier chunks.  When provided, the
+            prompt instructs the model to find ONLY events not in this list.
 
         Returns
         -------
         dict
             Parsed JSON response body matching ``EVENT_EXTRACTION_SCHEMA``.
         """
-        payload = self._build_payload(text)
+        payload = self._build_payload(text, prior_events)
         url = f"{self._base_url}/api/v1/chat/completions"
         headers = self._headers()
 
@@ -455,13 +460,25 @@ class OpenRouterProvider:
             "Content-Type": "application/json",
         }
 
-    def _build_payload(self, text: str) -> dict:
+    def _build_payload(self, text: str, prior_events: list[dict] | None = None) -> dict:
         schema_json = json.dumps(EVENT_EXTRACTION_SCHEMA, indent=2, ensure_ascii=False)
-        user_content = (
+
+        user_parts: list[str] = []
+        if prior_events:
+            user_parts.append(
+                "Ya has extraído los siguientes eventos de partes anteriores del documento:\n"
+                f"{json.dumps(prior_events, ensure_ascii=False, indent=2)}\n\n"
+                "A continuación se muestra una NUEVA parte del documento. "
+                "Extrae ÚNICAMENTE los eventos NUEVOS que no aparecen en la lista anterior. "
+                "No repitas eventos ya extraídos.\n"
+            )
+
+        user_parts.append(
             f"Responde ÚNICAMENTE con un objeto JSON que se ajuste a este esquema:\n"
             f"```json\n{schema_json}\n```\n\n"
             f"{text}"
         )
+        user_content = "\n".join(user_parts)
         return {
             "model": self._model,
             "messages": [

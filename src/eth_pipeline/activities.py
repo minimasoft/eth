@@ -22,7 +22,7 @@ from eth_pipeline.extractors import (
     ExtractorQualityError,
     PdfExtractor,
 )
-from eth_pipeline.llm import DEFAULT_MODEL, MAX_INPUT_CHARS, OpenRouterProvider
+from eth_pipeline.llm import DEFAULT_MODEL, EXTRACTION_CHUNK_SIZE, OpenRouterProvider
 from eth_pipeline.storage import get_storage
 
 # ---------------------------------------------------------------------------
@@ -148,22 +148,55 @@ async def extract_events_activity(document_id: str) -> dict:
         model,
     )
 
-    if len(text) > MAX_INPUT_CHARS:
-        activity.logger.warning(
-            "Truncating text from %d to %d chars for document %s "
-            "(exceeds model context budget)",
-            len(text),
-            MAX_INPUT_CHARS,
+    # ---- Sequential chunked extraction ----
+    # Split long documents into chunks and process each with accumulated
+    # prior events, so each LLM call stays within the context window.
+    if len(text) > EXTRACTION_CHUNK_SIZE:
+        from langchain_text_splitters import RecursiveCharacterTextSplitter
+
+        splitter = RecursiveCharacterTextSplitter(
+            chunk_size=EXTRACTION_CHUNK_SIZE,
+            chunk_overlap=0,
+            separators=["\n\n", "\n", ". ", " ", ""],
+        )
+        chunks = splitter.split_text(text)
+        activity.logger.info(
+            "Split document into %d chunks for sequential extraction "
+            "[document_id=%s]",
+            len(chunks),
             document_id,
         )
-        text = text[:MAX_INPUT_CHARS]
+    else:
+        chunks = [text]
 
-    result = await provider.extract_events(text)
-    events = result.get("events", [])
+    all_events: list[dict] = []
+    for i, chunk in enumerate(chunks):
+        prior = all_events if all_events else None
+        activity.logger.info(
+            "Extracting chunk %d/%d [document_id=%s] [chunk_length=%d] "
+            "[prior_events=%d]",
+            i + 1,
+            len(chunks),
+            document_id,
+            len(chunk),
+            len(all_events),
+        )
+        chunk_result = await provider.extract_events(chunk, prior_events=prior)
+        chunk_events = chunk_result.get("events", [])
+        activity.logger.info(
+            "Chunk %d/%d returned %d events [document_id=%s]",
+            i + 1,
+            len(chunks),
+            len(chunk_events),
+            document_id,
+        )
+        all_events.extend(chunk_events)
+
+    result = {"events": all_events}
     activity.logger.info(
-        "extract_events_activity completed [document_id=%s] [event_count=%d]",
+        "extract_events_activity completed [document_id=%s] [total_events=%d]",
         document_id,
-        len(events),
+        len(all_events),
     )
     return result
 
