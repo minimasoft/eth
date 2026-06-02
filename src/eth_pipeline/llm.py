@@ -352,6 +352,13 @@ class OpenRouterProvider:
                 msg = f"OpenRouter returned invalid JSON: {body}"
                 logger.error("LLM API invalid JSON [model=%s] [body=%s]", self._model, body)
                 raise RuntimeError(msg) from exc
+            except httpx.RequestError as exc:
+                msg = f"LLM API request failed [model={self._model}] [error={exc}]"
+                logger.error(msg)
+                raise RuntimeError(msg) from exc
+            except asyncio.CancelledError:
+                logger.warning("LLM API call cancelled [model=%s] [url=%s]", self._model, url)
+                raise
 
         logger.info(
             "LLM request succeeded [model=%s] [response_keys=%s]",

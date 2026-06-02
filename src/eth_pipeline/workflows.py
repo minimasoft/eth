@@ -174,7 +174,7 @@ class DocumentProcessingWorkflow:
             result = await workflow.execute_activity(
                 extract_events_activity,
                 args=[document_id],
-                start_to_close_timeout=timedelta(seconds=60),
+                start_to_close_timeout=timedelta(seconds=180),
                 retry_policy=RetryPolicy(
                     maximum_attempts=3,
                     initial_interval=timedelta(seconds=5),

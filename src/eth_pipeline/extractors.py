@@ -209,7 +209,8 @@ class PdfExtractor:
         for i in range(len(pdf)):
             try:
                 page = pdf[i]
-                page_text = page.get_text_bounded()
+                text_page = page.get_text_page()
+                page_text = text_page.get_text_bounded()
                 page_texts.append(page_text)
             except Exception as exc:
                 logger.warning("Failed to extract text from page %d: %s", i, exc)
