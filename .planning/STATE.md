@@ -25,7 +25,7 @@ Milestone: v3.0 (Web UI) — SHIPPED 2026-06-02
 Phases: 9-12 (4 phases)
 Plans: 4/4 complete
 Status: COMPLETE
-Last activity: 2026-06-02 — v3.0 Web UI milestone archived and shipped
+Last activity: 2026-06-02 - Completed quick task 260601-vg4: Integration tests need a cascading document DELETE endpoint
 
 Progress: [████████████████████] 100%
 
@@ -64,6 +64,12 @@ None — milestone complete.
 ### Blockers/Concerns
 
 None.
+
+### Quick Tasks Completed
+
+| # | Description | Date | Commit | Directory |
+|---|-------------|------|--------|-----------|
+| 260601-vg4 | Integration tests need a cascading document DELETE endpoint (DELETE /documents/{id}) that removes events, references, chunks, and orphaned canonical_entities, plus update cleanupTestDocuments in all 3 test files to use it instead of DELETE /documents/{id}/events | 2026-06-02 | a8480a1 | [260601-vg4-integration-tests-need-a-cascading-docum](./quick/260601-vg4-integration-tests-need-a-cascading-docum/) |
 
 ## Deferred Items
 
