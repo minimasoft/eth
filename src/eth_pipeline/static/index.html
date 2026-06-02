@@ -5,7 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ETH Pipeline</title>
   <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    *, *::before, *::after { box-sizing: border-box; }
+    body { margin: 0; }
 
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -44,6 +45,8 @@
       align-items: center;
       padding: 0 24px;
       gap: 0;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
     }
 
     nav button {
@@ -58,7 +61,8 @@
       padding: 0 16px;
       cursor: pointer;
       border-bottom: 2px solid transparent;
-      transition: background 0.15s, color 0.15s;
+      flex-shrink: 0;
+      transition: background 0.15s;
     }
 
     nav button:hover {
@@ -112,32 +116,32 @@
     <h1>ETH Pipeline</h1>
   </header>
 
-  <nav>
-    <button data-tab="upload" class="active">Upload</button>
-    <button data-tab="documents">Documents</button>
-    <button data-tab="entities">Entities</button>
+  <nav role="tablist" aria-label="Main navigation">
+    <button role="tab" aria-selected="true" aria-controls="tab-upload" id="tab-btn-upload" data-tab="upload">Upload</button>
+    <button role="tab" aria-selected="false" aria-controls="tab-documents" id="tab-btn-documents" data-tab="documents">Documents</button>
+    <button role="tab" aria-selected="false" aria-controls="tab-entities" id="tab-btn-entities" data-tab="entities">Entities</button>
   </nav>
 
   <main>
-    <section id="tab-upload" class="tab-content active">
+    <section id="tab-upload" role="tabpanel" aria-labelledby="tab-btn-upload" class="tab-content">
       <div class="placeholder-card">
-        <div class="icon">📄</div>
+        <div class="icon" aria-hidden="true">📄</div>
         <h2>Upload Documents</h2>
         <p>Upload documents to the extraction pipeline</p>
       </div>
     </section>
 
-    <section id="tab-documents" class="tab-content">
+    <section id="tab-documents" role="tabpanel" aria-labelledby="tab-btn-documents" class="tab-content">
       <div class="placeholder-card">
-        <div class="icon">📋</div>
+        <div class="icon" aria-hidden="true">📋</div>
         <h2>Documents</h2>
         <p>View your uploaded documents</p>
       </div>
     </section>
 
-    <section id="tab-entities" class="tab-content">
+    <section id="tab-entities" role="tabpanel" aria-labelledby="tab-btn-entities" class="tab-content">
       <div class="placeholder-card">
-        <div class="icon">🔍</div>
+        <div class="icon" aria-hidden="true">🔍</div>
         <h2>Entities</h2>
         <p>Browse extracted entities</p>
       </div>
@@ -153,10 +157,20 @@
     };
 
     function switchTab(tabName) {
-      Object.values(sections).forEach(s => { s.classList.remove('active'); });
-      tabs.forEach(t => t.classList.remove('active'));
-      sections[tabName].classList.add('active');
-      document.querySelector(`nav button[data-tab="${tabName}"]`).classList.add('active');
+      const section = sections[tabName];
+      const tabButton = document.querySelector(`nav button[data-tab="${tabName}"]`);
+      if (!section || !tabButton) {
+        console.warn('switchTab: unknown tab "%s" — ignoring', tabName);
+        return;
+      }
+      tabs.forEach(t => {
+        t.classList.remove('active');
+        t.setAttribute('aria-selected', 'false');
+      });
+      Object.values(sections).forEach(s => s.classList.remove('active'));
+      section.classList.add('active');
+      tabButton.classList.add('active');
+      tabButton.setAttribute('aria-selected', 'true');
     }
 
     tabs.forEach(tab => {

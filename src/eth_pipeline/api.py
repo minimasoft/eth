@@ -341,6 +341,8 @@ if STATIC_DIR.is_dir():
         StaticFiles(directory=str(STATIC_DIR), html=True),
         name="ui",
     )
+else:
+    logger.warning("Static directory %s not found — UI will not be served at /ui", STATIC_DIR)
 
 
 # =======================================================================
