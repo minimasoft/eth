@@ -147,8 +147,10 @@ Plans:
    4. Clicking each tab shows the corresponding tab content and hides the others
    5. The page renders without JavaScript errors in DevTools console
 
-**Plans**: TBD
-**UI hint**: yes
+**Plans**: 1 plan
+
+Plans:
+- [ ] 09-01-PLAN.md — FastAPI static mount + single index.html with three-tab navigation
 
 ---
 
@@ -219,7 +221,7 @@ Plans:
 | 6. MinIO Infrastructure + Blob Upload | 2/2 | Complete | 2026-06-01 |
 | 7. PDF Text Extraction + Chunking | 2/2 | Complete | 2026-06-01 |
 | 8. Full Workflow Integration + Tests | 2/2 | Complete | 2026-06-01 |
-| 9. UI Foundation | 0/0 | Not started | - |
+| 9. UI Foundation | 1/0 | In progress | - |
 | 10. Document Upload | 0/0 | Not started | - |
 | 11. Document List | 0/0 | Not started | - |
 | 12. Entity List | 0/0 | Not started | - |
