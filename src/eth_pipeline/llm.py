@@ -173,7 +173,7 @@ ENTITY_RESOLUTION_SYSTEM_PROMPT: str = (
 # Defaults
 # ---------------------------------------------------------------------------
 
-DEFAULT_MODEL = "google/gemini-2.0-flash-001"
+DEFAULT_MODEL = "deepseek/deepseek-v4-flash"
 OPENROUTER_BASE_URL = "https://openrouter.ai"
 
 # ---------------------------------------------------------------------------
@@ -421,6 +421,9 @@ class OpenRouterProvider:
                     "schema": EVENT_EXTRACTION_SCHEMA,
                 },
             },
+            "max_tokens": 64000,
+            "temperature": 0.7,
+            "extra_body": {"reasoning": {"enabled": True}},
         }
 
     def _build_resolution_payload(
@@ -453,6 +456,9 @@ class OpenRouterProvider:
                     "schema": ENTITY_RESOLUTION_SCHEMA,
                 },
             },
+            "max_tokens": 64000,
+            "temperature": 0.7,
+            "extra_body": {"reasoning": {"enabled": True}},
         }
 
     @staticmethod
