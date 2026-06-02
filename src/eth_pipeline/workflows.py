@@ -8,14 +8,14 @@ The top-level ``DocumentProcessingWorkflow`` handles two document paths:
 
 * **Blob path** (``has_text_content=False``): binary PDF uploaded via MinIO
   or legacy base64 → ``extract_text_activity`` → ``chunk_document_activity``
-  → ``get_document_text_activity`` → ``extract_events_activity``
+  → ``extract_events_activity``
 * **Text path** (``has_text_content=True``): plain-text document submitted
   directly → ``extract_events_activity``
 
 Both paths converge on the same ``extract_events_activity`` call, which
-always receives the **full reconstructed text** from
-``document.text_content`` — never individual chunk records (chunk
-transparency).
+queries ``document.text_content`` from SurrealDB internally — never
+receives individual chunk records (chunk transparency) or large payloads
+through Temporal's serialization layer.
 """
 
 from __future__ import annotations
@@ -31,7 +31,6 @@ with workflow.unsafe.imports_passed_through():
         extract_events_activity,
         extract_text_activity,
         get_document_metadata_activity,
-        get_document_text_activity,
         resolve_entities_activity,
         store_extraction_results_activity,
         update_document_status_activity,
@@ -58,8 +57,8 @@ class DocumentProcessingWorkflow:
     ``processing`` → ``processed`` (extract events directly)
 
     Chunk transparency is guaranteed: ``extract_events_activity`` always
-    receives the full reconstructed text from ``document.text_content``,
-    never individual chunk records.
+    queries ``document.text_content`` from SurrealDB internally,
+    never receives individual chunk records.
     """
 
     @workflow.run
@@ -76,10 +75,10 @@ class DocumentProcessingWorkflow:
            - ``extracting_text`` (set by extract_text_activity)
            - ``chunk_document_activity`` → chunks stored + ``processed``
              set by chunk_document_activity
-           - ``get_document_text_activity`` to obtain full text
         4. If ``has_text_content`` is ``True`` (text path):
            - Use text_content directly from metadata
-        5. ``extract_events_activity(text)`` — full reconstructed text
+        5. ``extract_events_activity(document_id)`` — queries text from
+           SurrealDB internally (avoids large Temporal payloads)
         6. ``store_extraction_results_activity(document_id, result)``
         7. ``resolve_entities_activity(document_id, result)``
         8. Return summary dict with ``document_id``, ``event_count``,
@@ -149,22 +148,19 @@ class DocumentProcessingWorkflow:
                 )
                 if "error" in chunk_result:
                     raise RuntimeError(chunk_result["error"])
-
-                # Get the full reconstructed text from the document
-                text_data = await workflow.execute_activity(
-                    get_document_text_activity,
-                    args=[document_id],
-                    start_to_close_timeout=timedelta(seconds=10),
-                )
-                text = text_data.get("text_content", "")
             else:
                 # ---- TEXT PATH (Direct text) ----
-                text = metadata.get("text_content", "")
+                activity.logger.info(
+                    "Text path: document %s already has text_content",
+                    document_id,
+                )
 
             # Step 4: Extract events from full text (same for both paths)
+            # extract_events_activity queries text_content from SurrealDB
+            # internally to avoid passing large payloads through Temporal.
             result = await workflow.execute_activity(
                 extract_events_activity,
-                text,
+                args=[document_id],
                 start_to_close_timeout=timedelta(seconds=60),
                 retry_policy=RetryPolicy(
                     maximum_attempts=3,

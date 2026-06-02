@@ -31,8 +31,8 @@ print(f"✅ extract_events_activity import OK")
 @workflow.defn(name="extract_single")
 class ExtractSingle:
     @workflow.run
-    async def run(self, text: str) -> dict:
-        result = await extract_events_activity(text)
+    async def run(self, document_id: str) -> dict:
+        result = await extract_events_activity(document_id)
         return result
 
 async def main():

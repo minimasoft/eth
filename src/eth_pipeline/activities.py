@@ -88,8 +88,12 @@ async def _get_blob_from_minio(blob_path: str) -> bytes:
 
 
 @activity.defn
-async def extract_events_activity(text: str) -> dict:
-    """Extract structured events from raw document text via OpenRouter LLM.
+async def extract_events_activity(document_id: str) -> dict:
+    """Extract structured events from document text via OpenRouter LLM.
+
+    Queries ``text_content`` directly from SurrealDB (same pattern as
+    ``resolve_entities_activity``) to avoid passing large payloads through
+    Temporal's serialization layer.
 
     Reads ``OPENROUTER_API_KEY`` and ``OPENROUTER_MODEL`` from environment
     variables at runtime.  Falls back to a degraded error dict when the API
@@ -98,8 +102,8 @@ async def extract_events_activity(text: str) -> dict:
 
     Parameters
     ----------
-    text:
-        Raw document text from which events should be extracted.
+    document_id:
+        SurrealDB record ID of the document (e.g. ``"abc123"``).
 
     Returns
     -------
@@ -116,8 +120,30 @@ async def extract_events_activity(text: str) -> dict:
     model = os.environ.get("OPENROUTER_MODEL", DEFAULT_MODEL)
     provider = OpenRouterProvider(api_key=api_key, model=model)
 
+    params = _db_params()
+    doc_ref = f"document:{document_id}"
+
+    try:
+        async with get_db(**params) as db:
+            raw = await db.query(f"SELECT text_content FROM {doc_ref}")
+            rows = _extract_query_results(raw)
+            if not rows:
+                activity.logger.warning(
+                    "Document not found [document_id=%s]",
+                    document_id,
+                )
+                return {"error": "Document not found", "document_id": document_id}
+            text = rows[0].get("text_content") or ""
+    except ConnectionError as exc:
+        activity.logger.error(
+            "SurrealDB connection failed in extract_events_activity: %s",
+            exc,
+        )
+        return {"error": str(exc), "document_id": document_id}
+
     activity.logger.info(
-        "extract_events_activity called [text_length=%d] [model=%s]",
+        "extract_events_activity called [document_id=%s] [text_length=%d] [model=%s]",
+        document_id,
         len(text),
         model,
     )
@@ -125,7 +151,8 @@ async def extract_events_activity(text: str) -> dict:
     result = await provider.extract_events(text)
     events = result.get("events", [])
     activity.logger.info(
-        "extract_events_activity completed [event_count=%d]",
+        "extract_events_activity completed [document_id=%s] [event_count=%d]",
+        document_id,
         len(events),
     )
     return result
