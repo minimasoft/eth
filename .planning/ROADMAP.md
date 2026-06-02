@@ -190,8 +190,10 @@ Plans:
    4. Pagination controls show "Page X of Y" with Previous/Next navigation buttons
    5. If the documents API returns no results, a "No documents found" empty state is shown
 
-**Plans**: TBD
-**UI hint**: yes
+**Plans**: 1 plan
+
+Plans:
+- [x] 11-01-PLAN.md — GET /documents endpoint, table UI with search/filter/pagination, status badges
 
 ---
 
@@ -225,5 +227,5 @@ Plans:
 | 8. Full Workflow Integration + Tests | 2/2 | Complete | 2026-06-01 |
 | 9. UI Foundation | 1/0 | In progress | - |
 | 10. Document Upload | 1/0 | Planning | - |
-| 11. Document List | 0/0 | Not started | - |
+| 11. Document List | 1/1 | Complete | 2026-06-01 |
 | 12. Entity List | 0/0 | Not started | - |
