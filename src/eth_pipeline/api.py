@@ -26,6 +26,7 @@ continues in degraded mode (documents are ingested but not processed).
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import io
 import logging
@@ -619,7 +620,8 @@ async def upload_document(file: UploadFile = File(...)) -> DocumentUploadCreated
     try:
         async with get_storage_async() as minio_client:
             content_type = file.content_type or "application/octet-stream"
-            await minio_client.put_object(
+            await asyncio.to_thread(
+                minio_client.put_object,
                 os.environ.get("MINIO_BUCKET", "eth-documents"),
                 blob_path,
                 io.BytesIO(content),
@@ -675,7 +677,8 @@ async def upload_document(file: UploadFile = File(...)) -> DocumentUploadCreated
         if minio_available:
             try:
                 async with get_storage_async() as cleanup_client:
-                    cleanup_client.remove_object(
+                    await asyncio.to_thread(
+                        cleanup_client.remove_object,
                         os.environ.get("MINIO_BUCKET", "eth-documents"),
                         blob_path,
                     )
