@@ -1,5 +1,18 @@
 # Milestones
 
+## v3.0 Web UI (Shipped: 2026-06-02)
+
+**Phases completed:** 4 phases, 4 plans, 0 tasks
+
+**Key accomplishments:**
+
+- Serve three-tab SPA from FastAPI at `/ui`.
+- Replace Upload tab placeholder with functional file upload form.
+- Paginated document list endpoint (`GET /documents`) with search, status filter, and full frontend table UI with colored status badges.
+- Paginated entity list endpoint (`GET /entities`) with name search, type filter, reference counts, and full frontend table UI with plain-text type labels.
+
+---
+
 ## v2.0 v2.0 (Shipped: 2026-06-01)
 
 **Phases completed:** 3 phases, 6 plans, 0 tasks

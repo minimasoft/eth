@@ -25,16 +25,7 @@ Every extracted event must be traceable to its exact source text in the original
 
 **v2.0: Blob & Chunk Pipeline — COMPLETE.** MinIO Docker service with healthcheck, storage.py client factory, POST /documents/upload endpoint. PdfExtractor (pypdfium2, pypdf fallback), DocumentChunker with page-provenance tracking. Full workflow integration with conditional branch, status tracking, reprocess safety, backward compatibility, and integration tests. 3 phases (6-8), 6 plans, all verified.
 
-## Current Milestone: v3.0 Web UI
-
-**Goal:** Serve a basic web UI from the FastAPI API at `/ui` for document upload, listing, and entity browsing
-
-**Target features:**
-- Static HTML/CSS/JS served by FastAPI at `/ui` — no build step
-- Three-tab single-page UI: Upload, Documents, Entities
-- Upload tab with basic file picker calling POST /documents/upload
-- Documents tab: paginated list (20/page, text search) with ID, filename, upload date, processing status
-- Entities tab: paginated list (20/page, text search) with name, type, reference count
+**v3.0: Web UI — COMPLETE.** FastAPI serves static HTML/CSS/JS single-page application at `/ui` — no build step, no authentication. Three-tab navigation (Upload, Documents, Entities). Document upload via file picker with success/error feedback and loading states. Paginated document list (20/page) with search, status filter, and colored status badges. Paginated entity list (20/page) with search, type filter, reference counts, and plain-text type labels. 4 phases (9-12), 4 plans, all verified.
 
 ## Architecture / Key Patterns
 
@@ -49,6 +40,8 @@ Every extracted event must be traceable to its exact source text in the original
 - **Canonical entity model:** Unified canonical_entity table with entity_type enum, properties JSON, superseded_by soft-delete (decision D014)
 - **Entity resolution pattern:** Per-type batching (place/person/object, skip tiempo) with nullify-then-recreate replay safety
 - **Verification robustness:** Dual-path (GraphQL proxy + SQL fallback) for handling SurrealDB auto-GraphQL limitations
+- **Web UI delivery:** Static HTML/CSS/JS SPA — no build step, no npm/node, vanilla JS with fetch API, served via FastAPI StaticFiles mount at `/ui`
+- **API pagination envelope:** Paginated list endpoints returning `{ items, total, page, per_page, pages }` with dynamic parameterized SQL WHERE clauses for safe search/filter
 
 ## Capability Contract
 
@@ -59,7 +52,7 @@ See `.gsd/REQUIREMENTS.md` for the explicit capability contract, requirement sta
 - [x] M001: Core Pipeline — Document ingestion with status tracking, LLM event extraction (protocol-based, OpenRouter first), event/reference storage with full provenance, Temporal workflow with retry + replay, GraphQL API via SurrealDB native GraphQL proxy. Integration tests: 12/12 Python checks, 11/11 TypeScript tests.
 - [x] M002: Entity Resolution — Canonical places/persons/objects, reference accumulation via LLM-powered per-type batching (place/person/object, skip tiempo), merge/split correction operations. Temporal integration with nullify-then-recreate replay safety. Validated: 14/14 Python checks, 6/6 TypeScript tests, all cross-slice boundaries honored.
 - [x] v2.0: Blob & Chunk Pipeline — MinIO blob storage, PDF extraction, chunking, workflow integration. 3 phases (6-8), 6 plans.
-- [ ] v3.0: Web UI — Current milestone. Static HTML/CSS/JS UI served at /ui for upload, document list, entity browsing.
+- [x] v3.0: Web UI — Static HTML/CSS/JS SPA served at /ui with three-tab navigation, document upload, paginated document list, and paginated entity list. 4 phases (9-12), 4 plans.
 
 ## Evolution
 
@@ -79,4 +72,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---  
-*Last updated: 2026-06-01 after v3.0 milestone start*
+*Last updated: 2026-06-01 after v3.0 milestone completion*
