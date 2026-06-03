@@ -15,33 +15,42 @@
 <summary>✅ v1.2 M002 Integration Test Fixes (Phases 3-5) — SHIPPED 2026-05-31</summary>
 
 ### Phase 3: GraphQL Proxy Fixes
+
 **Goal**: Canonical entities and reference-to-canonical links created via SQL are visible through the GraphQL proxy
 **Depends on**: Nothing
 **Requirements**: GQL-01, GQL-02
 **Success Criteria** (what must be TRUE):
+
   1. SQL-inserted canonical entities return rows when queried via `POST /graphql` with `{ canonicalEntities { id entity_type name properties } }`
   2. SQL-inserted references with `canonical_entity` links return the linked entity via `POST /graphql` with `{ references { id canonical_entity { id } } }`
   3. Test 2 and Test 3 pass in `docker compose run --rm integration-tests`
+
 **Plans**: TBD
 
 ### Phase 4: Merge/Split Endpoint Fixes
+
 **Goal**: `POST /entities/merge` and `POST /entities/{type}/{id}/split` return HTTP 200 instead of 404
 **Depends on**: Phase 3
 **Requirements**: MERGE-01, SPLIT-01
 **Success Criteria** (what must be TRUE):
+
   1. `POST /entities/merge` with valid source/target entity IDs returns HTTP 200 with `{ success: true }`
   2. `POST /entities/{type}/{id}/split` with valid entity ID and partitions returns HTTP 200 with `{ success: true }`
   3. Test 4 and Test 5 pass in `docker compose run --rm integration-tests`
+
 **Plans**: TBD
 
 ### Phase 5: Regression Verification
+
 **Goal**: No regressions from fixes — all M001 and M002 tests pass
 **Depends on**: Phase 4
 **Requirements**: REGR-01
 **Success Criteria** (what must be TRUE):
+
   1. `docker compose run --rm integration-tests` exits with code 0
   2. All 8/8 M001 tests pass (no regression)
   3. All 6/6 M002 tests pass (fixes confirmed)
+
 **Plans**: TBD
 
 </details>
@@ -58,6 +67,7 @@
 **Requirements**: BLOB-01, BLOB-02, BLOB-03, BLOB-04, BLOB-05
 
 **Success Criteria** (what must be TRUE):
+
    1. Docker Compose starts MinIO service with healthcheck passing (`mc ready` succeeds)
    2. `eth-documents` bucket is auto-created on startup via init container script (`scripts/init_bucket.py`)
    3. `POST /documents/upload` accepts a multipart file upload and returns HTTP 201 with `{ document_id }`
@@ -67,6 +77,7 @@
 **Plans**: 2 plans
 
 Plans:
+
 - [x] 06-01-PLAN.md — MinIO Docker service, storage.py client factory, init_bucket.py script, schema update
 - [x] 06-02-PLAN.md — POST /documents/upload endpoint, DocumentStatus model update
 
@@ -81,6 +92,7 @@ Plans:
 **Requirements**: EXTR-01, EXTR-02, EXTR-03, EXTR-04, EXTR-05, CHNK-01, CHNK-02, CHNK-03, CHNK-04, CHNK-05
 
 **Success Criteria** (what must be TRUE):
+
    1. PDF uploaded via `POST /documents/upload` has its `text_content` populated automatically after Temporal processing
    2. Extracted text preserves page-level metadata — individual chunks report `page_start`/`page_end` correct for their content range
    3. Document chunks are stored in `document_chunk` SurrealDB table with `chunk_index`, `page_start`, `page_end`, `offset_start`, `offset_end`
@@ -90,6 +102,7 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
+
 - [x] 07-01-PLAN.md — Content extractors (ContentExtractor protocol, PdfExtractor, quality gate) + DocumentChunker with page-provenance tracking + dependencies
 - [x] 07-02-PLAN.md — document_chunk SurrealDB schema + Temporal activities (extract_text, chunk_document, store_chunks) + worker registration
 
@@ -104,6 +117,7 @@ Plans:
 **Requirements**: WFLW-01, WFLW-02, WFLW-03, WFLW-04, TEST-01, TEST-02, TEST-03
 
 **Success Criteria** (what must be TRUE):
+
    1. `DocumentProcessingWorkflow` handles both blob-path (binary PDF) and direct-text-path documents via conditional branch
    2. Processing status transitions through `extracting_blob` → `extracting_text` → `chunking` → `extracting_events` correctly
    3. `DELETE /documents/{id}/events` also clears `document_chunk` records — reprocess cycle leaves zero orphaned chunks
@@ -114,6 +128,7 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
+
 - [x] 08-01-PLAN.md — Workflow conditional branch, status schema, DELETE cascade, helper activities
 - [x] 08-02-PLAN.md — v2.0 pipeline integration tests
 
@@ -131,6 +146,7 @@ Plans:
 **Requirements**: UI-01, UI-02, UI-03
 
 **Success Criteria** (what must be TRUE):
+
    1. Loading `http://localhost:8001/ui` in a browser shows a styled single-page application
    2. The page has three visible tabs labeled "Upload", "Documents", and "Entities"
    3. The page title (HTML `<title>`) and main heading display "ETH Pipeline"
@@ -140,6 +156,7 @@ Plans:
 **Plans**: 1 plan
 
 Plans:
+
 - [x] 09-01-PLAN.md — FastAPI static mount + single index.html with three-tab navigation
 
 ---
@@ -153,6 +170,7 @@ Plans:
 **Requirements**: UPLD-01, UPLD-02
 
 **Success Criteria** (what must be TRUE):
+
    1. User can click a file picker button, select one or more document files, and see them listed for upload
    2. Clicking "Upload" sends the file(s) to `POST /documents/upload` and shows a success message with the returned document ID
    3. If the upload fails (network error, server error), user sees an error message explaining what went wrong
@@ -161,6 +179,7 @@ Plans:
 **Plans**: 1 plan
 
 Plans:
+
 - [x] 10-01-PLAN.md — File picker, sequential upload to POST /documents/upload, success/error banners, loading state
 
 ---
@@ -174,6 +193,7 @@ Plans:
 **Requirements**: DOCL-01, DOCL-02, DOCL-03
 
 **Success Criteria** (what must be TRUE):
+
    1. Documents tab shows a table/list with columns: ID, filename, upload date, and processing status
    2. Table shows the first 20 documents, with a "Next" button to load the next page
    3. User can type in a search box and filter documents by filename or processing status
@@ -183,6 +203,7 @@ Plans:
 **Plans**: 1 plan
 
 Plans:
+
 - [x] 11-01-PLAN.md — GET /documents endpoint, table UI with search/filter/pagination, status badges
 
 ---
@@ -196,6 +217,7 @@ Plans:
 **Requirements**: ENTL-01, ENTL-02, ENTL-03
 
 **Success Criteria** (what must be TRUE):
+
    1. Entities tab shows a table/list with columns: name, entity type, and reference count
    2. Table shows the first 20 entities, with a "Next" button to load the next page
    3. User can type in a search box and filter entities by name or entity type
@@ -205,6 +227,7 @@ Plans:
 **Plans**: 1 plan
 
 Plans:
+
 - [x] 12-01-PLAN.md — GET /entities endpoint, table UI with search/filter/pagination, entity type labels
 
 </details>
@@ -221,77 +244,103 @@ Plans:
 ## Phase Details
 
 ### Phase 13: Schema Evolution
+
 **Goal**: All v4.0 schema prerequisites exist — additive SurrealDB DDL only, no destructive migrations
 **Depends on**: Nothing (infrastructure-first phase)
 **Requirements**: OFFS-01, OFFS-02, OFFS-04, LOGS-01, EVNT-01, EVNT-05
 **Success Criteria** (what must be TRUE):
+
   1. `reference` table has `page_number` (int, nullable), `page_offset_start` (int, nullable), `page_offset_end` (int, nullable) fields — all DEFAULT null
   2. New `document_event_log` table exists with fields: document, step_name, severity (enum: info/warning/error), message, details (FLEXIBLE), created_at
   3. `canonical_entity.entity_type` enum includes `'event'` alongside place/person/object
   4. GraphQL proxy exposes all new fields and tables after schema deployment
   5. Existing queries on unaffected tables continue to return identical results (no regression)
-**Plans**: TBD
+
+**Plans**: 2 plans
+Plans:
+**Wave 1**
+
+- [ ] 13-01-PLAN.md — Schema Evolution DDL (append v4.0 block to schema.surql)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 13-02-PLAN.md — Integration Tests (GraphQL introspection + SQL round-trip verification)
 
 ### Phase 14: Reference Offset Computation
+
 **Goal**: Every extracted reference carries deterministic page number and document-level character offsets computed from chunk metadata — no LLM hallucination of offsets
 **Depends on**: Phase 13
 **Requirements**: OFFS-03, OFFS-05
 **Success Criteria** (what must be TRUE):
+
   1. `store_extraction_results_activity` computes `page_number` from chunk `page_offsets` + LLM `span_start`/`span_end` — page number matches the chunk's page range
   2. `page_offset_start` and `page_offset_end` are computed as document-level character offsets by adding chunk `offset_start` to LLM `span_start`/`span_end`
   3. Plain-text documents (no page structure) store null offsets without error
   4. Existing `span_start`/`span_end` fields remain unchanged and continue to function identically for all existing queries
   5. A reprocessed document produces identical offset values (deterministic, text_hash validated)
+
 **Plans**: TBD
 
 ### Phase 15: Per-Document Processing Logs
+
 **Goal**: Every document processing run produces an append-only audit log with severity levels, viewable via a dedicated API endpoint
 **Depends on**: Phase 13
 **Requirements**: LOGS-02, LOGS-03, LOGS-04, LOGS-05, LOGS-06
 **Success Criteria** (what must be TRUE):
+
   1. Each Temporal workflow activity (extract_text, chunk_document, extract_events, store_results, resolve_entities) writes log entries via a shared `_log()` workflow helper
   2. A document with a non-fatal warning (e.g., low-LLM-confidence extraction) completes with status "completed" and the warning visible in the log — workflow does not abort
   3. Log entries survive Temporal replay — reprocessing a document replaces old log entries deterministically (delete-then-recreate by deterministic ID)
   4. `GET /documents/{id}/logs` returns paginated log entries ordered by created_at, with at most ~100 entries per document
   5. A document that encounters an error during extraction still produces partial log entries showing which steps completed before the error
+
 **Plans**: TBD
 
 ### Phase 16: Event Canonical Entities
+
 **Goal**: Extracted events become first-class canonical entities of type "event" with structured properties, linkable to place/person/object entities, and manageable via existing merge/split endpoints
 **Depends on**: Phase 13
 **Requirements**: EVNT-02, EVNT-03, EVNT-04, EVNT-06
 **Success Criteria** (what must be TRUE):
+
   1. After document processing completes, each extracted event has a corresponding `canonical_entity` record with `entity_type: "event"` and `properties` containing `time_range`, `location`, `participants`, `objects`, `que_paso`, `title`, `description`
   2. Event entities are linked to their related place/person/object canonical entities via `RELATE` graph edges (outgoing from event entity)
   3. `POST /entities/merge` and `POST /entities/{type}/{id}/split` work for event-type entities — merge conditions include time overlap and common participants
   4. Reprocessing a document nullifies event entities scoped to that document and recreates them (nullify-then-recreate replay safety)
   5. Existing documents without event entities continue to work — no blocking migration, no errors from missing entity links
+
 **Plans**: TBD
 **UI hint**: yes
 
 ### Phase 17: Search-First Entity Resolution
+
 **Goal**: Entity resolution searches existing canonical entities first — exact text matches skip the LLM entirely, and the LLM receives candidate context for fuzzy matches, reducing LLM calls by 20-50%
 **Depends on**: Phase 16 (needs event-type entities searchable)
 **Requirements**: RSOL-01, RSOL-02, RSOL-03, RSOL-04, RSOL-05, RSOL-06
 **Success Criteria** (what must be TRUE):
+
   1. `resolve_entities_with_search_activity` queries existing canonical entities by name+type — an exact match (case-insensitive, accent-normalized) auto-assigns the `entity_id` on the reference without calling the LLM
   2. For non-exact matches, up to 5 candidate entities are pre-filtered via fuzzy/`CONTAINS` search and injected into the LLM prompt as context
   3. The LLM decides whether each reference matches an existing entity (producing its ID) or requires a new entity creation — references with LLM-assigned IDs skip the create step
   4. `entity_id` field on reference records carries the pre-resolved canonical entity link (replaces reliance on post-hoc canonical_entity field)
   5. Temporal replay safety is preserved — reprocessing a document nullifies entity links and re-runs resolution deterministically
   6. Existing merge/split correction flow continues to work — manually merged entities are found by search on their accumulated reference names
+
 **Plans**: TBD
 
 ### Phase 18: Full Integration + Test Corpus + Docs
+
 **Goal**: All v4.0 features verified with real Spanish legal documents, no regressions, and the core pipeline is documented end-to-end
 **Depends on**: Phases 13, 14, 15, 16, 17
 **Requirements**: TEST-01, TEST-02, TEST-03, TEST-04, TEST-05
 **Success Criteria** (what must be TRUE):
+
   1. Real Spanish legal document(s) (3-5 anonymized court rulings) are committed as test fixtures in the repository — not synthetic text
   2. Integration tests verify: offset computation on a multi-page document, processing log entries after a full workflow run, event canonical entity creation and graph edges, and search-first resolution with exact-match bypass
   3. All existing integration tests (11 M001 + 6 M002 + v2.0 + v3.0) continue to pass — zero regressions
   4. README explains the core pipeline flow: ingest → extract text (PDF/blob) → chunk → LLM event extraction → store events with offsets → resolve canonical entities → query via GraphQL
   5. README documents the full audit trail: blob → text → chunks → events → references → canonical entities, with traceability guarantees at each step
+
 **Plans**: TBD
 
 ## Progress
@@ -308,7 +357,7 @@ Plans:
 | 10. Document Upload | 1/1 | Complete | 2026-06-01 |
 | 11. Document List | 1/1 | Complete | 2026-06-01 |
 | 12. Entity List | 1/1 | Complete | 2026-06-01 |
-| 13. Schema Evolution | 0/0 | Not started | - |
+| 13. Schema Evolution | 0/2 | Planned | - |
 | 14. Reference Offset Computation | 0/0 | Not started | - |
 | 15. Per-Document Processing Logs | 0/0 | Not started | - |
 | 16. Event Canonical Entities | 0/0 | Not started | - |

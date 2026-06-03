@@ -1,10 +1,11 @@
 ---
 gsd_state_version: 1.0
 milestone: v4.0
-milestone_name: Pipeline Quality & Entity Resolution
-status: planning
-last_updated: "2026-06-03T00:00:00.000Z"
-last_activity: 2026-06-03
+milestone_name: milestone
+status: Roadmap defined — 6 phases
+stopped_at: Phase 13 context gathered
+last_updated: "2026-06-03T18:20:32.655Z"
+last_activity: 2026-06-03 — v4.0 roadmap created
 progress:
   total_phases: 6
   completed_phases: 0

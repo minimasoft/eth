@@ -35,7 +35,6 @@ Additive SurrealDB DDL changes that create schema prerequisites for all downstre
 
 ### Event entity_type Enum Extension
 - **D-09:** Redefine the existing `canonical_entity.entity_type` field with: `DEFINE FIELD entity_type ON TABLE canonical_entity TYPE string ASSERT $value INSIDE ['place', 'person', 'object', 'event']`
-- **D-10:** The project is at prototype stage — if SurrealDB requires `REMOVE FIELD` + `DEFINE FIELD` (rather than redefining the ASSERT inline), that's acceptable. Researcher should verify SurrealDB's behavior.
 
 ### RELATE Graph Edge Schema
 - **D-11:** New `event_entity_link` table (SCHEMAFULL) with fields:
