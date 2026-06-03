@@ -233,6 +233,128 @@ DEFINE FIELD updated_at ON TABLE canonical_entity TYPE datetime
     DEFAULT time::now()
     COMMENT 'Timestamp of the most recent update to this canonical entity record';
 
+-- ====== v4.0 Schema Evolution ======
+-- Phase 13: Schema Evolution — additive DDL for reference offsets,
+-- processing logs, event entities, and RELATE graph edges.
+-- All statements are idempotent on re-apply.
+-- ======
+
+-- -----------------------------------------------------------------------
+-- 1. Reference offset fields (OFFS-01, OFFS-02, OFFS-04)
+-- New nullable fields for page-level character offset tracking.
+-- DEFAULT null preserves null safety for plain-text documents.
+-- -----------------------------------------------------------------------
+
+DEFINE FIELD page_number ON TABLE reference TYPE int | null
+    DEFAULT null
+    COMMENT '1-based page number where this reference appears (null for plain-text documents — Phase 14 sets this)';
+
+DEFINE FIELD page_offset_start ON TABLE reference TYPE int | null
+    DEFAULT null
+    COMMENT 'Page-relative character offset (0-based) where the verbatim span begins on the page (null for plain-text documents)';
+
+DEFINE FIELD page_offset_end ON TABLE reference TYPE int | null
+    DEFAULT null
+    COMMENT 'Page-relative character offset (exclusive) where the verbatim span ends on the page (null for plain-text documents)';
+
+-- -----------------------------------------------------------------------
+-- 2. Event entity_type enum extension (EVNT-01)
+-- OVERWRITE required because entity_type is already defined with
+-- ['place', 'person', 'object']. SurrealDB returns an error if you
+-- DEFINE FIELD without OVERWRITE on an existing field.
+-- -----------------------------------------------------------------------
+
+DEFINE FIELD OVERWRITE entity_type ON TABLE canonical_entity TYPE string
+    ASSERT $value INSIDE ['place', 'person', 'object', 'event']
+    COMMENT 'Entity category: place, person, object, or event (event added in v4.0)';
+
+-- -----------------------------------------------------------------------
+-- 3. event_entity_link table (EVNT-05, D-11, D-12)
+-- Explicit SCHEMAFULL table with record-link fields (not an embedded relation type).
+-- Stores graph edges that link event-type canonical entities to
+-- place/person/object canonical entities.
+-- -----------------------------------------------------------------------
+
+DEFINE TABLE event_entity_link SCHEMAFULL
+    COMMENT 'Graph edge linking an event-type canonical entity to a place/person/object entity. Populated by Phase 16 (create_event_canonical_entities_activity). Use RELATE queries: event->event_entity_link->entity';
+
+DEFINE FIELD event ON TABLE event_entity_link TYPE record<event>
+    COMMENT 'The source event record (event-type canonical entity)';
+
+DEFINE FIELD entity ON TABLE event_entity_link TYPE record<canonical_entity>
+    COMMENT 'The target canonical entity (place, person, or object type)';
+
+DEFINE FIELD relationship_type ON TABLE event_entity_link TYPE string
+    COMMENT 'Nature of the relationship: "involves", "located_at", "occurred_during", or free-form (prototype flexibility — documented but not ASSERT-constrained)';
+
+DEFINE FIELD role ON TABLE event_entity_link TYPE string | null
+    DEFAULT null
+    COMMENT 'Role of the linked entity in the event context: "subject", "object", "location", or free-form (null when role is not applicable)';
+
+DEFINE FIELD confidence ON TABLE event_entity_link TYPE number | null
+    DEFAULT null
+    ASSERT $value IS NONE OR ($value >= 0 AND $value <= 1)
+    COMMENT 'Confidence score (0.0–1.0) for this relationship link; NONE/null when confidence is not assessed';
+
+DEFINE FIELD notes ON TABLE event_entity_link TYPE string | null
+    DEFAULT null
+    COMMENT 'Human-readable notes about this relationship (optional)';
+
+DEFINE FIELD created_at ON TABLE event_entity_link TYPE datetime
+    DEFAULT time::now() READONLY
+    COMMENT 'Timestamp when the event-entity link was created (immutable after creation)';
+
+-- -----------------------------------------------------------------------
+-- 4. document_event_log table (LOGS-01, D-03 through D-08)
+-- Processing audit log for document workflows. Entries use deterministic
+-- string IDs (SHA256 hash) for Temporal replay idempotency.
+-- WARNING: This table is exposed via auto-GraphQL with MUTATIONS enabled.
+-- Application code should INSERT/UPDATE via the REST API or Temporal
+-- activities ONLY. Direct GraphQL mutations may bypass business logic.
+-- -----------------------------------------------------------------------
+
+DEFINE TABLE document_event_log SCHEMAFULL
+    COMMENT 'Per-document processing audit log. Entries created by Temporal activities (Phase 15). Deterministic IDs for replay safety. ⚠ GraphQL mutations available but DISCOURAGED — writes should go through REST API or Temporal activities only';
+
+DEFINE FIELD id ON TABLE document_event_log TYPE string
+    COMMENT 'Deterministic record ID: crypto::sha256(document_id + step_name + sequence_number)[0:16] — enables delete-then-recreate on Temporal replays';
+
+DEFINE FIELD document ON TABLE document_event_log TYPE record<document>
+    COMMENT 'Link to the source document that this log entry belongs to';
+
+DEFINE FIELD step_name ON TABLE document_event_log TYPE string
+    COMMENT 'Processing step name: e.g. "extract_text", "chunk_document", "extract_events", "store_results", "resolve_entities" (free-form)';
+
+DEFINE FIELD severity ON TABLE document_event_log TYPE string
+    ASSERT $value INSIDE ['info', 'warning', 'error']
+    COMMENT 'Severity level: info (normal operation), warning (non-fatal issue), error (processing failure)';
+
+DEFINE FIELD message ON TABLE document_event_log TYPE string
+    COMMENT 'Human-readable log message describing the event';
+
+DEFINE FIELD details ON TABLE document_event_log TYPE object | null FLEXIBLE
+    DEFAULT null
+    COMMENT 'Arbitrary structured metadata attached to this log entry (FLEXIBLE — accepts any JSON object). Examples: { "llm_confidence": 0.85, "extraction_time_ms": 1234, "chunk_count": 5 }';
+
+DEFINE FIELD created_at ON TABLE document_event_log TYPE datetime
+    DEFAULT time::now() READONLY
+    COMMENT 'Timestamp when the log entry was created (immutable after insertion)';
+
+-- -----------------------------------------------------------------------
+-- 5. Indexes (the agent's Discretion)
+-- document_event_log: index on document field for efficient per-document queries
+-- event_entity_link: index on event and entity for graph traversal performance
+-- -----------------------------------------------------------------------
+
+DEFINE INDEX idx_document_event_log_document ON TABLE document_event_log COLUMNS document
+    COMMENT 'Index for efficient filtering of log entries by document (used by GET /documents/{id}/logs endpoint)';
+
+DEFINE INDEX idx_event_entity_link_event ON TABLE event_entity_link COLUMNS event
+    COMMENT 'Index for efficient graph traversal from event to linked entities';
+
+DEFINE INDEX idx_event_entity_link_entity ON TABLE event_entity_link COLUMNS entity
+    COMMENT 'Index for efficient reverse graph traversal from entity to linked events';
+
 -- ==========================================================================
 -- End of schema
 -- ==========================================================================
