@@ -40,7 +40,7 @@ Last activity: 2026-06-03 -- Phase 15 execution completed
 | 13. Schema Evolution | 2/2 | Complete | 2026-06-03 |
 | 14. Reference Offset Computation | 1/1 | Complete | 2026-06-03 |
 | 15. Per-Document Processing Logs | 1/1 | Complete | 2026-06-03 |
-| 16. Event Canonical Entities | 0/0 | Not started | - |
+| 16. Event Canonical Entities | 1/1 | In progress | - |
 | 17. Search-First Entity Resolution | 0/0 | Not started | - |
 | 18. Full Integration + Test Corpus + Docs | 0/0 | Not started | - |
 

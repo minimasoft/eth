@@ -315,8 +315,10 @@ Plans:
   4. Reprocessing a document nullifies event entities scoped to that document and recreates them (nullify-then-recreate replay safety)
   5. Existing documents without event entities continue to work — no blocking migration, no errors from missing entity links
 
-**Plans**: TBD
-**UI hint**: yes
+**Plans**: 1 plan
+
+Plans:
+- [ ] 16-01-PLAN.md — create_event_canonical_entities_activity, workflow/worker integration, UI Event filter, unit tests
 
 ### Phase 17: Search-First Entity Resolution
 
@@ -366,6 +368,6 @@ Plans:
 | 13. Schema Evolution | 2/2 | Complete   | 2026-06-03 |
 | 14. Reference Offset Computation | 1/1 | Complete | 2026-06-03 |
 | 15. Per-Document Processing Logs | 1/1 | Complete | 2026-06-03 |
-| 16. Event Canonical Entities | 0/0 | Not started | - |
+| 16. Event Canonical Entities | 0/1 | In progress | - |
 | 17. Search-First Entity Resolution | 0/0 | Not started | - |
 | 18. Full Integration + Test Corpus + Docs | 0/0 | Not started | - |
