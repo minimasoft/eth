@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v4.0
 milestone_name: milestone
-status: Roadmap defined — 6 phases
+status: executing
 stopped_at: Phase 13 context gathered
-last_updated: "2026-06-03T18:20:32.655Z"
-last_activity: 2026-06-03 — v4.0 roadmap created
+last_updated: "2026-06-03T19:50:00.592Z"
+last_activity: 2026-06-03 -- Phase 13 execution started
 progress:
   total_phases: 6
   completed_phases: 0
-  total_plans: 0
+  total_plans: 2
   completed_plans: 0
   percent: 0
 ---
@@ -22,14 +22,14 @@ See: .planning/PROJECT.md (updated 2026-06-02)
 
 **Core value:** Every extracted event must be traceable to its exact source text in the original document, and every resolved entity must show its evidential references.
 
-**Current focus:** Milestone v4.0 Pipeline Quality & Entity Resolution
+**Current focus:** Phase 13 — schema-evolution
 
 ## Current Position
 
-Phase: Phase 13 (Schema Evolution)
-Plan: Not started
-Status: Roadmap defined — 6 phases
-Last activity: 2026-06-03 — v4.0 roadmap created
+Phase: 13 (schema-evolution) — EXECUTING
+Plan: 1 of 2
+Status: Executing Phase 13
+Last activity: 2026-06-03 -- Phase 13 execution started
 
 ## Performance Metrics
 

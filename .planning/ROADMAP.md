@@ -234,7 +234,7 @@ Plans:
 
 ## Phases
 
-- [ ] **Phase 13: Schema Evolution** — Additive SurrealDB schema changes for v4.0 features
+- [x] **Phase 13: Schema Evolution** — Additive SurrealDB schema changes for v4.0 features (completed 2026-06-03)
 - [ ] **Phase 14: Reference Offset Computation** — Deterministic page + character offset computation in store_extraction_results_activity
 - [ ] **Phase 15: Per-Document Processing Logs** — document_event_log table, log_processing_event_activity, and GET /documents/{id}/logs endpoint
 - [ ] **Phase 16: Event Canonical Entities** — create_event_canonical_entities_activity with event-type canonical entities
@@ -260,11 +260,11 @@ Plans:
 Plans:
 **Wave 1**
 
-- [ ] 13-01-PLAN.md — Schema Evolution DDL (append v4.0 block to schema.surql)
+- [x] 13-01-PLAN.md — Schema Evolution DDL (append v4.0 block to schema.surql)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 13-02-PLAN.md — Integration Tests (GraphQL introspection + SQL round-trip verification)
+- [x] 13-02-PLAN.md — Integration Tests (GraphQL introspection + SQL round-trip verification)
 
 ### Phase 14: Reference Offset Computation
 
@@ -357,7 +357,7 @@ Plans:
 | 10. Document Upload | 1/1 | Complete | 2026-06-01 |
 | 11. Document List | 1/1 | Complete | 2026-06-01 |
 | 12. Entity List | 1/1 | Complete | 2026-06-01 |
-| 13. Schema Evolution | 0/2 | Planned | - |
+| 13. Schema Evolution | 2/2 | Complete   | 2026-06-03 |
 | 14. Reference Offset Computation | 0/0 | Not started | - |
 | 15. Per-Document Processing Logs | 0/0 | Not started | - |
 | 16. Event Canonical Entities | 0/0 | Not started | - |
