@@ -694,7 +694,9 @@ async def resolve_entities_with_search_activity(document_id: str, result: dict) 
 
             # Internal helper for accent-normalized comparison
             def _normalize(text: str) -> str:
-                return unicodedata.normalize("NFD", text).casefold()
+                nfd = unicodedata.normalize("NFD", text)
+                stripped = "".join(c for c in nfd if unicodedata.combining(c) == 0)
+                return stripped.casefold()
 
             for entity_type, refs in groups.items():
                 if not refs:
