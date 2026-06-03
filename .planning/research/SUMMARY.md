@@ -1,162 +1,196 @@
 # Project Research Summary
 
-**Project:** eth-pipeline (Espacio Tiempo Humanos)
-**Domain:** Document blob storage, PDF text extraction, smart text chunking with provenance tracking
-**Researched:** 2026-05-31
+**Project:** eth-pipeline v4.0 — Pipeline Quality & Entity Resolution
+**Domain:** Spanish legal document event extraction (LLM pipeline + SurrealDB + Temporal)
+**Researched:** 2026-06-03
 **Confidence:** HIGH
 
 ## Executive Summary
 
-This milestone (v2.0 Blob & Chunk Pipeline) adds three new capabilities to the existing Temporal/SurrealDB/FastAPI document ingestion pipeline: MinIO/S3 blob storage for source documents, PDF text extraction via PyMuPDF, and smart text chunking via `langchain-text-splitters` with page-level provenance. The core architectural principle is **chunk transparency** — chunks are a secondary index on document text, never an input to LLM extraction. The existing `extract_events_activity`, `store_extraction_results_activity`, and `resolve_entities_activity` remain completely unchanged.
+This is an LLM-based document event extraction pipeline that processes Spanish legal documents through a Temporal workflow (extract text → chunk → extract events with offsets → store → resolve entities) and persists results in SurrealDB. The v4.0 milestone targets four quality improvements: (1) reference offsets with page provenance, (2) structured event objects as first-class canonical entities, (3) search-first entity resolution that eliminates the two-pass extract-then-resolve pattern, and (4) per-document processing logs for audit trails and warning accumulation. These are enabled by existing infrastructure — no new external dependencies, no new services.
 
-The recommended approach is a **three-phase build**: (1) MinIO infrastructure + blob upload endpoint, (2) PDF text extraction + chunking activities, (3) full workflow integration + backward compatibility. Each phase delivers value independently — Phase 1 alone enables file uploads with MinIO storage, Phase 2 adds automated text extraction, and Phase 3 ties everything into the existing reprocess/delete lifecycle.
+**Recommended approach:** Execute in 6 additive phases — schema first, then offset computation, logs, event entities, search-first resolution, then full integration. Phases 2–4 (offsets, logs, event entities) are architecturally independent and could be parallelized, though schema evolution (Phase 1) is a hard prerequisite for all database operations. The guiding principle throughout is **compute, don't hallucinate** — page numbers and document-level character offsets are derived deterministically from chunk metadata, not extracted by the LLM.
 
-Key risks: **PyMuPDF's AGPL license** (mitigated via `pypdf` fallback), **chunk visibility leak** (mitigated via code review gate that enforces chunk transparency), and **DELETE reprocess leaving orphaned chunks** (mitigated by extending the existing endpoint and using delete-then-recreate idempotency). All four critical pitfalls have concrete prevention strategies documented in PITFALLS.md.
+**Key risks:** (1) Offset drift when document text is reprocessed — mitigated by storing a `text_hash` and validating offsets at write time. (2) Event entities creating circular references and breaking merge/split — mitigated by using unidirectional outgoing links, banning event-to-event property references, and excluding event entities from merge/split operations. (3) Search-first resolution degrading performance at scale — mitigated by hybrid (batch + search) approach with top-5 candidate pre-filtering. (4) Log entries violating Temporal replay semantics — mitigated by deterministic log IDs derived from workflow execution context. (5) Testing with synthetic text producing meaningless results — mitigated by requiring 3–5 anonymized real Spanish court rulings with annotated ground truth.
 
 ## Key Findings
 
 ### Recommended Stack
 
-The new stack additions are three focused libraries plus one Docker service, each chosen for minimal dependency footprint and tight fit with the existing architecture. Full details in [STACK.md](STACK.md).
+The v4.0 milestone requires **zero new external dependencies**. All features build on existing infrastructure. See [STACK.md](./STACK.md) for full details.
 
 **Core technologies:**
-- **[MinIO](https://pypi.org/project/minio/) >= 7.2.20**: S3 blob storage SDK — purpose-built for MinIO (not bloated AWS SDK), 1-2 transitive deps vs boto3's 4+, synchronous API that matches Temporal activity threading model. Docker image: `minio/minio:latest`.
-- **[PyMuPDF](https://pypi.org/project/PyMuPDF/) >= 1.27.2**: PDF text extraction — 10-50x faster than pure-Python alternatives (`pypdf`, `pdfminer.six`), page-level metadata with bounding boxes for provenance tracking, zero native dependencies (ships MuPDF binary). **AGPL licensed** — fallback to `pypdf >= 6.12.2` (BSD-3-Clause) if proprietary distribution is planned.
-- **[langchain-text-splitters](https://pypi.org/project/langchain-text-splitters/) >= 1.1.2**: Text chunking — battle-tested `RecursiveCharacterTextSplitter`, standalone package at 35.9 kB (not full LangChain), handles separator priority fallback correctly. Wrapped with custom `DocumentChunker` that adds page provenance and offset tracking.
+- **SurrealDB >=3.0**: Entity search via `string::contains()`, `CONTAINS` operator; full-text search deferred until scale warrants it. New `processing_log` and `event_link` tables. `RELATE` for event–entity graph edges.
+- **Temporal Python SDK >=1.28**: Warning accumulation via activity result dicts (NOT `ApplicationError(BENIGN)`). New `write_processing_log_activity`, `create_event_canonical_entities_activity`, and enhanced `resolve_entities_with_search_activity`.
+- **Python stdlib logging**: Extended with structured dict messages for per-document log entries — no new logging dependency.
+- **OpenRouter LLM**: Schema additions only — `EVENT_EXTRACTION_SCHEMA` gets optional `page_number` and `matched_entity_id` fields; new `STRUCTURED_EVENT_SCHEMA` for compound event entity creation.
+
+**Key design decisions (from STACK.md):**
+- D006: Compute `page_number` server-side, not from LLM (deterministic, avoids hallucination)
+- D007: Add `"event"` to existing `entity_type` enum, not a new table (unified model already supports flexible properties, soft-delete, merge/split)
+- D008: Search-first as LLM context injection, not a separate query step (eliminates two-pass pattern, reduces LLM calls)
+- D009: `processing_log` as SurrealDB table, not in-document JSON field (Temporal replay safety, independent querying)
+- D010: Warnings accumulated in activity result dicts, not via `ApplicationError(BENIGN)` (non-fatal, no retry triggers)
 
 ### Expected Features
 
-Full analysis in [FEATURES.md](FEATURES.md).
+See [FEATURES.md](./FEATURES.md) for full details.
 
-**Must have (table stakes):**
-- **PDF upload support** — users submit court PDFs; manual text conversion is unacceptable
-- **Original blob storage unchanged** — regulatory/audit requirement, store in MinIO with path reference
-- **Processing status tracking through extraction** — extended status values: `extracting_blob`, `extracting_text`, `chunking`
-- **Extracted text via API** — `document.text_content` populated automatically for PDF uploads
-- **Reprocess support** — `DELETE /documents/{id}/events` extended to clear chunks alongside events
-- **Integration tests** — existing 11/11 TS tests must pass; new v2.0 pipeline test suite
+**Must have (P1 — table stakes):**
+- **Reference page offsets** — `page_number` field on references, computed from existing `page_offsets` array. Enables "show me the PDF page for this reference" in the Web UI.
+- **Event entities in canonical_entity** — extend `entity_type` enum to include `"event"`, with structured properties (time, place, participants, objects) in the existing `properties` JSON. Enables cross-document event deduplication, merge/split, and entity-type filtering.
+- **Search-first entity resolution via context injection** — bake existing entities into the extraction prompt so the LLM produces consistent names and entity IDs. Reduces duplicate entity creation. Modifies prompt + schema only — no new activities or embedding infrastructure.
+- **Processing log table + `log_processing_event_activity`** — per-document audit trail with severity levels (info/warning/error), step names, and structured details. Enables error root-cause analysis without Temporal Web UI.
+- **Short legal document test corpus** — 3–5 anonymized real Spanish court rulings with annotated ground truth. Without it, quality improvements can't be measured.
 
-**Should have (competitive):**
-- **Page-level provenance in chunks** — every chunk knows its page range, enabling "show me the PDF page for this event"
-- **ContentExtractor protocol** — pluggable extractors (PDF now, DOCX/images later) via ABC registry, mirrors existing `LLMProvider` pattern
-- **Lazy migration** — old base64-stored documents remain accessible; new documents use MinIO; `blob_format` field discriminates
-- **Chunk transparency** — zero changes to LLM extraction pipeline; `extract_events_activity` always receives full text
+**Should have (P2 — differentiators):**
+- **Event-to-event relation table** (`event_link`) — typed relationships (sub_event, related_to, followed_by, caused_by). Deferred until multiple cross-document event merges require it.
 
-**Defer (v2+):**
-- **OCR for scanned PDFs** — requires Tesseract + image pipeline + Spanish language pack; scanned PDFs fail gracefully with actionable error
-- **DOCX/image extraction** — new extractors via protocol, no workflow changes
-- **Parallel chunk processing** — premature; current 128k+ token LLM windows handle full documents
-- **Chunk overlap strategy refinement** — v2.1 tuning
+**Defer (P3+):**
+- **Embedding-based entity pre-match** — sentence-transformers + vector index. Only if context injection yields <80% entity matching accuracy.
+- **Full-text search on entity names** — SurrealDB `DEFINE ANALYZER` + `@@` operator. Defer until search volume requires BM25 scoring.
+- **OCR for scanned PDFs** — separate concern from entity quality.
+- **Automatic event merge suggestions** — requires production data to tune heuristics.
+- **Event timeline visualization** — significant frontend effort; requires event-to-event relations first.
+
+**Anti-features (explicitly avoided):**
+- Page offsets from the LLM (compounds error)
+- Full event history / all processing runs (unbounded growth)
+- Embedding-based pre-match in v4.0 (infrastructure cost outweighs gain)
+- Events in a separate table from canonical_entity (duplicates merge/split logic)
+- Real-time log streaming (no benefit over polling for sequential pipeline)
 
 ### Architecture Approach
 
-Full architecture in [ARCHITECTURE.md](ARCHITECTURE.md). The existing architecture (FastAPI → Temporal → SurrealDB → OpenRouter LLM) is extended with a MinIO blob layer inserted before text extraction. Chunks are stored as SurrealDB records in a new `document_chunk` table, transparent to the existing LLM pipeline.
+See [ARCHITECTURE.md](./ARCHITECTURE.md) for full details. Current architecture (v3.0) uses a Temporal workflow with activities for metadata → text extraction → chunking → LLM event extraction → store results → entity resolution → status update. v4.0 extends this with **3 new activities** and **4 schema changes** while preserving all existing patterns (nullify-then-recreate, per-activity DB connections, dual-path verification).
 
-**Major components:**
-1. **MinIO Blob Storage** (`storage.py`) — New Docker service + client factory mirroring `get_db()` pattern. Stores PDF blobs by `doc/{id}.pdf`. `original_blob` field repurposed from base64 string to MinIO path reference.
-2. **Content Extractors** (`extractors.py`) — `ContentExtractor` ABC with registry and `PdfExtractor` implementation. Uses PyMuPDF for text + page metadata extraction. Extensible via protocol.
-3. **Document Chunker** (`chunking.py`) — Wraps `RecursiveCharacterTextSplitter` with `DocumentChunker` that tracks `chunk_index`, `page_start/end`, `offset_start/end`. Pure function — no I/O dependencies.
-4. **New Temporal Activities** (in `activities.py`) — `store_blob_activity`, `extract_text_activity` (MinIO read + PyMuPDF), `chunk_text_activity` (pure), `store_chunks_activity` (SurrealDB write with delete-then-recreate).
-5. **Workflow Conditional Branch** (in `workflows.py`) — `DocumentProcessingWorkflow` gains a conditional path: if `text is None` and `mime_type` is binary, run blob→extract→chunk before entering the shared LLM extraction path.
+**Major components (new/modified):**
+1. **`log_processing_event_activity`** (NEW) — append-only log writer. Fire-and-forget; failures silently swallowed. Each pipeline step calls it via a `_log()` workflow helper.
+2. **`create_event_canonical_entities_activity`** (NEW) — runs after `store_extraction_results_activity`. Creates `canonical_entity` records of type `"event"` with structured properties. Replay-safe via nullify-then-recreate scoped to the document.
+3. **`resolve_entities_with_search_activity`** (REPLACES existing) — search-first candidate matching with exact-match bypass. For each reference type, queries existing entities, auto-assigns exact text matches (no LLM call), passes remaining to LLM with top-5 candidates.
+4. **Schema changes (additive)** — 3 fields on `reference` (`char_offset_start`, `char_offset_end`, `page_number`), `entity_type` enum expansion on `canonical_entity`, two new tables (`document_event_log`, `event_link`).
 
-**Key patterns followed:**
-- Per-activity connections (D012) — new activities create MinIO/SurrealDB connections per-call, not shared
-- Delete-then-recreate idempotency — `store_chunks_activity` deletes all existing chunks for a document before creating fresh ones
-- Protocol-based abstraction — `ContentExtractor` ABC mirrors `LLMProvider` pattern (D009/D011)
-- Lazy migration — old base64 documents coexist with new MinIO paths; `blob_format` field discriminates
+**Key architectural patterns:**
+- **Separate concerns**: `document.status` = state machine for orchestration; `document_event_log` = append-only audit trail. Never merge them.
+- **Deterministic offset computation**: LLM returns chunk-relative `span_start`/`span_end`. Activity adds chunk offset to produce document-level `char_offset_start`/`char_offset_end`. No LLM arithmetic.
+- **Lazy migration**: Existing event records get canonical entity representations on reprocess, not via blocking backfill.
 
 ### Critical Pitfalls
 
-Full analysis in [PITFALLS.md](PITFALLS.md).
+See [PITFALLS.md](./PITFALLS.md) for all 12 pitfalls with recovery strategies.
 
-1. **Chunk visibility leak to LLM extraction** — Making chunks visible to `extract_events_activity` causes boundary artifacts, 10-100x more LLM calls, stitching complexity. **Prevention:** Architectural rule — chunks are secondary index only. Reconstruct full text from `document.text_content`. Code review gate on any path that passes chunks to LLM.
+1. **Offset drift after text reprocessing** — When `text_content` changes (re-extraction, bug fix), stored offsets silently point to wrong text. *Mitigation:* Store SHA-256 `text_hash` alongside offsets; add bounds-checking validation gate in `store_extraction_results_activity`. Never modify `text_content` in place.
 
-2. **PyMuPDF AGPL licensing surprise** — If the project ships as proprietary software, PyMuPDF's AGPL license requires open-sourcing or commercial license purchase. **Prevention:** Provide `pypdf` fallback path via `USE_PYPDF=true` env var. Document license constraint in `pyproject.toml` and `extractors.py`.
+2. **Page number vs. document page confusion** — LLM-reported page numbers may be logical (folio numbers) not physical (0-indexed extracted pages). *Mitigation:* Compute page number from `char_offset_start` via `document_chunk` page ranges. Store LLM-reported page separately as informational only.
 
-3. **DELETE reprocess leaves orphaned chunks** — Existing `DELETE /documents/{id}/events` endpoint doesn't clear `document_chunk` records. On reprocess, old + new chunks coexist. **Prevention:** Extend endpoint to `DELETE document_chunk WHERE document = $doc_ref`. Verification test checks chunk count after reprocess cycle.
+3. **Event-as-entity creates circular references** — Event entities linking to other event entities breaks the DAG assumption of merge/split. *Mitigation:* Unidirectional outgoing links only; ban event-to-event property references; use a separate `event_link` table for typed relationships; exclude event entities from merge/split operations.
 
-4. **Blob in SurrealDB perpetuation** — Team keeps storing base64 blobs in SurrealDB alongside MinIO because "both work." **Prevention:** `POST /documents/upload` always sets `blob_format = "minio"`. No new base64 blobs accepted. Lazy migration for existing documents.
+4. **Search-first resolution kills performance at scale** — Per-reference entity queries turn O(1) into O(N), and sending all entities to the LLM grows prompts beyond context windows. *Mitigation:* Hybrid approach — keep batch pattern as primary path, add search only for ambiguous references (confidence < 0.7). Pre-filter to top-5 candidates via fuzzy string matching (rapidfuzz). Set performance budget benchmark before deployment.
 
-5. **MinIO bucket not created on startup** — MinIO doesn't auto-create buckets; first `put_object` fails. **Prevention:** `scripts/init_bucket.py` init container in Docker Compose (same pattern as `init_schema.py`).
+5. **Log entries violate Temporal replay semantics** — Naive INSERT creates duplicate log entries on retry/replay. *Mitigation:* Use deterministic log IDs derived from `workflow_id + step + attempt_number`. Use `CREATE ONLY` (idempotent) or `UPSERT` semantics.
 
 ## Implications for Roadmap
 
-Based on combined research, the following phase structure is recommended:
+Based on research, a 6-phase build order is recommended. Phases 2–4 are architecturally independent and could be reordered.
 
-### Phase 1: MinIO Infrastructure + Blob Upload
-**Rationale:** Foundation dependency — all subsequent phases need MinIO running and blobs stored. Can be built, tested, and verified independently of PDF extraction.
-**Delivers:** File upload capability with MinIO blob storage; documents accepted as files with user-provided text_content
-**Addresses:** Table stakes — PDF upload support, original blob storage, status tracking
-**New components:** MinIO Docker service, `storage.py`, `store_blob_activity`, `POST /documents/upload`, `blob_format` schema field, `scripts/init_bucket.py`
-**Avoids:** Pitfall — MinIO bucket not created (init script), port conflicts (env var config)
+### Phase 1: SurrealDB Schema Evolution (Foundation)
+**Rationale:** Hard prerequisite for all database operations. Additive DDL only — no destructive migrations. Existing queries continue to work because new fields default to `null` and new tables are additive.
+**Delivers:** Updated `reference` table (+3 fields), expanded `entity_type` enum on `canonical_entity`, new `document_event_log` table, new `event_link` table.
+**Addresses:** All features depend on schema.
+**Avoids:** Pitfall 7 (SCHEMAFULL migration without downtime planning) — all new fields use `TYPE int | null DEFAULT null` and enum expansion is widening.
+**Research flag:** Well-documented pattern. Skip research-phase.
 
-### Phase 2: PDF Text Extraction + Chunking
-**Rationale:** Builds on Phase 1 — extraction reads blobs from MinIO. Text extraction and chunking can be tested end-to-end without involving the LLM pipeline. Chunking is a pure function testable in isolation.
-**Delivers:** Automated text extraction from PDF uploads; document_chunk records with page provenance
-**Addresses:** Table stakes — extracted text via API; Differentiators — page-level provenance, ContentExtractor protocol
-**New components:** `extractors.py` (PdfExtractor), `chunking.py` (DocumentChunker), `document_chunk` SurrealDB schema, `extract_text_activity`, `chunk_text_activity`, `store_chunks_activity`, workflow conditional branch
-**Avoids:** Pitfall — PyMuPDF AGPL (pypdf fallback), chunk visibility leak (code review gate), empty PDF text (status=failed check)
+### Phase 2: Reference Offset Computation
+**Rationale:** Phase 1 schema fields must exist. This is purely additive logic in `store_extraction_results_activity` — no workflow reordering needed.
+**Delivers:** Document-level `char_offset_start`/`char_offset_end` computed from chunk offsets + LLM `span_start`/`span_end`. `page_number` stored from deterministic computation.
+**Addresses:** Reference page offsets feature (P1).
+**Avoids:** Pitfall 1 (offset drift) — add text_hash validation gate. Pitfall 2 (page confusion) — compute from char offset, not LLM.
+**Research flag:** Well-documented pattern (existing codebase patterns). Skip research-phase.
 
-### Phase 3: Full Workflow Integration + Backward Compatibility
-**Rationale:** Requires all activities, schema, and workflow branches from Phases 1-2. Integrates with existing document lifecycle (reprocess, lazy migration). Must not break existing 11/11 TS tests.
-**Delivers:** Complete v2.0 pipeline — document upload → blob storage → text extraction → chunking → LLM extraction → events → entities. Old base64 documents coexist seamlessly. Delete + reprocess handles chunks correctly.
-**Addresses:** Table stakes — reprocess support, integration tests; Differentiators — lazy migration, chunk transparency
-**Modified components:** `worker.py` (register new activities), `DocumentProcessingWorkflow` (conditional branch finalized), `DELETE /documents/{id}/events` (extended), lazy migration logic
-**Avoids:** Pitfall — DELETE reprocess orphaned chunks, mixed storage formats (get_blob_path helper)
+### Phase 3: Per-Document Processing Logs
+**Rationale:** Independent of Phases 2 and 4. Phase 1 schema (document_event_log table) must exist. Lowest-risk addition — isolated new activity with no dependencies on other v4 changes.
+**Delivers:** `log_processing_event_activity`, workflow `_log()` helper with logging calls at each pipeline step, `GET /documents/{id}/log` API endpoint.
+**Addresses:** Processing log table feature (P1).
+**Avoids:** Pitfall 5 (unbounded log growth) — implement 100-entry retention limit from day one. Pitfall 6 (Temporal replay violations) — deterministic log IDs + idempotent insert.
+**Research flag:** Well-documented pattern (append-log event sourcing). Skip research-phase.
+
+### Phase 4: Event Canonical Entities
+**Rationale:** Independent of Phases 2 and 3. Phase 1 schema (entity_type enum expansion) must exist. New activity runs after `store_extraction_results_activity`.
+**Delivers:** `create_event_canonical_entities_activity` — creates `canonical_entity` records of type `"event"` with structured properties. Event-to-event `event_link` table ready for human curation.
+**Addresses:** Structured event objects feature (P1).
+**Avoids:** Pitfall 3 (circular references) — enforce unidirectional outgoing links, ban event-to-event property links. Pitfall 10 (orphaned entity links on reprocess) — nullify event entities scoped to document.
+**Research flag:** MEDIUM confidence on event merge/split guard design. Phase planning may need `/gsd-plan-phase --research-phase 4` to validate merge condition updates and Web UI entity list changes.
+
+### Phase 5: Search-First Entity Resolution
+**Rationale:** Should come after Phase 4 because it needs to search event-type entities. Also benefits from Phase 3 logging support. Most architecturally impactful change — replaces existing `resolve_entities_activity`.
+**Delivers:** `resolve_entities_with_search_activity` with exact-match bypass, top-5 candidate pre-filtering, support for event-type entity resolution. Fewer LLM calls per document.
+**Addresses:** Search-first entity resolution feature (P1).
+**Avoids:** Pitfall 4 (performance at scale) — hybrid batch + search approach, top-5 candidate pre-filtering, performance budget benchmark. Pitfall 8 (LLM prompt drift) — keep extraction and resolution as separate phases; prompt-size monitoring. Pitfall 11 (race conditions in concurrent processing) — UNIQUE constraint on entity name+type with graceful retry on constraint violation.
+**Research flag:** HIGH-impact change. Recommend `/gsd-plan-phase --research-phase 5` during planning to validate candidate search function, exact-match heuristic, and performance benchmark methodology.
+
+### Phase 6: Full Integration + Test Corpus + Docs
+**Rationale:** All previous phases complete. Integration-only — no new functionality.
+**Delivers:** Extended DELETE cascade (events, logs, event entities per document). End-to-end integration tests with real Spanish legal documents. README/docs update covering offsets, entities, resolution, logs.
+**Addresses:** Test corpus feature (P1), docs update (P1).
+**Avoids:** Pitfall 9 (meaningless testing with synthetic text) — require 3–5 anonymized real court rulings with annotated ground truth.
+**Research flag:** Well-documented pattern (existing test infrastructure). Skip research-phase.
 
 ### Phase Ordering Rationale
 
-- **Phase 1 → Phase 2 → Phase 3 ordering is driven by hard dependencies:** MinIO must exist before text extraction can read blobs. Extraction must exist before chunking can operate on extracted text. All pieces must exist before full workflow integration.
-- **Phase 2 can be tested independently of the LLM pipeline:** Extract text from PDF → chunk → verify chunk records. The `extract_events_activity` is never touched, so the LLM pipeline is insulated from chunking changes during development.
-- **Backward compatibility (Phase 3) is deferred to last** because the migration path is straightforward (lazy, `blob_format` discriminator) and the risk is low — no external API consumers exist.
-- **This ordering minimizes coupling risk:** Each phase is independently verifiable with its own test suite. An issue in Phase 2 (e.g., PyMuPDF edge case) doesn't block Phase 1 delivery.
+- **Phase 1 must come first** — schema is prerequisite for ALL database operations.
+- **Phases 2–4 are architecturally independent** — offset computation (Phase 2), processing logs (Phase 3), and event entities (Phase 4) don't require each other. They share only the Phase 1 schema prerequisite. Could be parallelized.
+- **Phase 5 (search-first resolution) should come after Phase 4** — it needs to search event-type entities, which don't exist until Phase 4.
+- **Phase 6 is purely integration/verification** — all features must be stable before the test corpus and docs can be finalized.
 
 ### Research Flags
 
 Phases likely needing deeper research during planning:
-- **Phase 2 (PDF Extraction):** Needs investigation into PyMuPDF AGPL license implications if the project distribution model is proprietary. The `pypdf` fallback path should be verified for performance impact (10-50x slower).
+- **Phase 4 (Event Canonical Entities):** Merge/split guard design for event entities, Web UI entity list changes, event-to-event linking strategy. MEDIUM confidence — recommend `/gsd-plan-phase --research-phase 4`.
+- **Phase 5 (Search-First Entity Resolution):** Candidate search function design, exact-match heuristic tuning, performance budget benchmark, LLM prompt template for entity context injection. HIGH-impact — recommend `/gsd-plan-phase --research-phase 5`.
 
 Phases with standard patterns (skip research-phase):
-- **Phase 1 (MinIO):** Well-documented, follows existing Docker Compose + schema init pattern. `storage.py` directly mirrors `db.py`. Low risk.
-- **Phase 3 (Integration):** All patterns (delete-then-recreate, per-activity connections, workflow branching) are already established in the codebase. Integration is additive, not refactoring.
+- **Phase 1:** SurrealDB additive DDL — well-documented, patterns established in M002.
+- **Phase 2:** Offset computation from chunk metadata — deterministic arithmetic, no LLM involvement.
+- **Phase 3:** Append-only log pattern — established practice, well-understood Temporal replay considerations.
+- **Phase 6:** Integration tests and docs — standard project hygiene.
 
 ## Confidence Assessment
 
 | Area | Confidence | Notes |
 |------|------------|-------|
-| Stack | HIGH | All library recommendations verified against PyPI, official docs, and comparative benchmarks. MinIO vs boto3, PyMuPDF vs pypdf/pdfminer tradeoffs documented with real criteria. Docker image verified from Docker Hub. |
-| Features | HIGH | Derived from explicit requirements (REQUIREMENTS.md), existing codebase patterns (DECISIONS.md), and domain analysis. Anti-features justified by architecture analysis (chunk transparency avoids 10x LLM cost). |
-| Architecture | HIGH | Integration points mapped exhaustively against every existing component (API, Temporal, SurrealDB, Docker Compose, GraphQL). Five architecture patterns all follow established codebase decisions (D012, D009, D011). 4 anti-patterns explicitly documented with prevention. |
-| Pitfalls | HIGH | Four critical pitfalls each have concrete prevention strategies, detection mechanisms, and code-level mitigations. Phase-specific warnings align with build order. AGPL licensing verified against PyMuPDF official repository. Delete-then-recreate pattern verified against existing codebase. |
+| Stack | HIGH | Verified against existing codebase patterns (schema.surql, activities.py, llm.py, workflows.py). SurrealDB and Temporal docs fetched successfully. No new dependencies. |
+| Features | HIGH | Derived from existing codebase gaps + established IE literature (UIMA, spaCy patterns). Anti-features explicitly documented. All P1 features have known implementation paths. |
+| Architecture | HIGH | All integration points verified against existing codebase. Build order derived from Temporal dependency chains. Additive schema changes only — no breaking changes. |
+| Pitfalls | HIGH | 12 pitfalls documented with prevention strategies, recovery plans, and phase mapping. Sources include official Temporal docs, SurrealDB docs, and established distributed systems patterns. |
 
 **Overall confidence:** HIGH
 
 ### Gaps to Address
 
-- **PyMuPDF AGPL license**: The license is confirmed (HIGH confidence from official repo), but the project's distribution model needs clarification. If proprietary → switch to `pypdf` fallback or budget for commercial license. **Action:** Clarify distribution model during Phase 2 planning.
-- **Chunk size tuning**: The 128k-character limit is a reasonable starting point, but the optimal chunk size depends on actual document lengths and LLM token limits in production. **Action:** Add chunk_size as a configurable parameter (env var), plan a tuning pass in v2.1 after real document metrics.
-- **Scanned PDF handling**: PyMuPDF supports Tesseract OCR integration, but it's deferred because of the Tesseract dependency and Spanish language pack complexity. **Action:** Plan OCR support as a distinct v2.1 milestone with its own spike.
-- **MinIO production configuration**: Current research covers single-node Docker deployment. Scaling to 1000+ docs/day would require MinIO distributed mode. **Action:** Out of scope for v2.0; note in scaling considerations.
+- **Event merge/split guard design (Phase 4):** The exact merge conditions for event entities (time overlap, same-document check, participant overlap) need validation during Phase 4 planning. The existing 7-condition pipeline must be extended with type-specific logic. *Resolution:* Validate during Phase 4 research-phase.
+
+- **Exact-match heuristic for search-first resolution (Phase 5):** The threshold for "exact match" (confidence 0.95, case-insensitive name comparison, accent normalization) needs empirical tuning. The rapidfuzz `ratio > 70` threshold is a starting point, not a final value. *Resolution:* Benchmark on the test corpus during Phase 5 research-phase.
+
+- **Log retention test (Phase 3):** The 100-entry-per-document retention limit relies on a DELETE-before-INSERT query that may not handle concurrent inserts correctly. Verify with a concurrent insert test. *Resolution:* Add to Phase 3 integration tests.
+
+- **Spanish legal test documents (Phase 6):** Need 3–5 anonymized real court rulings from CENDOJ or Aranzadi. Must include edge cases: one-paragraph doc, multi-page doc exceeding chunk size, PDF with OCR noise, document with no clear events. *Resolution:* Procure during Phase 6 as part of test corpus work.
 
 ## Sources
 
 ### Primary (HIGH confidence)
-- [minio-py v7.2.20](https://pypi.org/project/minio/) — SDK API, dependency tree (VERIFIED)
-- [PyMuPDF v1.27.2](https://pypi.org/project/PyMuPDF/) — API, performance benchmarks, AGPL license (VERIFIED)
-- [PyMuPDF GitHub](https://github.com/pymupdf/PyMuPDF) — License verification, Tesseract integration docs (VERIFIED)
-- [langchain-text-splitters v1.1.2](https://pypi.org/project/langchain-text-splitters/) — API, package size, separator algorithm (VERIFIED)
-- [MinIO Docker image](https://hub.docker.com/r/minio/minio) — Container config, healthcheck, volumes (VERIFIED)
-- Existing codebase: `src/eth_pipeline/` — activities.py, workflows.py, api.py, db.py, schema.surql (VERIFIED)
-- Existing decisions: `.gsd/DECISIONS.md` — D012 (per-activity connections), D016 (per-type batching), D009/D011 (protocol abstraction) (VERIFIED)
-- `.gsd/REQUIREMENTS.md` — Feature priorities, R019 (deferred binary processing) (VERIFIED)
+- **Existing codebase** (`src/eth_pipeline/`): schema.surql, activities.py, workflows.py, api.py, llm.py, chunker.py, storage.py, worker.py — all integration points verified
+- **Existing patterns**: D012 (per-activity connections), D016 (per-type batching), D009 (protocol-based abstraction), nullify-then-recreate, delete-then-recreate — established in M001/M002
+- **Integration tests** (`tests/integration/helpers.ts`): dual-path verification pattern (GraphQL + SQL fallback)
+- **PROJECT.md**: M001–M002 scope, v2.0–v3.0 history, v4.0 requirements
+- **SurrealDB docs**: `DEFINE ANALYZER`, `CONTAINS` operator, `RELATE` statement, `DEFINE FIELD` — fetched successfully
+- **Temporal docs**: `ApplicationErrorCategory.BENIGN`, `ApplicationError` — official Python SDK docs
 
 ### Secondary (MEDIUM confidence)
-- [MinIO container docs](https://min.io/docs/minio/container/index.html) — Bucket creation behavior, init patterns (documentation page, not release artifact)
-- [MinIO Python SDK examples](https://github.com/minio/minio-py) — Bucket creation, put/get object patterns (community examples)
-
-### Tertiary (LOW confidence)
-- PDF extraction edge cases with Spanish legal documents — based on PyMuPDF documentation claims; real-world performance with Spanish-language court PDFs unverified. Validate during Phase 2 testing with representative document samples.
+- **Spanish legal document structure**: CENDOJ (Centro de Documentación Judicial) — public judicial documentation confirms standardized structure
+- **Entity name normalization for Spanish names**: Community conventions — strip titles (D., Doña), normalize accents, handle compound surnames
+- **Page offset algorithm**: Derived from `extract_text_activity`'s `page_offsets` output + existing chunking pattern — verified empirically
+- **Processing log design**: Append-only log table pattern from data pipeline systems (Apache Airflow task logs, Dagster event log) — general pattern knowledge, specific implementation derived from project constraints
 
 ---
-*Research completed: 2026-05-31*
+*Research completed: 2026-06-03*
 *Ready for roadmap: yes*
