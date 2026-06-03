@@ -18,6 +18,7 @@ from temporalio import activity
 
 from eth_pipeline.chunker import DocumentChunker
 from eth_pipeline.db import get_db
+from eth_pipeline.offsets import compute_reference_offsets
 from eth_pipeline.extractors import (
     ExtractorQualityError,
     PdfExtractor,
@@ -713,6 +714,30 @@ async def store_extraction_results_activity(
                 {"doc_ref": doc_ref},
             )
 
+            # ---- Query document metadata and chunks for offset computation ----
+            doc_rows = _extract_query_results(
+                await db.query(f"SELECT mime_type FROM {doc_ref}")
+            )
+            mime_type = doc_rows[0].get("mime_type", "") if doc_rows else ""
+            is_plain_text = mime_type.startswith("text/")
+
+            chunk_rows = _extract_query_results(
+                await db.query(
+                    "SELECT chunk_index, page_start, page_end, "
+                    "offset_start, offset_end "
+                    "FROM document_chunk "
+                    "WHERE document = $doc_ref "
+                    "ORDER BY chunk_index ASC",
+                    {"doc_ref": doc_ref},
+                )
+            )
+            if not chunk_rows:
+                activity.logger.warning(
+                    "No document_chunk records found for offset computation "
+                    "[document_id=%s]",
+                    document_id,
+                )
+
             # ---- Create events and collect their IDs ----
             total_references = 0
             for event_data in events:
@@ -756,19 +781,58 @@ async def store_extraction_results_activity(
                 # ---- Create references linked to this event ----
                 references = event_data.get("references", [])
                 for ref in references:
+                    ss = int(ref.get("span_start", 0))
+                    se = int(ref.get("span_end", 0))
+
+                    if chunk_rows:
+                        offset_result = compute_reference_offsets(
+                            span_start=ss,
+                            span_end=se,
+                            chunks=chunk_rows,
+                            is_plain_text=is_plain_text,
+                        )
+                    else:
+                        offset_result = {
+                            "page_number": None,
+                            "page_offset_start": None,
+                            "page_offset_end": None,
+                        }
+
+                    # Log warning for out-of-range spans
+                    if (
+                        offset_result["page_number"] is None
+                        and not is_plain_text
+                        and chunk_rows
+                    ):
+                        activity.logger.warning(
+                            "Reference span out of range [document_id=%s] "
+                            "[span_start=%d, span_end=%d, text_length=%d] — "
+                            "setting offsets to null",
+                            document_id,
+                            ss,
+                            se,
+                            chunk_rows[-1]["offset_end"],
+                        )
+
                     await db.query(
                         "CREATE reference CONTENT { "
                         "reference_type: $ref_type, "
                         "verbatim_text: $vt, "
                         "span_start: $ss, "
                         "span_end: $se, "
+                        "page_number: $pn, "
+                        "page_offset_start: $pos, "
+                        "page_offset_end: $poe, "
                         "event: $evt "
                         "}",
                         {
                             "ref_type": ref.get("reference_type", ""),
                             "vt": ref.get("verbatim_text", ""),
-                            "ss": int(ref.get("span_start", 0)),
-                            "se": int(ref.get("span_end", 0)),
+                            "ss": ss,
+                            "se": se,
+                            "pn": offset_result["page_number"],
+                            "pos": offset_result["page_offset_start"],
+                            "poe": offset_result["page_offset_end"],
                             "evt": event_rid,
                         },
                     )
