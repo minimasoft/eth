@@ -279,7 +279,10 @@ Plans:
   4. Existing `span_start`/`span_end` fields remain unchanged and continue to function identically for all existing queries
   5. A reprocessed document produces identical offset values (deterministic, text_hash validated)
 
-**Plans**: TBD
+**Plans**: 1 plan
+
+Plans:
+- [ ] 14-01-PLAN.md — Reference offset computation (offsets.py, activity modification, unit tests)
 
 ### Phase 15: Per-Document Processing Logs
 
@@ -358,7 +361,7 @@ Plans:
 | 11. Document List | 1/1 | Complete | 2026-06-01 |
 | 12. Entity List | 1/1 | Complete | 2026-06-01 |
 | 13. Schema Evolution | 2/2 | Complete   | 2026-06-03 |
-| 14. Reference Offset Computation | 0/0 | Not started | - |
+| 14. Reference Offset Computation | 1/0 | Not started | - |
 | 15. Per-Document Processing Logs | 0/0 | Not started | - |
 | 16. Event Canonical Entities | 0/0 | Not started | - |
 | 17. Search-First Entity Resolution | 0/0 | Not started | - |
