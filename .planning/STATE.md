@@ -80,6 +80,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-02
-Stopped at: Milestone v4.0 started
-Resume file: None
+Last session: 2026-06-03
+Stopped at: Phase 13 context gathered
+Resume file: .planning/phases/13-schema-evolution/13-CONTEXT.md
