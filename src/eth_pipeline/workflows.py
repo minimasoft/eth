@@ -33,6 +33,7 @@ with workflow.unsafe.imports_passed_through():
         extract_text_activity,
         get_document_metadata_activity,
         resolve_entities_activity,
+        resolve_entities_with_search_activity,
         store_extraction_results_activity,
         update_document_status_activity,
     )
@@ -83,7 +84,7 @@ class DocumentProcessingWorkflow:
            SurrealDB internally (avoids large Temporal payloads)
         7. ``store_extraction_results_activity(document_id, result)``
         8. ``create_event_canonical_entities_activity(document_id, result)``
-        9. ``resolve_entities_activity(document_id, result)``
+         9. ``resolve_entities_with_search_activity(document_id, result)``
         10. ``processed`` — set only after ALL steps complete
         11. Return summary dict with ``document_id``, ``event_count``,
             and ``status``.
@@ -211,9 +212,9 @@ class DocumentProcessingWorkflow:
             if "error" in event_entity_result:
                 raise RuntimeError(event_entity_result["error"])
 
-            # Step 8: Resolve verbatim references
+            # Step 8: Resolve verbatim references (search-first)
             resolve_result = await workflow.execute_activity(
-                resolve_entities_activity,
+                resolve_entities_with_search_activity,
                 args=[document_id, result],
                 start_to_close_timeout=timedelta(seconds=30),
             )
