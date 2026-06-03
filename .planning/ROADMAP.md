@@ -294,10 +294,13 @@ Plans:
   1. Each Temporal workflow activity (extract_text, chunk_document, extract_events, store_results, resolve_entities) writes log entries via a shared `_log()` workflow helper
   2. A document with a non-fatal warning (e.g., low-LLM-confidence extraction) completes with status "completed" and the warning visible in the log — workflow does not abort
   3. Log entries survive Temporal replay — reprocessing a document replaces old log entries deterministically (delete-then-recreate by deterministic ID)
-  4. `GET /documents/{id}/logs` returns paginated log entries ordered by created_at, with at most ~100 entries per document
+   4. `GET /documents/{id}/logs` returns paginated log entries ordered by created_at, with at most ~100 entries per document
   5. A document that encounters an error during extraction still produces partial log entries showing which steps completed before the error
 
-**Plans**: TBD
+**Plans**: 1 plan
+
+Plans:
+- [ ] 15-01-PLAN.md — ProcessingLogger, activity log calls, GET /documents/{id}/logs endpoint, tests
 
 ### Phase 16: Event Canonical Entities
 
@@ -362,7 +365,7 @@ Plans:
 | 12. Entity List | 1/1 | Complete | 2026-06-01 |
 | 13. Schema Evolution | 2/2 | Complete   | 2026-06-03 |
 | 14. Reference Offset Computation | 1/1 | Complete | 2026-06-03 |
-| 15. Per-Document Processing Logs | 0/0 | Not started | - |
+| 15. Per-Document Processing Logs | 1/1 | Planning complete | - |
 | 16. Event Canonical Entities | 0/0 | Not started | - |
 | 17. Search-First Entity Resolution | 0/0 | Not started | - |
 | 18. Full Integration + Test Corpus + Docs | 0/0 | Not started | - |
