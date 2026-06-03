@@ -334,7 +334,11 @@ Plans:
   5. Temporal replay safety is preserved — reprocessing a document nullifies entity links and re-runs resolution deterministically
   6. Existing merge/split correction flow continues to work — manually merged entities are found by search on their accumulated reference names
 
-**Plans**: TBD
+**Plans**: 2 plans
+
+Plans:
+- [ ] 17-01-PLAN.md — Schema + LLM changes + new activity + workflow/worker wiring
+- [ ] 17-02-PLAN.md — Unit tests for search-first resolution logic
 
 ### Phase 18: Full Integration + Test Corpus + Docs
 
