@@ -10,15 +10,15 @@ Requirements for this milestone. Each maps to roadmap phases.
 
 ### Reference Offsets
 
-- [ ] **OFFS-01**: Reference records store `page_number` (int, 1-based, nullable) computed deterministically from existing chunk page_offsets
-- [ ] **OFFS-02**: Reference records store `page_offset_start` and `page_offset_end` (int, nullable) for page-relative character offsets
+- [x] **OFFS-01**: Reference records store `page_number` (int, 1-based, nullable) computed deterministically from existing chunk page_offsets
+- [x] **OFFS-02**: Reference records store `page_offset_start` and `page_offset_end` (int, nullable) for page-relative character offsets
 - [x] **OFFS-03**: Page offset computation happens in `store_extraction_results_activity` as a deterministic post-LLM step — no LLM hallucination of page numbers
-- [ ] **OFFS-04**: Page offset fields use DEFAULT null and are null-safe for plain-text documents (no page structure)
+- [x] **OFFS-04**: Page offset fields use DEFAULT null and are null-safe for plain-text documents (no page structure)
 - [x] **OFFS-05**: Existing character offsets (span_start, span_end) remain unchanged and fully functional
 
 ### Processing Logs
 
-- [ ] **LOGS-01**: New `document_event_log` SurrealDB table with fields: document, step_name, severity (info/warning/error), message, details (FLEXIBLE object), created_at
+- [x] **LOGS-01**: New `document_event_log` SurrealDB table with fields: document, step_name, severity (info/warning/error), message, details (FLEXIBLE object), created_at
 - [x] **LOGS-02**: Each Temporal activity appends log entries via a shared helper — entries are fire-and-forget, never block processing
 - [x] **LOGS-03**: Warnings and errors accumulate without aborting the workflow — document status still reflects completion
 - [x] **LOGS-04**: Log entries use deterministic IDs for Temporal replay idempotency (delete-then-recreate on reprocess)
@@ -27,12 +27,12 @@ Requirements for this milestone. Each maps to roadmap phases.
 
 ### Event Canonical Entities
 
-- [ ] **EVNT-01**: `'event'` added to `canonical_entity.entity_type` enum alongside place/person/object
-- [ ] **EVNT-02**: Event canonical entities store structured data in `properties` JSON (time_range, location, participants, objects, que_paso, title, description)
-- [ ] **EVNT-03**: New Temporal activity (`create_event_canonical_entities_activity`) creates event entities from extracted events with nullify-then-recreate replay safety
-- [ ] **EVNT-04**: Event entities participate in the existing merge/split REST endpoints (same unified canonical_entity model)
-- [ ] **EVNT-05**: Event entities support `RELATE` graph edges to link event entities to place/person/object canonical entities
-- [ ] **EVNT-06**: Existing event records are migrated lazily — no blocking migration on existing documents
+- [x] **EVNT-01**: `'event'` added to `canonical_entity.entity_type` enum alongside place/person/object
+- [x] **EVNT-02**: Event canonical entities store structured data in `properties` JSON (time_range, location, participants, objects, que_paso, title, description)
+- [x] **EVNT-03**: New Temporal activity (`create_event_canonical_entities_activity`) creates event entities from extracted events with nullify-then-recreate replay safety
+- [x] **EVNT-04**: Event entities participate in the existing merge/split REST endpoints (same unified canonical_entity model)
+- [x] **EVNT-05**: Event entities support `RELATE` graph edges to link event entities to place/person/object canonical entities
+- [x] **EVNT-06**: Existing event records are migrated lazily — no blocking migration on existing documents
 
 ### Search-First Entity Resolution
 
@@ -82,23 +82,23 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| OFFS-01 | Phase 13 | Pending |
-| OFFS-02 | Phase 13 | Pending |
+| OFFS-01 | Phase 13 | Complete |
+| OFFS-02 | Phase 13 | Complete |
 | OFFS-03 | Phase 14 | Complete |
-| OFFS-04 | Phase 13 | Pending |
+| OFFS-04 | Phase 13 | Complete |
 | OFFS-05 | Phase 14 | Complete |
-| LOGS-01 | Phase 13 | Pending |
+| LOGS-01 | Phase 13 | Complete |
 | LOGS-02 | Phase 15 | Complete |
 | LOGS-03 | Phase 15 | Complete |
 | LOGS-04 | Phase 15 | Complete |
 | LOGS-05 | Phase 15 | Complete |
 | LOGS-06 | Phase 15 | Complete |
-| EVNT-01 | Phase 13 | Pending |
-| EVNT-02 | Phase 16 | Pending |
-| EVNT-03 | Phase 16 | Pending |
-| EVNT-04 | Phase 16 | Pending |
-| EVNT-05 | Phase 13 | Pending |
-| EVNT-06 | Phase 16 | Pending |
+| EVNT-01 | Phase 13 | Complete |
+| EVNT-02 | Phase 16 | Complete |
+| EVNT-03 | Phase 16 | Complete |
+| EVNT-04 | Phase 16 | Complete |
+| EVNT-05 | Phase 13 | Complete |
+| EVNT-06 | Phase 16 | Complete |
 | RSOL-01 | Phase 17 | Pending |
 | RSOL-02 | Phase 17 | Pending |
 | RSOL-03 | Phase 17 | Pending |
@@ -113,6 +113,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 **Coverage:**
 - v4.0 requirements: 28 total
+- Completed: 21
 - Mapped to phases: 28
 - Unmapped: 0 ✓
 

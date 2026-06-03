@@ -4,14 +4,14 @@ milestone: v4.0
 milestone_name: milestone
 status: executing
 stopped_at: Phase 14 completed
-last_updated: "2026-06-03T23:13:00.000Z"
-last_activity: 2026-06-03 -- Phase 15 execution completed
+last_updated: "2026-06-03T23:50:00.000Z"
+last_activity: 2026-06-03 -- Phase 16 execution completed
 progress:
   total_phases: 6
   completed_phases: 3
   total_plans: 4
-  completed_plans: 4
-  percent: 50
+   completed_plans: 5
+   percent: 56
 ---
 
 # Project State
@@ -22,14 +22,14 @@ See: .planning/PROJECT.md (updated 2026-06-02)
 
 **Core value:** Every extracted event must be traceable to its exact source text in the original document, and every resolved entity must show its evidential references.
 
-**Current focus:** Phase 15 — per-document-processing-logs
+**Current focus:** Phase 16 — event-canonical-entities
 
 ## Current Position
 
-Phase: 15 (per-document-processing-logs) — COMPLETE
+Phase: 16 (event-canonical-entities) — COMPLETE
 Plan: 1 of 1 — COMPLETE
 Status: Complete
-Last activity: 2026-06-03 -- Phase 15 execution completed
+Last activity: 2026-06-03 -- Phase 16 execution completed
 
 ## Performance Metrics
 
@@ -40,12 +40,12 @@ Last activity: 2026-06-03 -- Phase 15 execution completed
 | 13. Schema Evolution | 2/2 | Complete | 2026-06-03 |
 | 14. Reference Offset Computation | 1/1 | Complete | 2026-06-03 |
 | 15. Per-Document Processing Logs | 1/1 | Complete | 2026-06-03 |
-| 16. Event Canonical Entities | 1/1 | In progress | - |
+| 16. Event Canonical Entities | 1/1 | Complete | 2026-06-03 |
 | 17. Search-First Entity Resolution | 0/0 | Not started | - |
 | 18. Full Integration + Test Corpus + Docs | 0/0 | Not started | - |
 
-**Totals:** 6 phases, 4 plans
-**Timeline:** Phase 13-15 completed
+**Totals:** 6 phases, 5 plans
+**Timeline:** Phase 13-16 completed
 
 ## Accumulated Context
 
@@ -60,6 +60,9 @@ Recent decisions affecting current work:
 - D016: Phase 16 (Event Entities) has UI hint — entity list tab shows event-type entities
 - D017: Phase 14 uses reconstruct_page_offsets() to build page-offset array from unique page_start values in sorted document_chunk records; plain-text docs return null offsets
 - D018: Phase 15 uses UPDATE ... CONTENT with deterministic SHA256 record IDs for Temporal replay-safe log writes; fire-and-forget pattern with per-call SurrealDB connections
+- D019: Phase 16 uses DELETE (not UPDATE) for nullify step — prior event entities are deleted entirely since there is no event-entity-level merge use case yet
+- D020: Phase 16 RELATE matching uses CONTAINS both directions (entity_name CONTAINS verbatim_text AND verbatim_text CONTAINS entity_name) with deduplication for robustness
+- D021: Phase 16 extracts pure helper functions in test file for isolated unit testing of naming, properties, matching heuristic
 
 ### Pending Todos
 
@@ -84,5 +87,5 @@ Items acknowledged and carried forward from previous milestone close:
 ## Session Continuity
 
 Last session: 2026-06-03
-Stopped at: Phase 15 completed
-Resume file: .planning/phases/15-per-document-processing-logs/15-01-SUMMARY.md
+Stopped at: Phase 16 completed
+Resume file: .planning/phases/16-event-canonical-entities/16-01-SUMMARY.md
