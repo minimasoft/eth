@@ -3,10 +3,10 @@ gsd_state_version: 1.0
 milestone: v4.0
 milestone_name: Pipeline Quality & Entity Resolution
 status: planning
-last_updated: "2026-06-02T18:41:52.743Z"
-last_activity: 2026-06-02
+last_updated: "2026-06-03T00:00:00.000Z"
+last_activity: 2026-06-03
 progress:
-  total_phases: 0
+  total_phases: 6
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -25,10 +25,10 @@ See: .planning/PROJECT.md (updated 2026-06-02)
 
 ## Current Position
 
-Phase: Not started (defining requirements)
-Plan: —
-Status: Defining requirements
-Last activity: 2026-06-02 — Milestone v4.0 started
+Phase: Phase 13 (Schema Evolution)
+Plan: Not started
+Status: Roadmap defined — 6 phases
+Last activity: 2026-06-03 — v4.0 roadmap created
 
 ## Performance Metrics
 
@@ -36,9 +36,14 @@ Last activity: 2026-06-02 — Milestone v4.0 started
 
 | Phase | Plans | Status | Completed |
 |-------|-------|--------|-----------|
-| *(phases not yet defined)* | | | |
+| 13. Schema Evolution | 0/0 | Not started | - |
+| 14. Reference Offset Computation | 0/0 | Not started | - |
+| 15. Per-Document Processing Logs | 0/0 | Not started | - |
+| 16. Event Canonical Entities | 0/0 | Not started | - |
+| 17. Search-First Entity Resolution | 0/0 | Not started | - |
+| 18. Full Integration + Test Corpus + Docs | 0/0 | Not started | - |
 
-**Totals:** 0 phases, 0 plans
+**Totals:** 6 phases, 0 plans
 **Timeline:** Not started
 
 ## Accumulated Context
@@ -48,7 +53,10 @@ Last activity: 2026-06-02 — Milestone v4.0 started
 Decisions are logged in PROJECT.md.
 Recent decisions affecting current work:
 
-- (none yet)
+- D013: v4.0 phases start at Phase 13 (continuing from v3.0 Phase 12)
+- D014: Six-phase build order: Schema (13) → Offsets (14) → Logs (15) → Event Entities (16) → Search-First Resolution (17) → Integration (18)
+- D015: Phases 14, 15, 16 are architecturally independent (share only Phase 13 schema prerequisite) — Phase 17 requires Phase 16
+- D016: Phase 16 (Event Entities) has UI hint — entity list tab shows event-type entities
 
 ### Pending Todos
 

@@ -82,39 +82,39 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| OFFS-01 | | Pending |
-| OFFS-02 | | Pending |
-| OFFS-03 | | Pending |
-| OFFS-04 | | Pending |
-| OFFS-05 | | Pending |
-| LOGS-01 | | Pending |
-| LOGS-02 | | Pending |
-| LOGS-03 | | Pending |
-| LOGS-04 | | Pending |
-| LOGS-05 | | Pending |
-| LOGS-06 | | Pending |
-| EVNT-01 | | Pending |
-| EVNT-02 | | Pending |
-| EVNT-03 | | Pending |
-| EVNT-04 | | Pending |
-| EVNT-05 | | Pending |
-| EVNT-06 | | Pending |
-| RSOL-01 | | Pending |
-| RSOL-02 | | Pending |
-| RSOL-03 | | Pending |
-| RSOL-04 | | Pending |
-| RSOL-05 | | Pending |
-| RSOL-06 | | Pending |
-| TEST-01 | | Pending |
-| TEST-02 | | Pending |
-| TEST-03 | | Pending |
-| TEST-04 | | Pending |
-| TEST-05 | | Pending |
+| OFFS-01 | Phase 13 | Pending |
+| OFFS-02 | Phase 13 | Pending |
+| OFFS-03 | Phase 14 | Pending |
+| OFFS-04 | Phase 13 | Pending |
+| OFFS-05 | Phase 14 | Pending |
+| LOGS-01 | Phase 13 | Pending |
+| LOGS-02 | Phase 15 | Pending |
+| LOGS-03 | Phase 15 | Pending |
+| LOGS-04 | Phase 15 | Pending |
+| LOGS-05 | Phase 15 | Pending |
+| LOGS-06 | Phase 15 | Pending |
+| EVNT-01 | Phase 13 | Pending |
+| EVNT-02 | Phase 16 | Pending |
+| EVNT-03 | Phase 16 | Pending |
+| EVNT-04 | Phase 16 | Pending |
+| EVNT-05 | Phase 13 | Pending |
+| EVNT-06 | Phase 16 | Pending |
+| RSOL-01 | Phase 17 | Pending |
+| RSOL-02 | Phase 17 | Pending |
+| RSOL-03 | Phase 17 | Pending |
+| RSOL-04 | Phase 17 | Pending |
+| RSOL-05 | Phase 17 | Pending |
+| RSOL-06 | Phase 17 | Pending |
+| TEST-01 | Phase 18 | Pending |
+| TEST-02 | Phase 18 | Pending |
+| TEST-03 | Phase 18 | Pending |
+| TEST-04 | Phase 18 | Pending |
+| TEST-05 | Phase 18 | Pending |
 
 **Coverage:**
 - v4.0 requirements: 28 total
-- Mapped to phases: 0
-- Unmapped: 28 ⚠️
+- Mapped to phases: 28
+- Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-06-02*

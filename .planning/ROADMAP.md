@@ -7,6 +7,7 @@
 - ✅ **v1.2 M002 Integration Test Fixes** — Phases 3-5 (shipped 2026-05-31)
 - ✅ **v2.0 Blob & Chunk Pipeline** — Phases 6-8 (shipped 2026-06-01)
 - ✅ **v3.0 Web UI** — Phases 9-12 (shipped 2026-06-02)
+- 🟦 **v4.0 Pipeline Quality & Entity Resolution** — Phases 13-18 (in progress)
 
 ## Phases
 
@@ -208,6 +209,91 @@ Plans:
 
 </details>
 
+## Phases
+
+- [ ] **Phase 13: Schema Evolution** — Additive SurrealDB schema changes for v4.0 features
+- [ ] **Phase 14: Reference Offset Computation** — Deterministic page + character offset computation in store_extraction_results_activity
+- [ ] **Phase 15: Per-Document Processing Logs** — document_event_log table, log_processing_event_activity, and GET /documents/{id}/logs endpoint
+- [ ] **Phase 16: Event Canonical Entities** — create_event_canonical_entities_activity with event-type canonical entities
+- [ ] **Phase 17: Search-First Entity Resolution** — resolve_entities_with_search_activity with candidate pre-filtering and LLM context injection
+- [ ] **Phase 18: Full Integration + Test Corpus + Docs** — Integration tests with real Spanish legal documents, README/docs update
+
+## Phase Details
+
+### Phase 13: Schema Evolution
+**Goal**: All v4.0 schema prerequisites exist — additive SurrealDB DDL only, no destructive migrations
+**Depends on**: Nothing (infrastructure-first phase)
+**Requirements**: OFFS-01, OFFS-02, OFFS-04, LOGS-01, EVNT-01, EVNT-05
+**Success Criteria** (what must be TRUE):
+  1. `reference` table has `page_number` (int, nullable), `page_offset_start` (int, nullable), `page_offset_end` (int, nullable) fields — all DEFAULT null
+  2. New `document_event_log` table exists with fields: document, step_name, severity (enum: info/warning/error), message, details (FLEXIBLE), created_at
+  3. `canonical_entity.entity_type` enum includes `'event'` alongside place/person/object
+  4. GraphQL proxy exposes all new fields and tables after schema deployment
+  5. Existing queries on unaffected tables continue to return identical results (no regression)
+**Plans**: TBD
+
+### Phase 14: Reference Offset Computation
+**Goal**: Every extracted reference carries deterministic page number and document-level character offsets computed from chunk metadata — no LLM hallucination of offsets
+**Depends on**: Phase 13
+**Requirements**: OFFS-03, OFFS-05
+**Success Criteria** (what must be TRUE):
+  1. `store_extraction_results_activity` computes `page_number` from chunk `page_offsets` + LLM `span_start`/`span_end` — page number matches the chunk's page range
+  2. `page_offset_start` and `page_offset_end` are computed as document-level character offsets by adding chunk `offset_start` to LLM `span_start`/`span_end`
+  3. Plain-text documents (no page structure) store null offsets without error
+  4. Existing `span_start`/`span_end` fields remain unchanged and continue to function identically for all existing queries
+  5. A reprocessed document produces identical offset values (deterministic, text_hash validated)
+**Plans**: TBD
+
+### Phase 15: Per-Document Processing Logs
+**Goal**: Every document processing run produces an append-only audit log with severity levels, viewable via a dedicated API endpoint
+**Depends on**: Phase 13
+**Requirements**: LOGS-02, LOGS-03, LOGS-04, LOGS-05, LOGS-06
+**Success Criteria** (what must be TRUE):
+  1. Each Temporal workflow activity (extract_text, chunk_document, extract_events, store_results, resolve_entities) writes log entries via a shared `_log()` workflow helper
+  2. A document with a non-fatal warning (e.g., low-LLM-confidence extraction) completes with status "completed" and the warning visible in the log — workflow does not abort
+  3. Log entries survive Temporal replay — reprocessing a document replaces old log entries deterministically (delete-then-recreate by deterministic ID)
+  4. `GET /documents/{id}/logs` returns paginated log entries ordered by created_at, with at most ~100 entries per document
+  5. A document that encounters an error during extraction still produces partial log entries showing which steps completed before the error
+**Plans**: TBD
+
+### Phase 16: Event Canonical Entities
+**Goal**: Extracted events become first-class canonical entities of type "event" with structured properties, linkable to place/person/object entities, and manageable via existing merge/split endpoints
+**Depends on**: Phase 13
+**Requirements**: EVNT-02, EVNT-03, EVNT-04, EVNT-06
+**Success Criteria** (what must be TRUE):
+  1. After document processing completes, each extracted event has a corresponding `canonical_entity` record with `entity_type: "event"` and `properties` containing `time_range`, `location`, `participants`, `objects`, `que_paso`, `title`, `description`
+  2. Event entities are linked to their related place/person/object canonical entities via `RELATE` graph edges (outgoing from event entity)
+  3. `POST /entities/merge` and `POST /entities/{type}/{id}/split` work for event-type entities — merge conditions include time overlap and common participants
+  4. Reprocessing a document nullifies event entities scoped to that document and recreates them (nullify-then-recreate replay safety)
+  5. Existing documents without event entities continue to work — no blocking migration, no errors from missing entity links
+**Plans**: TBD
+**UI hint**: yes
+
+### Phase 17: Search-First Entity Resolution
+**Goal**: Entity resolution searches existing canonical entities first — exact text matches skip the LLM entirely, and the LLM receives candidate context for fuzzy matches, reducing LLM calls by 20-50%
+**Depends on**: Phase 16 (needs event-type entities searchable)
+**Requirements**: RSOL-01, RSOL-02, RSOL-03, RSOL-04, RSOL-05, RSOL-06
+**Success Criteria** (what must be TRUE):
+  1. `resolve_entities_with_search_activity` queries existing canonical entities by name+type — an exact match (case-insensitive, accent-normalized) auto-assigns the `entity_id` on the reference without calling the LLM
+  2. For non-exact matches, up to 5 candidate entities are pre-filtered via fuzzy/`CONTAINS` search and injected into the LLM prompt as context
+  3. The LLM decides whether each reference matches an existing entity (producing its ID) or requires a new entity creation — references with LLM-assigned IDs skip the create step
+  4. `entity_id` field on reference records carries the pre-resolved canonical entity link (replaces reliance on post-hoc canonical_entity field)
+  5. Temporal replay safety is preserved — reprocessing a document nullifies entity links and re-runs resolution deterministically
+  6. Existing merge/split correction flow continues to work — manually merged entities are found by search on their accumulated reference names
+**Plans**: TBD
+
+### Phase 18: Full Integration + Test Corpus + Docs
+**Goal**: All v4.0 features verified with real Spanish legal documents, no regressions, and the core pipeline is documented end-to-end
+**Depends on**: Phases 13, 14, 15, 16, 17
+**Requirements**: TEST-01, TEST-02, TEST-03, TEST-04, TEST-05
+**Success Criteria** (what must be TRUE):
+  1. Real Spanish legal document(s) (3-5 anonymized court rulings) are committed as test fixtures in the repository — not synthetic text
+  2. Integration tests verify: offset computation on a multi-page document, processing log entries after a full workflow run, event canonical entity creation and graph edges, and search-first resolution with exact-match bypass
+  3. All existing integration tests (11 M001 + 6 M002 + v2.0 + v3.0) continue to pass — zero regressions
+  4. README explains the core pipeline flow: ingest → extract text (PDF/blob) → chunk → LLM event extraction → store events with offsets → resolve canonical entities → query via GraphQL
+  5. README documents the full audit trail: blob → text → chunks → events → references → canonical entities, with traceability guarantees at each step
+**Plans**: TBD
+
 ## Progress
 
 | Phase | Plans Complete | Status | Completed |
@@ -222,3 +308,9 @@ Plans:
 | 10. Document Upload | 1/1 | Complete | 2026-06-01 |
 | 11. Document List | 1/1 | Complete | 2026-06-01 |
 | 12. Entity List | 1/1 | Complete | 2026-06-01 |
+| 13. Schema Evolution | 0/0 | Not started | - |
+| 14. Reference Offset Computation | 0/0 | Not started | - |
+| 15. Per-Document Processing Logs | 0/0 | Not started | - |
+| 16. Event Canonical Entities | 0/0 | Not started | - |
+| 17. Search-First Entity Resolution | 0/0 | Not started | - |
+| 18. Full Integration + Test Corpus + Docs | 0/0 | Not started | - |
