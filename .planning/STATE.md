@@ -8,10 +8,10 @@ last_updated: "2026-06-03T23:50:00.000Z"
 last_activity: 2026-06-03 -- Phase 16 execution completed
 progress:
   total_phases: 6
-  completed_phases: 3
-  total_plans: 4
-   completed_plans: 5
-   percent: 56
+  completed_phases: 4
+  total_plans: 5
+  completed_plans: 6
+  percent: 67
 ---
 
 # Project State
@@ -22,14 +22,14 @@ See: .planning/PROJECT.md (updated 2026-06-02)
 
 **Core value:** Every extracted event must be traceable to its exact source text in the original document, and every resolved entity must show its evidential references.
 
-**Current focus:** Phase 16 — event-canonical-entities
+**Current focus:** Phase 17 — search-first-entity-resolution (Wave 1)
 
 ## Current Position
 
-Phase: 16 (event-canonical-entities) — COMPLETE
+Phase: 17 (search-first-entity-resolution) — WAVE 1 COMPLETE
 Plan: 1 of 1 — COMPLETE
 Status: Complete
-Last activity: 2026-06-03 -- Phase 16 execution completed
+Last activity: 2026-06-03 -- Phase 17 Plan 01 executed
 
 ## Performance Metrics
 
@@ -41,11 +41,11 @@ Last activity: 2026-06-03 -- Phase 16 execution completed
 | 14. Reference Offset Computation | 1/1 | Complete | 2026-06-03 |
 | 15. Per-Document Processing Logs | 1/1 | Complete | 2026-06-03 |
 | 16. Event Canonical Entities | 1/1 | Complete | 2026-06-03 |
-| 17. Search-First Entity Resolution | 0/0 | Not started | - |
+| 17. Search-First Entity Resolution | 1/1 | Complete | 2026-06-03 |
 | 18. Full Integration + Test Corpus + Docs | 0/0 | Not started | - |
 
-**Totals:** 6 phases, 5 plans
-**Timeline:** Phase 13-16 completed
+**Totals:** 6 phases, 6 plans
+**Timeline:** Phase 13-17 completed
 
 ## Accumulated Context
 
@@ -63,6 +63,9 @@ Recent decisions affecting current work:
 - D019: Phase 16 uses DELETE (not UPDATE) for nullify step — prior event entities are deleted entirely since there is no event-entity-level merge use case yet
 - D020: Phase 16 RELATE matching uses CONTAINS both directions (entity_name CONTAINS verbatim_text AND verbatim_text CONTAINS entity_name) with deduplication for robustness
 - D021: Phase 16 extracts pure helper functions in test file for isolated unit testing of naming, properties, matching heuristic
+- D022: Phase 17 adds entity_id field on reference table (record<canonical_entity> | null) — authoritative link for search-first resolution
+- D023: Phase 17 exact match uses NFD+casefold normalization (unicodedata.normalize) for case-insensitive, accent-normalized comparison
+- D024: Phase 17 old resolve_entities_activity kept registered in worker but no longer called by workflow (backward compat)
 
 ### Pending Todos
 
@@ -87,5 +90,5 @@ Items acknowledged and carried forward from previous milestone close:
 ## Session Continuity
 
 Last session: 2026-06-03
-Stopped at: Phase 16 completed
-Resume file: .planning/phases/16-event-canonical-entities/16-01-SUMMARY.md
+Stopped at: Phase 17 Plan 01 completed
+Resume file: .planning/phases/17-search-first-entity-resolution/17-01-SUMMARY.md
