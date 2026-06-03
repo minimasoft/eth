@@ -19,11 +19,11 @@ Requirements for this milestone. Each maps to roadmap phases.
 ### Processing Logs
 
 - [ ] **LOGS-01**: New `document_event_log` SurrealDB table with fields: document, step_name, severity (info/warning/error), message, details (FLEXIBLE object), created_at
-- [ ] **LOGS-02**: Each Temporal activity appends log entries via a shared helper — entries are fire-and-forget, never block processing
-- [ ] **LOGS-03**: Warnings and errors accumulate without aborting the workflow — document status still reflects completion
-- [ ] **LOGS-04**: Log entries use deterministic IDs for Temporal replay idempotency (delete-then-recreate on reprocess)
-- [ ] **LOGS-05**: Log table is bounded (~100 entries per document maximum)
-- [ ] **LOGS-06**: New `GET /documents/{id}/logs` API endpoint returns processing log entries
+- [x] **LOGS-02**: Each Temporal activity appends log entries via a shared helper — entries are fire-and-forget, never block processing
+- [x] **LOGS-03**: Warnings and errors accumulate without aborting the workflow — document status still reflects completion
+- [x] **LOGS-04**: Log entries use deterministic IDs for Temporal replay idempotency (delete-then-recreate on reprocess)
+- [x] **LOGS-05**: Log table is bounded (~100 entries per document maximum)
+- [x] **LOGS-06**: New `GET /documents/{id}/logs` API endpoint returns processing log entries
 
 ### Event Canonical Entities
 
@@ -88,11 +88,11 @@ Which phases cover which requirements. Updated during roadmap creation.
 | OFFS-04 | Phase 13 | Pending |
 | OFFS-05 | Phase 14 | Complete |
 | LOGS-01 | Phase 13 | Pending |
-| LOGS-02 | Phase 15 | Pending |
-| LOGS-03 | Phase 15 | Pending |
-| LOGS-04 | Phase 15 | Pending |
-| LOGS-05 | Phase 15 | Pending |
-| LOGS-06 | Phase 15 | Pending |
+| LOGS-02 | Phase 15 | Complete |
+| LOGS-03 | Phase 15 | Complete |
+| LOGS-04 | Phase 15 | Complete |
+| LOGS-05 | Phase 15 | Complete |
+| LOGS-06 | Phase 15 | Complete |
 | EVNT-01 | Phase 13 | Pending |
 | EVNT-02 | Phase 16 | Pending |
 | EVNT-03 | Phase 16 | Pending |

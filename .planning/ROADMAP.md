@@ -236,7 +236,7 @@ Plans:
 
 - [x] **Phase 13: Schema Evolution** — Additive SurrealDB schema changes for v4.0 features (completed 2026-06-03)
 - [x] **Phase 14: Reference Offset Computation** — Deterministic page + character offset computation in store_extraction_results_activity
-- [ ] **Phase 15: Per-Document Processing Logs** — document_event_log table, log_processing_event_activity, and GET /documents/{id}/logs endpoint
+- [x] **Phase 15: Per-Document Processing Logs** — document_event_log table, log_processing_event_activity, and GET /documents/{id}/logs endpoint
 - [ ] **Phase 16: Event Canonical Entities** — create_event_canonical_entities_activity with event-type canonical entities
 - [ ] **Phase 17: Search-First Entity Resolution** — resolve_entities_with_search_activity with candidate pre-filtering and LLM context injection
 - [ ] **Phase 18: Full Integration + Test Corpus + Docs** — Integration tests with real Spanish legal documents, README/docs update
@@ -300,7 +300,7 @@ Plans:
 **Plans**: 1 plan
 
 Plans:
-- [ ] 15-01-PLAN.md — ProcessingLogger, activity log calls, GET /documents/{id}/logs endpoint, tests
+- [x] 15-01-PLAN.md — ProcessingLogger, activity log calls, GET /documents/{id}/logs endpoint, tests
 
 ### Phase 16: Event Canonical Entities
 
@@ -365,7 +365,7 @@ Plans:
 | 12. Entity List | 1/1 | Complete | 2026-06-01 |
 | 13. Schema Evolution | 2/2 | Complete   | 2026-06-03 |
 | 14. Reference Offset Computation | 1/1 | Complete | 2026-06-03 |
-| 15. Per-Document Processing Logs | 1/1 | Planning complete | - |
+| 15. Per-Document Processing Logs | 1/1 | Complete | 2026-06-03 |
 | 16. Event Canonical Entities | 0/0 | Not started | - |
 | 17. Search-First Entity Resolution | 0/0 | Not started | - |
 | 18. Full Integration + Test Corpus + Docs | 0/0 | Not started | - |
