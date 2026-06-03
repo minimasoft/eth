@@ -532,6 +532,282 @@ async def resolve_entities_activity(document_id: str, result: dict) -> dict:
         return {"error": str(exc), "document_id": document_id}
 
 
+@activity.defn
+async def create_event_canonical_entities_activity(
+    document_id: str,
+    result: dict,
+) -> dict:
+    """Create canonical_entity records for extracted events.
+
+    **Replay-safe**: First deletes any prior event-type canonical entities
+    scoped to this document (and their event_entity_link edges), then
+    recreates them from scratch. This guarantees idempotency across retries.
+
+    For each event in ``result["events"]``:
+      1. Creates a ``canonical_entity`` record with ``entity_type="event"``
+         and properties mapped from event fields.
+      2. Creates ``event_entity_link`` RELATE edges to matching
+         place/person/object canonical entities via verbatim text CONTAINS
+         matching on the event's ``espacio``, ``humanos``, and ``objetos``
+         fields.
+
+    Parameters
+    ----------
+    document_id:
+        SurrealDB record ID of the source document (e.g. ``"abc123"``).
+    result:
+        LLM extraction result dict with top-level ``"events"`` array.
+
+    Returns
+    -------
+    dict
+        ``{"document_id": ..., "events_processed": N, "entities_created": N,
+        "links_created": N}`` on success, or
+        ``{"error": ..., "document_id": ...}`` on failure.
+    """
+    params = _db_params()
+    _log = ProcessingLogger(params)
+    doc_ref = f"document:{document_id}"
+    events_from_input = result.get("events", [])
+
+    activity.logger.info(
+        "create_event_canonical_entities_activity called "
+        "[document_id=%s] [event_count=%d]",
+        document_id,
+        len(events_from_input),
+    )
+    await _log.log(document_id, "create_event_entities", "info",
+                   f"Starting event canonical entity creation for "
+                   f"{len(events_from_input)} events")
+
+    if not events_from_input:
+        activity.logger.info(
+            "No events — nothing to create [document_id=%s]",
+            document_id,
+        )
+        await _log.log(document_id, "create_event_entities", "warning",
+                       "No events — nothing to create")
+        return {
+            "document_id": document_id,
+            "events_processed": 0,
+            "entities_created": 0,
+            "links_created": 0,
+        }
+
+    try:
+        async with get_db(**params) as db:
+            # ------------------------------------------------------------------
+            # 1. Nullify: delete prior event entities and their links
+            # ------------------------------------------------------------------
+            activity.logger.info(
+                "Nullifying prior event entities [document_id=%s]",
+                document_id,
+            )
+            await _log.log(document_id, "create_event_entities", "info",
+                           "Deleting prior event entities for this document")
+
+            # Delete links first (foreign-key order)
+            await db.query(
+                "DELETE event_entity_link WHERE event IN ("
+                "SELECT id FROM canonical_entity "
+                "WHERE entity_type = 'event' AND properties.document_id = $doc_id"
+                ")",
+                {"doc_id": document_id},
+            )
+            await db.query(
+                "DELETE canonical_entity "
+                "WHERE entity_type = 'event' AND properties.document_id = $doc_id",
+                {"doc_id": document_id},
+            )
+
+            # ------------------------------------------------------------------
+            # 2. Query stored events for this document
+            # ------------------------------------------------------------------
+            events_raw = await db.query(
+                "SELECT * FROM event WHERE document = $doc_ref",
+                {"doc_ref": doc_ref},
+            )
+            stored_events = _extract_query_results(events_raw)
+
+            if not stored_events:
+                activity.logger.info(
+                    "No stored events found in DB [document_id=%s]",
+                    document_id,
+                )
+                await _log.log(document_id, "create_event_entities", "warning",
+                               "No stored events found — nothing to create")
+                return {
+                    "document_id": document_id,
+                    "events_processed": 0,
+                    "entities_created": 0,
+                    "links_created": 0,
+                }
+
+            # ------------------------------------------------------------------
+            # 3. For each stored event, create canonical_entity and RELATE edges
+            # ------------------------------------------------------------------
+            entities_created = 0
+            links_created = 0
+
+            for event in stored_events:
+                que_paso = event.get("que_paso", "") or ""
+                tiempo = event.get("tiempo") or ""
+                espacio = event.get("espacio") or ""
+                humanos = event.get("humanos") or ""
+                objetos = event.get("objetos") or ""
+
+                # ---- Build entity name ----
+                truncated = que_paso[:80].strip()
+                if len(que_paso) > 80:
+                    name = f"Event: {truncated}..."
+                else:
+                    name = f"Event: {truncated}"
+
+                # ---- Build properties dict ----
+                props = {
+                    "title": que_paso[:80],
+                    "description": que_paso,
+                    "time_range": tiempo,
+                    "location": espacio,
+                    "participants": humanos,
+                    "objects": objetos,
+                    "document_id": document_id,
+                }
+
+                # ---- Create canonical_entity record ----
+                entity_result = await db.query(
+                    "CREATE canonical_entity CONTENT { "
+                    "name: $name, "
+                    "entity_type: 'event', "
+                    "properties: $props "
+                    "} RETURN id",
+                    {
+                        "name": name,
+                        "props": props,
+                    },
+                )
+                created_rows = _extract_query_results(entity_result)
+                if not created_rows:
+                    activity.logger.warning(
+                        "Failed to create event canonical entity "
+                        "[document_id=%s] [que_paso=%.40s]",
+                        document_id,
+                        que_paso,
+                    )
+                    continue
+
+                event_entity_rid = created_rows[0].get("id")
+                entities_created += 1
+
+                # ---- 4. RELATE edges ----
+                # Match espacio (→location) against 'place' entities
+                for field_value, entity_type_filter, role in [
+                    (espacio, "place", "location"),
+                    (humanos, "person", "participant"),
+                    (objetos, "object", "object"),
+                ]:
+                    if not field_value:
+                        continue
+
+                    # Query existing entities by CONTAINS matching
+                    matched_raw = await db.query(
+                        "SELECT id, name FROM canonical_entity "
+                        "WHERE entity_type = $etype "
+                        "AND name CONTAINS $value",
+                        {
+                            "etype": entity_type_filter,
+                            "value": field_value,
+                        },
+                    )
+                    matched_entities = _extract_query_results(matched_raw)
+
+                    # Also check the reverse: verbatim text CONTAINS entity name
+                    reverse_raw = await db.query(
+                        "SELECT id, name FROM canonical_entity "
+                        "WHERE entity_type = $etype "
+                        "AND $value CONTAINS name",
+                        {
+                            "etype": entity_type_filter,
+                            "value": field_value,
+                        },
+                    )
+                    reverse_entities = _extract_query_results(reverse_raw)
+
+                    # Combine, deduplicate by id
+                    seen_ids: set[str] = set()
+                    for match in matched_entities + reverse_entities:
+                        match_id = match.get("id")
+                        if match_id and match_id not in seen_ids:
+                            seen_ids.add(match_id)
+                            try:
+                                await db.query(
+                                    "CREATE event_entity_link CONTENT { "
+                                    "event: $event_rid, "
+                                    "entity: $entity_rid, "
+                                    "relationship_type: 'involves', "
+                                    "role: $role, "
+                                    "confidence: 0.7 "
+                                    "}",
+                                    {
+                                        "event_rid": event_entity_rid,
+                                        "entity_rid": match_id,
+                                        "role": role,
+                                    },
+                                )
+                                links_created += 1
+                            except Exception as exc:
+                                activity.logger.warning(
+                                    "Failed to create event_entity_link "
+                                    "[event=%s] [entity=%s]: %s",
+                                    event_entity_rid,
+                                    match_id,
+                                    exc,
+                                )
+
+            activity.logger.info(
+                "create_event_canonical_entities_activity completed "
+                "[document_id=%s] [events_processed=%d] "
+                "[entities_created=%d] [links_created=%d]",
+                document_id,
+                len(stored_events),
+                entities_created,
+                links_created,
+            )
+            await _log.log(document_id, "create_event_entities", "info",
+                           f"Created {entities_created} event entities with "
+                           f"{links_created} links",
+                           {
+                               "events_processed": len(stored_events),
+                               "entities_created": entities_created,
+                               "links_created": links_created,
+                           })
+
+            return {
+                "document_id": document_id,
+                "events_processed": len(stored_events),
+                "entities_created": entities_created,
+                "links_created": links_created,
+            }
+
+    except ConnectionError as exc:
+        activity.logger.error(
+            "SurrealDB connection failed in "
+            "create_event_canonical_entities_activity: %s",
+            exc,
+        )
+        await _log.log(document_id, "create_event_entities", "error",
+                       f"Connection failed: {exc}")
+        return {"error": str(exc), "document_id": document_id}
+    except Exception as exc:
+        activity.logger.error(
+            "Unexpected error in create_event_canonical_entities_activity: %s",
+            exc,
+        )
+        await _log.log(document_id, "create_event_entities", "error",
+                       f"Unexpected error: {exc}")
+        return {"error": str(exc), "document_id": document_id}
+
+
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
