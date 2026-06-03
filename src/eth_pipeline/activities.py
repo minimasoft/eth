@@ -24,6 +24,7 @@ from eth_pipeline.extractors import (
     PdfExtractor,
 )
 from eth_pipeline.llm import DEFAULT_MODEL, EXTRACTION_CHUNK_SIZE, OpenRouterProvider
+from eth_pipeline.processing_log import ProcessingLogger
 from eth_pipeline.storage import get_storage
 
 # ---------------------------------------------------------------------------
@@ -114,8 +115,11 @@ async def extract_events_activity(document_id: str) -> dict:
         key is absent.
     """
     api_key = os.environ.get("OPENROUTER_API_KEY")
+    _log = ProcessingLogger(_db_params())
     if not api_key:
         activity.logger.error("OPENROUTER_API_KEY not set — returning degraded result")
+        await _log.log(document_id, "extract_events", "warning",
+                       "OPENROUTER_API_KEY not set — returning degraded result")
         return {"error": "OPENROUTER_API_KEY not set", "events": []}
 
     model = os.environ.get("OPENROUTER_MODEL", DEFAULT_MODEL)
@@ -133,6 +137,8 @@ async def extract_events_activity(document_id: str) -> dict:
                     "Document not found [document_id=%s]",
                     document_id,
                 )
+                await _log.log(document_id, "extract_events", "warning",
+                               "Document not found in database")
                 return {"error": "Document not found", "document_id": document_id}
             text = rows[0].get("text_content") or ""
     except ConnectionError as exc:
@@ -140,6 +146,8 @@ async def extract_events_activity(document_id: str) -> dict:
             "SurrealDB connection failed in extract_events_activity: %s",
             exc,
         )
+        await _log.log(document_id, "extract_events", "error",
+                       f"Connection failed: {exc}")
         return {"error": str(exc), "document_id": document_id}
 
     activity.logger.info(
@@ -148,6 +156,9 @@ async def extract_events_activity(document_id: str) -> dict:
         len(text),
         model,
     )
+    await _log.log(document_id, "extract_events", "info",
+                   f"Starting event extraction: {len(text)} chars, model={model}",
+                   {"text_length": len(text), "model": model})
 
     # ---- Sequential chunked extraction ----
     # Split long documents into chunks and process each with accumulated
@@ -191,6 +202,9 @@ async def extract_events_activity(document_id: str) -> dict:
             len(chunk_events),
             document_id,
         )
+        await _log.log(document_id, "extract_events", "info",
+                       f"Chunk {i+1}/{len(chunks)}: {len(chunk_events)} events extracted",
+                       {"chunk_index": i, "total_chunks": len(chunks), "events_in_chunk": len(chunk_events)})
         all_events.extend(chunk_events)
 
     result = {"events": all_events}
@@ -199,6 +213,9 @@ async def extract_events_activity(document_id: str) -> dict:
         document_id,
         len(all_events),
     )
+    await _log.log(document_id, "extract_events", "info",
+                   f"Event extraction completed: {len(all_events)} total events",
+                   {"total_events": len(all_events), "chunks_processed": len(chunks)})
     return result
 
 
@@ -246,6 +263,7 @@ async def resolve_entities_activity(document_id: str, result: dict) -> dict:
         on success, or ``{"error": ..., "document_id": ...}`` on failure.
     """
     params = _db_params()
+    _log = ProcessingLogger(params)
     doc_ref = f"document:{document_id}"
     events = result.get("events", [])
 
@@ -254,12 +272,16 @@ async def resolve_entities_activity(document_id: str, result: dict) -> dict:
         document_id,
         len(events),
     )
+    await _log.log(document_id, "resolve_entities", "info",
+                   f"Starting entity resolution for {len(events)} events")
 
     if not events:
         activity.logger.info(
             "No events — nothing to resolve [document_id=%s]",
             document_id,
         )
+        await _log.log(document_id, "resolve_entities", "warning",
+                       "No events — nothing to resolve")
         return {"document_id": document_id, "resolved": 0, "created": 0, "skipped": 0}
 
     try:
@@ -279,6 +301,8 @@ async def resolve_entities_activity(document_id: str, result: dict) -> dict:
                     "No references found [document_id=%s]",
                     document_id,
                 )
+                await _log.log(document_id, "resolve_entities", "info",
+                               "No references found for this document")
                 return {
                     "document_id": document_id,
                     "resolved": 0,
@@ -369,6 +393,8 @@ async def resolve_entities_activity(document_id: str, result: dict) -> dict:
                     len(existing_entities),
                     document_id,
                 )
+                await _log.log(document_id, "resolve_entities", "info",
+                               f"Resolving {len(refs)} {entity_type} references")
 
                 # ---- LLM batch resolution ----
                 try:
@@ -385,6 +411,9 @@ async def resolve_entities_activity(document_id: str, result: dict) -> dict:
                         document_id,
                         exc,
                     )
+                    await _log.log(document_id, "resolve_entities", "warning",
+                                   f"LLM resolution failed for {entity_type} references",
+                                   {"error": str(exc)[:200]})
                     continue
 
                 resolutions = resolution.get("resolutions", [])
@@ -395,6 +424,8 @@ async def resolve_entities_activity(document_id: str, result: dict) -> dict:
                         entity_type,
                         document_id,
                     )
+                    await _log.log(document_id, "resolve_entities", "warning",
+                                   f"LLM returned empty resolutions for {entity_type} references")
                     continue
 
                 # Build verbatim_text → [ref_id] lookup
@@ -470,6 +501,11 @@ async def resolve_entities_activity(document_id: str, result: dict) -> dict:
                 total_created,
                 skipped_count,
             )
+            await _log.log(document_id, "resolve_entities", "info",
+                           f"Resolution completed: {total_resolved} resolved, "
+                           f"{total_created} created, {skipped_count} skipped",
+                           {"resolved": total_resolved, "created": total_created,
+                            "skipped": skipped_count})
 
             return {
                 "document_id": document_id,
@@ -483,12 +519,16 @@ async def resolve_entities_activity(document_id: str, result: dict) -> dict:
             "SurrealDB connection failed in resolve_entities_activity: %s",
             exc,
         )
+        await _log.log(document_id, "resolve_entities", "error",
+                       f"SurrealDB connection failed: {exc}")
         return {"error": str(exc), "document_id": document_id}
     except Exception as exc:
         activity.logger.error(
             "Unexpected error in resolve_entities_activity: %s",
             exc,
         )
+        await _log.log(document_id, "resolve_entities", "error",
+                       f"Unexpected error: {exc}")
         return {"error": str(exc), "document_id": document_id}
 
 
@@ -593,6 +633,7 @@ async def update_document_status_activity(
         ``{"error": ...}`` on connection failure.
     """
     params = _db_params()
+    _log = ProcessingLogger(params)
     doc_ref = f"document:{document_id}"
 
     activity.logger.info(
@@ -600,6 +641,9 @@ async def update_document_status_activity(
         document_id,
         status,
     )
+    await _log.log(document_id, "update_status", "info",
+                   f"Setting status to {status}",
+                   {"new_status": status, "error_message": error_message})
 
     try:
         async with get_db(**params) as db:
@@ -620,12 +664,16 @@ async def update_document_status_activity(
             "SurrealDB connection failed in update_document_status_activity: %s",
             exc,
         )
+        await _log.log(document_id, "update_status", "error",
+                       f"Failed to update status to {status}: {exc}")
         return {"error": str(exc), "document_id": document_id}
     except Exception as exc:
         activity.logger.error(
             "Unexpected error in update_document_status_activity: %s",
             exc,
         )
+        await _log.log(document_id, "update_status", "error",
+                       f"Failed to update status to {status}: {exc}")
         return {"error": str(exc), "document_id": document_id}
 
     activity.logger.info(
@@ -633,6 +681,11 @@ async def update_document_status_activity(
         document_id,
         status,
     )
+
+    if status == "failed" and error_message:
+        await _log.log(document_id, "update_status", "error",
+                       f"Document processing failed: {error_message}")
+
     return {"document_id": document_id, "status": status}
 
 
@@ -674,6 +727,7 @@ async def store_extraction_results_activity(
         on success, or ``{"error": ..., "document_id": ...}`` on failure.
     """
     params = _db_params()
+    _log = ProcessingLogger(params)
     doc_ref = f"document:{document_id}"
     doc_record = RecordID("document", document_id)
     events = result.get("events", [])
@@ -684,6 +738,8 @@ async def store_extraction_results_activity(
         document_id,
         len(events),
     )
+    await _log.log(document_id, "store_results", "info",
+                   f"Starting storage of {len(events)} events")
 
     if not events:
         activity.logger.warning(
@@ -691,6 +747,8 @@ async def store_extraction_results_activity(
             "[document_id=%s]",
             document_id,
         )
+        await _log.log(document_id, "store_results", "warning",
+                       "No events to store — marking as processed")
         # Still mark as processed — no events is a valid extraction result.
         await update_document_status_activity(document_id, "processed")
         return {"document_id": document_id, "events_stored": 0, "references_stored": 0}
@@ -737,6 +795,8 @@ async def store_extraction_results_activity(
                     "[document_id=%s]",
                     document_id,
                 )
+                await _log.log(document_id, "store_results", "warning",
+                               "No document_chunk records found — offsets will be null")
 
             # ---- Create events and collect their IDs ----
             total_references = 0
@@ -815,6 +875,8 @@ async def store_extraction_results_activity(
                             se,
                             chunk_rows[-1]["offset_end"],
                         )
+                        await _log.log(document_id, "store_results", "warning",
+                                       f"Reference span out of range: span_start={ss}, span_end={se}")
 
                     await db.query(
                         "CREATE reference CONTENT { "
@@ -847,12 +909,17 @@ async def store_extraction_results_activity(
                 total_references,
                 document_id,
             )
+            await _log.log(document_id, "store_results", "info",
+                           f"Stored {events_stored} events and {total_references} references",
+                           {"events_stored": events_stored, "references_stored": total_references})
     except ConnectionError as exc:
         activity.logger.error(
             "SurrealDB connection failed in store_extraction_results_activity: "
             "%s",
             exc,
         )
+        await _log.log(document_id, "store_results", "error",
+                       f"Connection failed: {exc}")
         await update_document_status_activity(document_id, "failed", str(exc))
         return {"error": str(exc), "document_id": document_id}
     except Exception as exc:
@@ -860,6 +927,8 @@ async def store_extraction_results_activity(
             "Unexpected error in store_extraction_results_activity: %s",
             exc,
         )
+        await _log.log(document_id, "store_results", "error",
+                       f"Unexpected error: {exc}")
         await update_document_status_activity(document_id, "failed", str(exc))
         return {"error": str(exc), "document_id": document_id}
 
@@ -910,12 +979,15 @@ async def extract_text_activity(document_id: str) -> dict:
         ``{"error": ..., "document_id": ...}`` on failure.
     """
     params = _db_params()
+    _log = ProcessingLogger(params)
     doc_ref = f"document:{document_id}"
 
     activity.logger.info(
         "extract_text_activity called [document_id=%s]",
         document_id,
     )
+    await _log.log(document_id, "extract_text", "info",
+                   "Starting text extraction")
 
     try:
         async with get_db(**params) as db:
@@ -974,6 +1046,9 @@ async def extract_text_activity(document_id: str) -> dict:
                         exc.reason,
                         exc,
                     )
+                    await _log.log(document_id, "extract_text", "warning",
+                                   f"Quality gate failed: {exc.reason}",
+                                   {"reason": exc.reason})
                     return {
                         "error": str(exc),
                         "document_id": document_id,
@@ -994,6 +1069,8 @@ async def extract_text_activity(document_id: str) -> dict:
                         document_id,
                         msg,
                     )
+                    await _log.log(document_id, "extract_text", "error",
+                                   f"UTF-8 decode failed for plain-text file: {exc}")
                     await db.query(
                         f"UPDATE {doc_ref} SET status = 'failed', "
                         f"error_message = $msg, updated_at = time::now()",
@@ -1017,6 +1094,8 @@ async def extract_text_activity(document_id: str) -> dict:
                     ext_display,
                     mime_type,
                 )
+                await _log.log(document_id, "extract_text", "error",
+                               f"Unsupported format: {ext_display} (mime: {mime_type})")
                 await db.query(
                     f"UPDATE {doc_ref} SET status = 'failed', "
                     f"error_message = $msg, updated_at = time::now()",
@@ -1043,6 +1122,9 @@ async def extract_text_activity(document_id: str) -> dict:
                 len(text),
                 page_count,
             )
+            await _log.log(document_id, "extract_text", "info",
+                           f"Text extraction completed: {len(text)} bytes, {page_count} pages",
+                           {"text_length": len(text), "page_count": page_count})
 
             return {
                 "document_id": document_id,
@@ -1056,12 +1138,16 @@ async def extract_text_activity(document_id: str) -> dict:
             "Connection failed in extract_text_activity: %s",
             exc,
         )
+        await _log.log(document_id, "extract_text", "error",
+                       f"Connection failed: {exc}")
         return {"error": str(exc), "document_id": document_id}
     except Exception as exc:
         activity.logger.error(
             "Unexpected error in extract_text_activity: %s",
             exc,
         )
+        await _log.log(document_id, "extract_text", "error",
+                       f"Unexpected error: {exc}")
         return {"error": str(exc), "document_id": document_id}
 
 
@@ -1090,12 +1176,15 @@ async def chunk_document_activity(document_id: str, extraction_result: dict) -> 
         ``{"error": ..., "document_id": ...}`` on failure.
     """
     params = _db_params()
+    _log = ProcessingLogger(params)
     doc_ref = f"document:{document_id}"
 
     activity.logger.info(
         "chunk_document_activity called [document_id=%s]",
         document_id,
     )
+    await _log.log(document_id, "chunk_document", "info",
+                   "Starting document chunking")
 
     try:
         async with get_db(**params) as db:
@@ -1153,6 +1242,8 @@ async def chunk_document_activity(document_id: str, extraction_result: dict) -> 
                     "No chunks to store [document_id=%s]",
                     document_id,
                 )
+                await _log.log(document_id, "chunk_document", "warning",
+                               "No chunks generated — document may be empty")
 
             await db.query(
                 f"UPDATE {doc_ref} SET status = 'chunking', "
@@ -1165,6 +1256,9 @@ async def chunk_document_activity(document_id: str, extraction_result: dict) -> 
                 document_id,
                 len(chunks),
             )
+            await _log.log(document_id, "chunk_document", "info",
+                           f"Chunking completed: {len(chunks)} chunks",
+                           {"chunk_count": len(chunks)})
 
             return {
                 "document_id": document_id,
@@ -1176,6 +1270,8 @@ async def chunk_document_activity(document_id: str, extraction_result: dict) -> 
             "Connection failed in chunk_document_activity: %s",
             exc,
         )
+        await _log.log(document_id, "chunk_document", "error",
+                       f"Connection failed: {exc}")
         return {"error": str(exc), "document_id": document_id}
     except Exception as exc:
         activity.logger.error(
@@ -1221,12 +1317,15 @@ async def get_document_metadata_activity(document_id: str) -> dict:
         or ``{"error": ..., "document_id": ...}`` on connection failure.
     """
     params = _db_params()
+    _log = ProcessingLogger(params)
     doc_ref = f"document:{document_id}"
 
     activity.logger.info(
         "get_document_metadata_activity called [document_id=%s]",
         document_id,
     )
+    await _log.log(document_id, "get_document_metadata", "info",
+                   "Starting document metadata retrieval")
 
     try:
         async with get_db(**params) as db:
@@ -1240,6 +1339,8 @@ async def get_document_metadata_activity(document_id: str) -> dict:
                     "Document not found [document_id=%s]",
                     document_id,
                 )
+                await _log.log(document_id, "get_document_metadata", "warning",
+                               "Document not found in database")
                 return {"error": "Document not found", "document_id": document_id}
 
             doc = rows[0]
@@ -1253,6 +1354,11 @@ async def get_document_metadata_activity(document_id: str) -> dict:
                 doc.get("blob_format"),
                 has_text_content,
             )
+            await _log.log(document_id, "get_document_metadata", "info",
+                           f"Metadata retrieved: blob_format={doc.get('blob_format')}, "
+                           f"has_text_content={has_text_content}",
+                           {"blob_format": doc.get("blob_format"),
+                            "has_text_content": has_text_content})
 
             return {
                 "document_id": document_id,
@@ -1266,12 +1372,16 @@ async def get_document_metadata_activity(document_id: str) -> dict:
             "SurrealDB connection failed in get_document_metadata_activity: %s",
             exc,
         )
+        await _log.log(document_id, "get_document_metadata", "error",
+                       f"SurrealDB connection failed: {exc}")
         return {"error": str(exc), "document_id": document_id}
     except Exception as exc:
         activity.logger.error(
             "Unexpected error in get_document_metadata_activity: %s",
             exc,
         )
+        await _log.log(document_id, "get_document_metadata", "error",
+                       f"Unexpected error: {exc}")
         return {"error": str(exc), "document_id": document_id}
 
 
@@ -1297,12 +1407,15 @@ async def get_document_text_activity(document_id: str) -> dict:
         connection failure.
     """
     params = _db_params()
+    _log = ProcessingLogger(params)
     doc_ref = f"document:{document_id}"
 
     activity.logger.info(
         "get_document_text_activity called [document_id=%s]",
         document_id,
     )
+    await _log.log(document_id, "get_document_text", "info",
+                   "Starting document text retrieval")
 
     try:
         async with get_db(**params) as db:
@@ -1315,6 +1428,8 @@ async def get_document_text_activity(document_id: str) -> dict:
                     "Document not found [document_id=%s]",
                     document_id,
                 )
+                await _log.log(document_id, "get_document_text", "warning",
+                               "Document not found in database")
                 return {"error": "Document not found", "document_id": document_id}
 
             text_content = rows[0].get("text_content") or ""
@@ -1325,6 +1440,9 @@ async def get_document_text_activity(document_id: str) -> dict:
                 document_id,
                 len(text_content),
             )
+            await _log.log(document_id, "get_document_text", "info",
+                           f"Text retrieval completed: {len(text_content)} bytes",
+                           {"text_length": len(text_content)})
 
             return {
                 "document_id": document_id,
@@ -1337,10 +1455,14 @@ async def get_document_text_activity(document_id: str) -> dict:
             "SurrealDB connection failed in get_document_text_activity: %s",
             exc,
         )
+        await _log.log(document_id, "get_document_text", "error",
+                       f"SurrealDB connection failed: {exc}")
         return {"error": str(exc), "document_id": document_id}
     except Exception as exc:
         activity.logger.error(
             "Unexpected error in get_document_text_activity: %s",
             exc,
         )
+        await _log.log(document_id, "get_document_text", "error",
+                       f"Unexpected error: {exc}")
         return {"error": str(exc), "document_id": document_id}
