@@ -48,8 +48,8 @@ Requirements for this milestone. Each maps to roadmap phases.
 - [ ] **TEST-01**: Real Spanish legal document(s) added as test fixtures (not synthetic text)
 - [ ] **TEST-02**: Integration tests verify offset computation, processing logs, event entities, and search-first resolution
 - [ ] **TEST-03**: All existing integration tests continue to pass (no regressions)
-- [ ] **TEST-04**: README updated with core pipeline explanation (ingest → extract → resolve → query)
-- [ ] **TEST-05**: Docs clarify the full audit trail: blob → text → chunks → events → references → canonical entities
+- [x] **TEST-04**: README updated with core pipeline explanation (ingest → extract → resolve → query)
+- [x] **TEST-05**: Docs clarify the full audit trail: blob → text → chunks → events → references → canonical entities
 
 ## v4.x Requirements (Deferred)
 
@@ -108,8 +108,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | TEST-01 | Phase 18 | Pending |
 | TEST-02 | Phase 18 | Pending |
 | TEST-03 | Phase 18 | Pending |
-| TEST-04 | Phase 18 | Pending |
-| TEST-05 | Phase 18 | Pending |
+| TEST-04 | Phase 18 | Complete |
+| TEST-05 | Phase 18 | Complete |
 
 **Coverage:**
 - v4.0 requirements: 28 total

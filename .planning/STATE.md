@@ -4,14 +4,14 @@ milestone: v4.0
 milestone_name: milestone
 status: executing
 stopped_at: Phase 18 — plans created
-last_updated: "2026-06-03T23:51:00.000Z"
-last_activity: 2026-06-03 -- Phase 17 Plan 02 executed
+last_updated: "2026-06-03T19:40:00.000Z"
+last_activity: 2026-06-03 -- Phase 18 Plan 02 executed (README update)
 progress:
   total_phases: 6
   completed_phases: 4
   total_plans: 9
-  completed_plans: 7
-  percent: 78
+  completed_plans: 8
+  percent: 89
 ---
 
 # Project State
@@ -22,14 +22,14 @@ See: .planning/PROJECT.md (updated 2026-06-02)
 
 **Core value:** Every extracted event must be traceable to its exact source text in the original document, and every resolved entity must show its evidential references.
 
-**Current focus:** Phase 17 — search-first-entity-resolution (Wave 2 complete, unit tests verified)
+**Current focus:** Phase 18 — README update (Plan 02 executed)
 
 ## Current Position
 
-Phase: 18 (full-integration-test-corpus-docs) — PLANNING COMPLETE
-Plan: 2 plans created (Wave 1 — parallel)
-Status: Planned
-Last activity: 2026-06-03 -- Phase 18 plans created
+Phase: 18 (full-integration-test-corpus-docs) — PLAN 02 EXECUTED
+Plan: 2 plans (Plan 01: test fixtures + integration tests — pending; Plan 02: README update — complete)
+Status: Plan 02 complete (README updated to 595 lines)
+Last activity: 2026-06-03 -- Phase 18 Plan 02 executed (README update with v4.0 features, processing logs, audit trail)
 
 ## Performance Metrics
 
@@ -42,10 +42,10 @@ Last activity: 2026-06-03 -- Phase 18 plans created
 | 15. Per-Document Processing Logs | 1/1 | Complete | 2026-06-03 |
 | 16. Event Canonical Entities | 1/1 | Complete | 2026-06-03 |
 | 17. Search-First Entity Resolution | 2/2 | Complete | 2026-06-03 |
-| 18. Full Integration + Test Corpus + Docs | 2/2 | Planned | - |
+| 18. Full Integration + Test Corpus + Docs | 2/2 | Plan 02 complete | - |
 
-**Totals:** 6 phases, 7 plans
-**Timeline:** Phase 13-17 completed
+**Totals:** 6 phases, 8 plans
+**Timeline:** Phase 13-17 completed, Phase 18 in progress
 
 ## Accumulated Context
 
@@ -67,6 +67,7 @@ Recent decisions affecting current work:
 - D023: Phase 17 exact match uses NFD+casefold normalization (unicodedata.normalize) for case-insensitive, accent-normalized comparison
 - D024: Phase 17 old resolve_entities_activity kept registered in worker but no longer called by workflow (backward compat)
 - D025: Phase 17 NFD normalization must strip combining marks after decomposition for true accent-insensitive comparison — unicodedata.combining() filter is necessary; NFD+casefold alone is insufficient
+- D026: Phase 18 README v4.0 features structured as brief subsections with forward links to full Processing Logs and Audit Trail sections to avoid content duplication
 
 ### Pending Todos
 
@@ -91,5 +92,5 @@ Items acknowledged and carried forward from previous milestone close:
 ## Session Continuity
 
 Last session: 2026-06-03
-Stopped at: Phase 17 Plan 02 completed
-Resume file: .planning/phases/17-search-first-entity-resolution/17-02-SUMMARY.md
+Stopped at: Phase 18 Plan 02 completed (README update)
+Resume file: .planning/phases/18-full-integration-test-corpus-docs/18-02-SUMMARY.md

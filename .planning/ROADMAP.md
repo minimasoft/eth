@@ -239,7 +239,7 @@ Plans:
 - [x] **Phase 15: Per-Document Processing Logs** — document_event_log table, log_processing_event_activity, and GET /documents/{id}/logs endpoint
 - [x] **Phase 16: Event Canonical Entities** — create_event_canonical_entities_activity with event-type canonical entities (completed 2026-06-03)
 - [x] **Phase 17: Search-First Entity Resolution** — resolve_entities_with_search_activity with candidate pre-filtering and LLM context injection
-- [ ] **Phase 18: Full Integration + Test Corpus + Docs** — Integration tests with real Spanish legal documents, README/docs update (2 plans planned)
+- [/] **Phase 18: Full Integration + Test Corpus + Docs** — Integration tests with real Spanish legal documents, README/docs update (Plan 02 complete, Plan 01 pending)
 
 ## Phase Details
 
@@ -358,7 +358,7 @@ Plans:
 Plans:
 
 - [ ] 18-01-PLAN.md — Test fixtures (civil case + multi-page document) + pipeline_v4.test.ts with 4 test groups
-- [ ] 18-02-PLAN.md — README update: architecture diagram, v4.0 Features, Processing Logs, Audit Trail documentation
+- [x] 18-02-PLAN.md — README update: architecture diagram, v4.0 Features, Processing Logs, Audit Trail documentation
 
 ## Progress
 
