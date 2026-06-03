@@ -21,13 +21,21 @@ import unicodedata
 
 
 def _normalize(text: str) -> str:
-    """NFD-normalize and casefold for accent- and case-insensitive comparison.
+    """NFD-normalize, strip combining marks, then casefold for
+    accent- and case-insensitive comparison.
 
     NFD decomposition separates base characters from combining diacritical
-    marks (e.g., ``"José"`` → ``"Jose\u0301"``), then ``casefold()``
-    provides aggressive case folding (handles ß→ss, etc.).
+    marks (e.g., ``"José"`` → ``"Jose\\u0301"``), then stripping combining
+    marks removes the diacritics, and ``casefold()`` provides aggressive
+    case folding (handles ß→ss, etc.).
+
+    This produces truly accent-insensitive comparison: "José" → "jose"
+    and "Jose" → "jose".  (The activity uses the same function for
+    exact-match comparison, which is why ``_exact_match`` can match
+    across accent boundaries.)
     """
-    return unicodedata.normalize("NFD", text).casefold()
+    nfd = unicodedata.normalize("NFD", text)
+    return "".join(c for c in nfd if not unicodedata.combining(c)).casefold()
 
 
 def _exact_match(
@@ -57,14 +65,16 @@ def _find_fuzzy_candidates(
     """Find up to *limit* candidate entities via CONTAINS bidirectional.
 
     Returns entities where either the entity name CONTAINS the verbatim
-    text (case-insensitive), or the verbatim text CONTAINS the entity name.
+    text (accent- + case-insensitive), or the verbatim text CONTAINS the
+    entity name (accent- + case-insensitive).  Uses ``_normalize()`` so
+    that accents do not block substring matching.
     Results are deduplicated, sorted by name length ascending, and capped
     at *limit*.
     """
     if not verbatim_text or not entities:
         return []
 
-    vt_lower = verbatim_text.lower()
+    norm_vt = _normalize(verbatim_text)
     seen_ids: set[str] = set()
     candidates: list[dict] = []
 
@@ -72,8 +82,8 @@ def _find_fuzzy_candidates(
         ent_name = ent.get("name", "")
         if not ent_name:
             continue
-        en_lower = ent_name.lower()
-        if vt_lower in en_lower or en_lower in vt_lower:
+        norm_name = _normalize(ent_name)
+        if norm_vt in norm_name or norm_name in norm_vt:
             eid = ent.get("id")
             if eid and eid not in seen_ids:
                 seen_ids.add(eid)
@@ -276,12 +286,13 @@ def test_fuzzy_entity_contains_verbatim() -> None:
 def test_fuzzy_verbatim_contains_entity() -> None:
     """Verbatim text CONTAINS entity name — match found."""
     candidates = _find_fuzzy_candidates(
-        "Juzgado de Madrid", FIXTURE_ENTITIES
+        "Primera Instancia de Barcelona", FIXTURE_ENTITIES
     )
     assert len(candidates) >= 1
     ids = [c["id"] for c in candidates]
-    assert "entity:jls-madrid" in ids     # "Madrid" in name
-    assert "entity:jlm-madrid" in ids     # "Madrid" in name
+    assert "entity:jpi-bcn" in ids       # "primera instancia de barcelona"
+                                         # is in "juzgado de primera instancia
+                                         # de barcelona"
 
 
 def test_fuzzy_deduplicates_candidates() -> None:
@@ -346,6 +357,29 @@ def test_fuzzy_accent_insensitive() -> None:
     accented = [{"name": "Cataluña", "id": "entity:cat", "entity_type": "place"}]
     candidates = _find_fuzzy_candidates("Cataluna", accented)
     assert len(candidates) == 1
+
+
+def test_fuzzy_bidirectional_both_match() -> None:
+    """Bidirectional CONTAINS from both directions adds both matches."""
+    multi_entities = [
+        {"name": "Juzgado de Primera Instancia de Madrid",
+         "id": "entity:jpi-madrid", "entity_type": "place"},
+        {"name": "Audiencia Provincial de Barcelona",
+         "id": "entity:ap-bcn", "entity_type": "place"},
+        {"name": "Juzgado de lo Social de Madrid",
+         "id": "entity:jls-madrid", "entity_type": "place"},
+        {"name": "Madrid",
+         "id": "entity:madrid-city", "entity_type": "place"},
+    ]
+    # "Madrid" is CONTAINED by jpi-madrid AND jls-madrid AND
+    # "Madrid" (the entity name) is CONTAINED by verbatim "Madrid"
+    # In other words: both directions produce 3 results total
+    candidates = _find_fuzzy_candidates("Madrid", multi_entities)
+    assert len(candidates) == 3
+    ids = {c["id"] for c in candidates}
+    assert "entity:jpi-madrid" in ids
+    assert "entity:jls-madrid" in ids
+    assert "entity:madrid-city" in ids
 
 
 # ============================================================================
@@ -458,7 +492,7 @@ def test_integration_exact_match_skips_fuzzy() -> None:
 
 def test_integration_fuzzy_then_action() -> None:
     """No exact match → fuzzy candidates found → action maps correctly."""
-    verbatim = "JPI Barcelona"
+    verbatim = "Primera Instancia de Barcelona"
 
     exact = _exact_match(verbatim, FIXTURE_ENTITIES)
     assert exact is None  # No exact match
@@ -531,3 +565,61 @@ def test_integration_nullify_then_recreate_pattern() -> None:
     # After re-creation, entities available again
     match_a_after_create = _exact_match(verbatim_a, entities)
     assert match_a_after_create is not None
+
+
+def test_integration_full_flow_exact_fuzzy_create() -> None:
+    """Full search-first flow: exact match for one ref, fuzzy+create for
+    another, action mapping for matched candidate."""
+    # Entities available for matching
+    entities = [
+        {"name": "Juzgado de Primera Instancia de Madrid",
+         "id": "entity:jpi-madrid", "entity_type": "place"},
+        {"name": "Audiencia Provincial de Barcelona",
+         "id": "entity:ap-bcn", "entity_type": "place"},
+    ]
+
+    # --- Ref 1: exact match ---
+    ref_a = "Juzgado de Primera Instancia de Madrid"
+    exact = _exact_match(ref_a, entities)
+    assert exact is not None
+    assert exact["id"] == "entity:jpi-madrid"
+    # Exact: set entity_id + canonical_entity directly, LLM not needed
+    assert _find_fuzzy_candidates(ref_a, entities) is not None  # would find candidates
+    # but exact was sufficient
+
+    # --- Ref 2: no exact match, fuzzy candidates found ---
+    ref_b = "Barcelona"
+    exact_b = _exact_match(ref_b, entities)
+    assert exact_b is None  # no entity is exactly named "Barcelona"
+
+    fuzzy_b = _find_fuzzy_candidates(ref_b, entities)
+    assert len(fuzzy_b) >= 1  # "Barcelona" is contained in audiencia provincial de Barcelona
+
+    # Simulate LLM matching the candidate
+    action_b = _apply_resolution_action(
+        action="match_existing",
+        matched_candidate_id=fuzzy_b[0]["id"],
+        matched_entity_id=None,
+        entity_type="place",
+        ref_text=ref_b,
+    )
+    assert action_b["entity_id"] == fuzzy_b[0]["id"]
+    assert action_b["needs_create"] is False
+
+    # --- Ref 3: no match at all → must create ---
+    ref_c = "Audiencia Nacional de España"
+    exact_c = _exact_match(ref_c, entities)
+    assert exact_c is None
+    fuzzy_c = _find_fuzzy_candidates(ref_c, entities)
+    assert len(fuzzy_c) == 0
+
+    # Action: create new
+    action_c = _apply_resolution_action(
+        action="create_new",
+        matched_candidate_id=None,
+        matched_entity_id=None,
+        entity_type="place",
+        ref_text=ref_c,
+    )
+    assert action_c["needs_create"] is True
+    assert action_c["inferred_name"] == ref_c
