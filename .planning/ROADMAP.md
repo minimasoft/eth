@@ -238,7 +238,7 @@ Plans:
 - [x] **Phase 14: Reference Offset Computation** — Deterministic page + character offset computation in store_extraction_results_activity
 - [x] **Phase 15: Per-Document Processing Logs** — document_event_log table, log_processing_event_activity, and GET /documents/{id}/logs endpoint
 - [x] **Phase 16: Event Canonical Entities** — create_event_canonical_entities_activity with event-type canonical entities (completed 2026-06-03)
-- [ ] **Phase 17: Search-First Entity Resolution** — resolve_entities_with_search_activity with candidate pre-filtering and LLM context injection
+- [x] **Phase 17: Search-First Entity Resolution** — resolve_entities_with_search_activity with candidate pre-filtering and LLM context injection
 - [ ] **Phase 18: Full Integration + Test Corpus + Docs** — Integration tests with real Spanish legal documents, README/docs update
 
 ## Phase Details
@@ -337,8 +337,8 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 17-01-PLAN.md — Schema + LLM changes + new activity + workflow/worker wiring
-- [ ] 17-02-PLAN.md — Unit tests for search-first resolution logic
+- [x] 17-01-PLAN.md — Schema + LLM changes + new activity + workflow/worker wiring
+- [x] 17-02-PLAN.md — Unit tests for search-first resolution logic
 
 ### Phase 18: Full Integration + Test Corpus + Docs
 
@@ -373,5 +373,5 @@ Plans:
 | 14. Reference Offset Computation | 1/1 | Complete | 2026-06-03 |
 | 15. Per-Document Processing Logs | 1/1 | Complete | 2026-06-03 |
 | 16. Event Canonical Entities | 1/1 | Complete | 2026-06-03 |
-| 17. Search-First Entity Resolution | 0/0 | Not started | - |
+| 17. Search-First Entity Resolution | 2/2 | Complete   | 2026-06-03 |
 | 18. Full Integration + Test Corpus + Docs | 0/0 | Not started | - |
