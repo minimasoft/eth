@@ -11,6 +11,7 @@ import asyncio
 import base64
 import io
 import os
+import unicodedata
 
 from surrealdb.data.types.record_id import RecordID
 
@@ -528,6 +529,474 @@ async def resolve_entities_activity(document_id: str, result: dict) -> dict:
             exc,
         )
         await _log.log(document_id, "resolve_entities", "error",
+                       f"Unexpected error: {exc}")
+        return {"error": str(exc), "document_id": document_id}
+
+
+@activity.defn
+async def resolve_entities_with_search_activity(document_id: str, result: dict) -> dict:
+    """Resolve verbatim references to canonical entities using search-first resolution.
+
+    **Replay-safe**: First nullifies any prior ``canonical_entity``,
+    ``entity_id``, and ``resolution_confidence`` links on all references
+    for this document, then re-resolves from scratch.
+
+    **Search-first flow:**
+      1. Exact match (NFD+casefold normalized) — if a reference's verbatim
+         text matches an existing entity name exactly, set ``entity_id``
+         and ``canonical_entity`` directly without an LLM call.
+      2. Fuzzy candidate search — for remaining references, use bidirectional
+         CONTAINS to find up to 5 candidate entities.
+      3. LLM candidate resolution — remaining references are sent to the LLM
+         with the candidate list. The LLM can ``match_existing`` (with
+         ``matched_candidate_id``), ``create_new``, or ``uncertain``.
+
+    References are grouped by ``reference_type`` with the same mapping as
+    ``resolve_entities_activity``.
+
+    Parameters
+    ----------
+    document_id:
+        SurrealDB record ID of the document (e.g. ``"abc123"``).
+    result:
+        LLM extraction result dict (top-level ``"events"`` array).
+
+    Returns
+    -------
+    dict
+        ``{"document_id": ..., "resolved": N, "created": N, "skipped": N,
+        "llm_calls": N, "exact_matches": N}`` on success, or
+        ``{"error": ..., "document_id": ...}`` on failure.
+    """
+    params = _db_params()
+    _log = ProcessingLogger(params)
+    doc_ref = f"document:{document_id}"
+    events = result.get("events", [])
+
+    activity.logger.info(
+        "resolve_entities_with_search_activity called "
+        "[document_id=%s] [event_count=%d]",
+        document_id,
+        len(events),
+    )
+    await _log.log(document_id, "resolve_entities_search", "info",
+                   f"Starting search-first entity resolution for "
+                   f"{len(events)} events")
+
+    if not events:
+        activity.logger.info(
+            "No events — nothing to resolve [document_id=%s]",
+            document_id,
+        )
+        await _log.log(document_id, "resolve_entities_search", "warning",
+                       "No events — nothing to resolve")
+        return {
+            "document_id": document_id,
+            "resolved": 0,
+            "created": 0,
+            "skipped": 0,
+            "llm_calls": 0,
+            "exact_matches": 0,
+        }
+
+    try:
+        async with get_db(**params) as db:
+            # ------------------------------------------------------------------
+            # 1. Query all references for this document
+            # ------------------------------------------------------------------
+            refs_raw = await db.query(
+                "SELECT * FROM reference WHERE event IN "
+                "(SELECT id FROM event WHERE document = $doc_ref)",
+                {"doc_ref": doc_ref},
+            )
+            references = _extract_query_results(refs_raw)
+
+            if not references:
+                activity.logger.info(
+                    "No references found [document_id=%s]",
+                    document_id,
+                )
+                await _log.log(document_id, "resolve_entities_search", "info",
+                               "No references found for this document")
+                return {
+                    "document_id": document_id,
+                    "resolved": 0,
+                    "created": 0,
+                    "skipped": 0,
+                    "llm_calls": 0,
+                    "exact_matches": 0,
+                }
+
+            # ------------------------------------------------------------------
+            # 2. Nullify prior resolution links (replay safety)
+            # ------------------------------------------------------------------
+            activity.logger.info(
+                "Nullifying prior resolution links [document_id=%s] "
+                "[ref_count=%d]",
+                document_id,
+                len(references),
+            )
+            await db.query(
+                "UPDATE reference SET canonical_entity = null, "
+                "entity_id = null, resolution_confidence = null "
+                "WHERE event IN (SELECT id FROM event WHERE document = $doc_ref)",
+                {"doc_ref": doc_ref},
+            )
+
+            # ------------------------------------------------------------------
+            # 3. Group references by mapped entity type
+            # ------------------------------------------------------------------
+            type_map = {"espacio": "place", "humanos": "person", "objetos": "object"}
+            skip_types = {"tiempo"}
+
+            groups: dict[str, list[dict]] = {}
+            for ref in references:
+                ref_type = ref.get("reference_type", "")
+                if ref_type in skip_types:
+                    continue
+                mapped = type_map.get(ref_type)
+                if mapped:
+                    groups.setdefault(mapped, []).append(ref)
+
+            skipped_count = len(
+                [r for r in references if r.get("reference_type") in skip_types]
+            )
+
+            # ------------------------------------------------------------------
+            # Fetch document context for LLM prompts
+            # ------------------------------------------------------------------
+            doc_raw = await db.query(f"SELECT text_content FROM {doc_ref}")
+            doc_rows = _extract_query_results(doc_raw)
+            document_context = doc_rows[0].get("text_content", "") if doc_rows else ""
+
+            # ------------------------------------------------------------------
+            # 4. Resolve each type group via search-first resolution
+            # ------------------------------------------------------------------
+            api_key = os.environ.get("OPENROUTER_API_KEY")
+            if not api_key:
+                activity.logger.error(
+                    "OPENROUTER_API_KEY not set — cannot resolve entities "
+                    "[document_id=%s]",
+                    document_id,
+                )
+                return {
+                    "error": "OPENROUTER_API_KEY not set",
+                    "document_id": document_id,
+                }
+
+            model = os.environ.get("OPENROUTER_MODEL", DEFAULT_MODEL)
+            provider = OpenRouterProvider(api_key=api_key, model=model)
+
+            total_resolved = 0
+            total_created = 0
+            total_llm_calls = 0
+            total_exact_matches = 0
+
+            # Internal helper for accent-normalized comparison
+            def _normalize(text: str) -> str:
+                return unicodedata.normalize("NFD", text).casefold()
+
+            for entity_type, refs in groups.items():
+                if not refs:
+                    continue
+
+                # Query existing canonical entities of this type
+                existing_raw = await db.query(
+                    "SELECT * FROM canonical_entity WHERE entity_type = $type",
+                    {"type": entity_type},
+                )
+                existing_entities = _extract_query_results(existing_raw)
+
+                activity.logger.info(
+                    "Search-first resolution [type=%s] [refs=%d] "
+                    "[existing_entities=%d] [document_id=%s]",
+                    entity_type,
+                    len(refs),
+                    len(existing_entities),
+                    document_id,
+                )
+                await _log.log(document_id, "resolve_entities_search", "info",
+                               f"Search-first resolution for {len(refs)} "
+                               f"{entity_type} references")
+
+                # ---------------------------------------------------------------
+                # 4a. Exact match pass (NFD + casefold)
+                # ---------------------------------------------------------------
+                remaining_refs: list[dict] = []
+                exact_match_count = 0
+
+                for ref in refs:
+                    vt = ref.get("verbatim_text", "")
+                    if not vt:
+                        remaining_refs.append(ref)
+                        continue
+
+                    norm_vt = _normalize(vt)
+                    matched = False
+
+                    for entity in existing_entities:
+                        entity_name = entity.get("name", "")
+                        if entity_name and _normalize(entity_name) == norm_vt:
+                            # Exact match — auto-assign without LLM
+                            entity_id_val = entity.get("id")
+                            if entity_id_val:
+                                try:
+                                    await db.query(
+                                        f"UPDATE {ref.get('id')} SET "
+                                        f"entity_id = $eid, "
+                                        f"canonical_entity = $ce, "
+                                        f"resolution_confidence = 1.0",
+                                        {"eid": entity_id_val, "ce": entity_id_val},
+                                    )
+                                    total_resolved += 1
+                                    exact_match_count += 1
+                                    total_exact_matches += 1
+                                    matched = True
+                                    activity.logger.info(
+                                        "Exact match [ref=%s] → [entity=%s] "
+                                        "[document_id=%s]",
+                                        ref.get("id"),
+                                        entity_id_val,
+                                        document_id,
+                                    )
+                                except Exception as exc:
+                                    activity.logger.error(
+                                        "Failed to update exact-match "
+                                        "reference %s: %s",
+                                        ref.get("id"),
+                                        exc,
+                                    )
+                            break
+
+                    if not matched:
+                        remaining_refs.append(ref)
+
+                # ---------------------------------------------------------------
+                # 4b. Fuzzy candidate pass for remaining references
+                # ---------------------------------------------------------------
+                candidates: list[dict] = []
+                if remaining_refs and existing_entities:
+                    # Build candidate pool from verbatim texts of remaining refs
+                    verbatim_texts = [
+                        r.get("verbatim_text", "") for r in remaining_refs
+                        if r.get("verbatim_text")
+                    ]
+
+                    if verbatim_texts:
+                        # We need to query candidates for each verbatim text
+                        # and deduplicate
+                        seen_candidate_ids: set[str] = set()
+                        for vt in verbatim_texts:
+                            # Bidirectional CONTAINS
+                            for direction in ["forward", "reverse"]:
+                                if direction == "forward":
+                                    candidate_raw = await db.query(
+                                        "SELECT id, name, entity_type, properties "
+                                        "FROM canonical_entity "
+                                        "WHERE entity_type = $type "
+                                        "AND name CONTAINS $vt",
+                                        {"type": entity_type, "vt": vt},
+                                    )
+                                else:
+                                    candidate_raw = await db.query(
+                                        "SELECT id, name, entity_type, properties "
+                                        "FROM canonical_entity "
+                                        "WHERE entity_type = $type "
+                                        "AND $vt CONTAINS name",
+                                        {"type": entity_type, "vt": vt},
+                                    )
+
+                                for cand in _extract_query_results(candidate_raw):
+                                    cand_id = cand.get("id")
+                                    if cand_id and cand_id not in seen_candidate_ids:
+                                        seen_candidate_ids.add(cand_id)
+                                        candidates.append(cand)
+
+                        # Cap at 5, sorted by name length (shortest first)
+                        candidates.sort(key=lambda c: len(c.get("name", "") or ""))
+                        candidates = candidates[:5]
+
+                activity.logger.info(
+                    "Search-first resolution [type=%s]: %d exact matches, "
+                    "%d references for LLM, %d candidates provided "
+                    "[document_id=%s]",
+                    entity_type,
+                    exact_match_count,
+                    len(remaining_refs),
+                    len(candidates),
+                    document_id,
+                )
+                await _log.log(document_id, "resolve_entities_search", "info",
+                               f"{entity_type}: {exact_match_count} exact matches, "
+                               f"{len(remaining_refs)} for LLM, "
+                               f"{len(candidates)} candidates",
+                               {
+                                   "entity_type": entity_type,
+                                   "exact_matches": exact_match_count,
+                                   "llm_refs": len(remaining_refs),
+                                   "candidates": len(candidates),
+                               })
+
+                # ---------------------------------------------------------------
+                # 4c. LLM call (if remaining references exist)
+                # ---------------------------------------------------------------
+                if not remaining_refs:
+                    continue
+
+                try:
+                    resolution = await provider.resolve_references(
+                        references=remaining_refs,
+                        existing_entities=candidates,
+                        document_context=document_context,
+                    )
+                    total_llm_calls += 1
+                except Exception as exc:
+                    activity.logger.error(
+                        "LLM resolution failed for %s references "
+                        "[document_id=%s]: %s",
+                        entity_type,
+                        document_id,
+                        exc,
+                    )
+                    await _log.log(document_id, "resolve_entities_search",
+                                   "warning",
+                                   f"LLM resolution failed for {entity_type} "
+                                   f"references",
+                                   {"error": str(exc)[:200]})
+                    continue
+
+                resolutions = resolution.get("resolutions", [])
+                if not resolutions:
+                    activity.logger.warning(
+                        "LLM returned empty resolutions for %s references "
+                        "[document_id=%s]",
+                        entity_type,
+                        document_id,
+                    )
+                    await _log.log(
+                        document_id, "resolve_entities_search", "warning",
+                        f"LLM returned empty resolutions for "
+                        f"{entity_type} references",
+                    )
+                    continue
+
+                # Build verbatim_text → [ref_id] lookup for remaining refs
+                verbatim_to_refs: dict[str, list[str]] = {}
+                for r in remaining_refs:
+                    vt = r.get("verbatim_text", "")
+                    rid = r.get("id")
+                    if vt and rid:
+                        verbatim_to_refs.setdefault(vt, []).append(rid)
+
+                # ---------------------------------------------------------------
+                # 4d. Apply LLM results
+                # ---------------------------------------------------------------
+                for res in resolutions:
+                    ref_text = res.get("reference_verbatim", "")
+                    action = res.get("action", "uncertain")
+                    confidence = float(res.get("confidence", 0.5))
+                    matched_ids = verbatim_to_refs.get(ref_text, [])
+
+                    if not matched_ids:
+                        activity.logger.debug(
+                            "No matching reference for verbatim '%s' "
+                            "[document_id=%s]",
+                            ref_text,
+                            document_id,
+                        )
+                        continue
+
+                    if action == "create_new":
+                        ce_id = await _create_canonical_entity(
+                            db,
+                            res.get("new_entity_name", ref_text),
+                            res.get("new_entity_type", entity_type),
+                            res.get("new_entity_properties") or {},
+                        )
+                    elif action == "match_existing":
+                        # Try matched_candidate_id first, fall back to
+                        # matched_entity_id for backward compatibility
+                        ce_id = res.get("matched_candidate_id") or res.get("matched_entity_id")
+                    else:  # uncertain
+                        ce_id = await _create_canonical_entity(
+                            db,
+                            res.get("new_entity_name", ref_text),
+                            res.get("new_entity_type", entity_type),
+                            res.get("new_entity_properties") or {},
+                        )
+
+                    if ce_id:
+                        total_created += 1 if action in ("create_new", "uncertain") else 0
+                        for rid in matched_ids:
+                            try:
+                                await db.query(
+                                    f"UPDATE {rid} SET "
+                                    f"entity_id = $eid, "
+                                    f"canonical_entity = $ce, "
+                                    f"resolution_confidence = $conf",
+                                    {"eid": ce_id, "ce": ce_id, "conf": confidence},
+                                )
+                                total_resolved += 1
+                            except Exception as exc:
+                                activity.logger.error(
+                                    "Failed to update reference %s with "
+                                    "entity_id %s: %s",
+                                    rid,
+                                    ce_id,
+                                    exc,
+                                )
+
+            activity.logger.info(
+                "resolve_entities_with_search_activity completed "
+                "[document_id=%s] [exact_matches=%d] [llm_calls=%d] "
+                "[resolved=%d] [created=%d] [skipped=%d]",
+                document_id,
+                total_exact_matches,
+                total_llm_calls,
+                total_resolved,
+                total_created,
+                skipped_count,
+            )
+            await _log.log(document_id, "resolve_entities_search", "info",
+                           f"Search-first resolution completed: "
+                           f"{total_exact_matches} exact matches, "
+                           f"{total_llm_calls} LLM calls, "
+                           f"{total_resolved} resolved, "
+                           f"{total_created} created, "
+                           f"{skipped_count} skipped",
+                           {
+                               "exact_matches": total_exact_matches,
+                               "llm_calls": total_llm_calls,
+                               "resolved": total_resolved,
+                               "created": total_created,
+                               "skipped": skipped_count,
+                           })
+
+            return {
+                "document_id": document_id,
+                "resolved": total_resolved,
+                "created": total_created,
+                "skipped": skipped_count,
+                "llm_calls": total_llm_calls,
+                "exact_matches": total_exact_matches,
+            }
+
+    except ConnectionError as exc:
+        activity.logger.error(
+            "SurrealDB connection failed in "
+            "resolve_entities_with_search_activity: %s",
+            exc,
+        )
+        await _log.log(document_id, "resolve_entities_search", "error",
+                       f"Connection failed: {exc}")
+        return {"error": str(exc), "document_id": document_id}
+    except Exception as exc:
+        activity.logger.error(
+            "Unexpected error in "
+            "resolve_entities_with_search_activity: %s",
+            exc,
+        )
+        await _log.log(document_id, "resolve_entities_search", "error",
                        f"Unexpected error: {exc}")
         return {"error": str(exc), "document_id": document_id}
 
