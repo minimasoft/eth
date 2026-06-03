@@ -1,97 +1,100 @@
 [PÁGINA 1]
 
-JUZGADO DE INSTRUCCIÓN NÚMERO 7
-VALENCIA
+JUZGADO CENTRAL DE INSTRUCCIÓN NÚMERO 5
+AUDIENCIA NACIONAL
+MADRID
 
-DILIGENCIAS PREVIAS 456/2024
-PROCEDIMIENTO ABREVIADO
+DILIGENCIAS PREVIAS NÚMERO 4567/2024
 
-AUTO DE INCOACIÓN DE DILIGENCIAS PREVIAS
+El día 10 de febrero de 2024, a las 09:30 horas, en el marco
+de la operación policial denominada "Operatio Cleansweep",
+agentes de la Unidad de Delincuencia Económica y Fiscal (UDEF)
+procedieron a la detención de Don Alberto Navarro Solís, de 45
+años de edad, con DNI 87654321B, en su domicilio sito en la
+Calle Velázquez número 82, 28001 Madrid.
 
-El día 20 de febrero de 2024, a las 09:30 horas, se recibió en este
-Juzgado atestado policial número 2024-0089 remitido por la Comisaría
-de Distrito de Extramuros, Valencia, relativo a la presunta comisión
-de un delito de estafa y falsedad documental.
+La detención se produjo en ejecución del auto judicial de fecha
+8 de febrero de 2024, dictado por la titular de este juzgado,
+la Ilma. Sra. Doña Marta Sánchez Ruiz. Los agentes incautaron
+en el registro domiciliario los siguientes efectos:
 
-HECHOS
-
-PRIMERO.- Según el atestado, la empresa Construcciones del Levante SL,
-con domicilio social en la Avenida del Puerto número 45 de Valencia,
-presentó denuncia el 18 de febrero de 2024 contra Don Vicente Romero
-Sánchez, con DNI 23456789B, administrador único de la mercantil
-Inversiones Inmobiliarias Costa SL.
-
-SEGUNDO.- La denuncia refiere que el denunciado, aprovechando su
-relación comercial con la denunciante, presentó un contrato de
-arrendamiento de obra presuntamente falsificado por importe de
-120.000 euros, con fecha de 15 de enero de 2024, para la construcción
-de un edificio de viviendas en la Calle Colón número 78 de Valencia.
+- Dos ordenadores portátiles marca Dell, modelo Latitude 5540.
+- Un disco duro externo marca Seagate, capacidad 4 TB.
+- Documentación contable correspondiente a los ejercicios 2022
+  y 2023 de las mercantiles Alto Asesoramiento Financiero S.L.
+  y Gestión Global de Inversiones S.A.
+- Tres teléfonos móviles marca iPhone 15 Pro.
+- La cantidad de 125.000 euros en efectivo distribuidos en
+  varios sobres.
 
 [PÁGINA 2]
 
-TERCERO.- La denunciante afirma que Don Vicente Romero Sánchez presentó
-un documento de aval bancario emitido presuntamente por el Banco de
-Sabadell, sucursal de la Calle Xàtiva número 12 de Valencia, que
-resultó ser falso según confirmación telefónica del director de dicha
-sucursal, Don Francisco Javier Molina Ruiz, el día 17 de febrero de
-2024 a las 16:45 horas.
+DILIGENCIA DE DECLARACIÓN DEL DETENIDO
 
-CUARTO.- Como consecuencia de la presentación del aval falso, la
-denunciante realizó una transferencia bancaria de 60.000 euros a la
-cuenta de Inversiones Inmobiliarias Costa SL, con IBAN ES21 0081 1234
-56 7890 1234, el día 10 de febrero de 2024, como pago anticipado del
-contrato.
+En Madrid, siendo las 11:45 horas del día 10 de febrero de 2024,
+comparece en dependencias de la Comisaría General de Policía
+Científica, sita en la Calle Julián González Segador número 12,
+28043 Madrid, Don Alberto Navarro Solís, asistido por su letrado
+Don Francisco Javier Moral López, colegiado número 8.912 del
+Ilustre Colegio de Abogados de Madrid.
 
-DILIGENCIAS PRACTICADAS
+El detenido manifestó que desempeñaba el cargo de asesor fiscal
+desde el año 2015 y que mantenía una relación profesional con
+las sociedades investigadas desde dicha fecha. Negó haber
+participado en actividad delictiva alguna y declaró que toda la
+documentación incautada se encontraba en el marco de su actividad
+profesional habitual.
 
-1. Declaración del denunciante: Don Pedro Antonio Ruiz López, en
-calidad de apoderado de Construcciones del Levante SL, declaró el
-19 de febrero de 2024 a las 11:00 horas en dependencias policiales,
-ratificando el contenido de la denuncia y aportando copia del contrato
-y del extracto bancario de la transferencia.
+DILIGENCIA DE TESTIGOS
 
-2. Declaración de testigos: Doña María Teresa Gómez Fernández,
-empleada de la sucursal bancaria, declaró que el denunciado acudió
-a la sucursal el día 8 de febrero de 2024 a las 13:20 horas para
-solicitar información sobre la obtención de un aval bancario.
+Con fecha 12 de febrero de 2024, a las 10:00 horas, compareció
+en calidad de testigo Don Luis Miguel Herrera Campos, de 52 años,
+con DNI 34567890C, empleado de la entidad Banco Santander,
+sucursal 4.567, quien declaró haber detectado movimientos
+bancarios irregulares en las cuentas número ES12 0030 4567 89
+0123456789 y ES98 0049 6789 01 9876543210 entre los meses de
+enero y diciembre de 2023.
+
+DILIGENCIA DE ENTRADA Y REGISTRO
+
+En ejecución del auto de entrada y registro de fecha 8 de febrero
+de 2024, se procedió a inspeccionar el despacho profesional del
+investigado, sito en la Calle Serrano número 120, 28006 Madrid,
+encontrándose numerosa documentación relativa a transferencias
+bancarias internacionales por un importe total de 2.500.000 euros.
 
 [PÁGINA 3]
 
-DILIGENCIAS SOLICITADAS
+DILIGENCIA DE INFORME PERICIAL
 
-El Ministerio Fiscal, en escrito de fecha 21 de febrero de 2024,
-solicitó las siguientes diligencias:
+Con fecha 18 de febrero de 2024, el Servicio de Informática Forense
+de la Policía Científica emitió informe pericial sobre los equipos
+informáticos incautados. El informe, firmado por el perito Don
+Jorge Antonio Ruiz Mendoza, con carné profesional número 9823,
+concluye que los datos recuperados incluyen:
 
-a) Oficio al Banco de Sabadell para que remita certificación de las
-cuentas titularidad de Inversiones Inmobiliarias Costa SL, así como
-de la transferencia de 60.000 euros recibida el 10 de febrero de 2024.
+- Registros contables con múltiples anomalías en la facturación
+  de los ejercicios 2021 a 2023.
+- Correspondencia electrónica con entidades bancarias radicadas
+  en paraísos fiscales.
+- Archivos cifrados cuyo contenido no ha podido ser determinado.
 
-b) Citación como investigado de Don Vicente Romero Sánchez, con
-domicilio en Calle del Mar número 34, piso 5, puerta B, Valencia,
-para su declaración el día 15 de marzo de 2024 a las 10:00 horas.
+DILIGENCIA DE RESOLUCIÓN
 
-c) Requerimiento a la Agencia Tributaria para que informe sobre la
-situación fiscal del investigado y de su mercantil en los ejercicios
-2022, 2023 y 2024.
+Visto el resultado de las diligencias practicadas hasta la fecha,
+y por auto de fecha 20 de febrero de 2024, el juzgado acordó
+la continuación del procedimiento por los trámites del sumario
+ordinario, declarando la complejidad de la causa al amparo del
+artículo 324 de la Ley de Enjuiciamiento Criminal.
 
-d) Solicitud de informe pericial caligráfico sobre la presunta
-falsedad de la firma en el contrato de arrendamiento de obra,
-designándose como perito a Doña Laura Jiménez Navarro, grafóloga
-judicial colegiada número 89 del Colegio de Peritos de la Comunidad
-Valenciana.
+Queda prorrogado el plazo de instrucción por un período adicional
+de seis meses a contar desde la fecha de la presente resolución.
 
-e) Embargo preventivo de los bienes del investigado hasta cubrir la
-cantidad de 60.000 euros, incluyendo el inmueble sito en Calle del
-Mar número 34 de Valencia, valorado en 180.000 euros según tasación
-del año 2023.
+Notifíquese la presente resolución al Ministerio Fiscal,
+representado por la Ilma. Sra. Doña Elena Torres Vázquez, fiscal
+delegada de la Sección de Delincuencia Económica.
 
-PARTE DISPOSITIVA
-
-Por todo lo expuesto, ACUERDO: la incoación de Diligencias Previas
-456/2024, la práctica de las diligencias solicitadas por el Ministerio
-Fiscal, y la citación del investigado para su declaración.
-
-En Valencia, a 22 de febrero de 2024.
-
-EL JUEZ DE INSTRUCCIÓN,
-Fdo. Don Antonio Beltrán Ruiz
+Líbrese oficio a la Agencia Tributaria para que remita a este
+juzgado copia de las declaraciones fiscales de las sociedades
+investigadas y de sus administradores correspondientes a los
+cinco últimos ejercicios.
