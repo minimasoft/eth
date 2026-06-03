@@ -38,6 +38,7 @@ async def main() -> None:
         workflows=[workflows.DocumentProcessingWorkflow],
         activities=[
             activities.chunk_document_activity,
+            activities.create_event_canonical_entities_activity,
             activities.extract_events_activity,
             activities.extract_text_activity,
             activities.get_document_metadata_activity,

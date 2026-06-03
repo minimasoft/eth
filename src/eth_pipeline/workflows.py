@@ -28,6 +28,7 @@ from temporalio.common import RetryPolicy
 with workflow.unsafe.imports_passed_through():
     from eth_pipeline.activities import (  # noqa: TCH004
         chunk_document_activity,
+        create_event_canonical_entities_activity,
         extract_events_activity,
         extract_text_activity,
         get_document_metadata_activity,
@@ -81,9 +82,10 @@ class DocumentProcessingWorkflow:
         6. ``extract_events_activity(document_id)`` — queries text from
            SurrealDB internally (avoids large Temporal payloads)
         7. ``store_extraction_results_activity(document_id, result)``
-        8. ``resolve_entities_activity(document_id, result)``
-        9. ``processed`` — set only after ALL steps complete
-        10. Return summary dict with ``document_id``, ``event_count``,
+        8. ``create_event_canonical_entities_activity(document_id, result)``
+        9. ``resolve_entities_activity(document_id, result)``
+        10. ``processed`` — set only after ALL steps complete
+        11. Return summary dict with ``document_id``, ``event_count``,
             and ``status``.
 
         Parameters
@@ -191,7 +193,7 @@ class DocumentProcessingWorkflow:
                 ),
             )
 
-            # Step 5: Store extraction results
+            # Step 6: Store extraction results
             store_result = await workflow.execute_activity(
                 store_extraction_results_activity,
                 args=[document_id, result],
@@ -200,7 +202,16 @@ class DocumentProcessingWorkflow:
             if "error" in store_result:
                 raise RuntimeError(store_result["error"])
 
-            # Step 6: Resolve verbatim references
+            # Step 7: Create event canonical entities
+            event_entity_result = await workflow.execute_activity(
+                create_event_canonical_entities_activity,
+                args=[document_id, result],
+                start_to_close_timeout=timedelta(seconds=30),
+            )
+            if "error" in event_entity_result:
+                raise RuntimeError(event_entity_result["error"])
+
+            # Step 8: Resolve verbatim references
             resolve_result = await workflow.execute_activity(
                 resolve_entities_activity,
                 args=[document_id, result],
@@ -209,14 +220,14 @@ class DocumentProcessingWorkflow:
             if "error" in resolve_result:
                 raise RuntimeError(resolve_result["error"])
 
-            # Step 7: Mark as fully processed (only after all steps complete)
+            # Step 9: Mark as fully processed (only after all steps complete)
             await workflow.execute_activity(
                 update_document_status_activity,
                 args=[document_id, "processed"],
                 start_to_close_timeout=timedelta(seconds=10),
             )
 
-            # Step 8: Return summary
+            # Step 10: Return summary
             events = result.get("events", [])
             return {
                 "document_id": document_id,
