@@ -190,6 +190,10 @@ DEFINE FIELD resolution_confidence ON TABLE reference TYPE number | null
     ASSERT $value IS NONE OR $value IS NULL OR ($value >= 0 AND $value <= 1)
     COMMENT 'Confidence score (0.0–1.0) for the canonical_entity resolution; NONE/null when not yet resolved';
 
+DEFINE FIELD entity_id ON TABLE reference TYPE record<canonical_entity> | null
+    DEFAULT null
+    COMMENT 'Link to the pre-resolved canonical entity set by search-first resolution (Phase 17). Both entity_id and canonical_entity are set for consistency — entity_id is the authoritative link for search-first resolution, canonical_entity remains for backward compatibility with merge/split operations.';
+
 DEFINE FIELD created_at ON TABLE reference TYPE datetime
     DEFAULT time::now() READONLY
     COMMENT 'Timestamp when the reference record was created (immutable after insertion)';

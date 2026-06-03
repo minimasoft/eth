@@ -125,13 +125,17 @@ ENTITY_RESOLUTION_SCHEMA: dict = {
                         "type": "string",
                         "description": "ID of the matched existing canonical entity (only used when action is match_existing)",
                     },
+                    "matched_candidate_id": {
+                        "type": "string",
+                        "description": "ID of the matched candidate entity from the Candidate Entities list (only used when action is match_existing and the entity was in the candidate list)",
+                    },
                     "new_entity_name": {
                         "type": "string",
                         "description": "Inferred name for the new canonical entity (only used when action is create_new)",
                     },
                     "new_entity_type": {
                         "type": "string",
-                        "enum": ["place", "person", "object"],
+                        "enum": ["place", "person", "object", "event"],
                         "description": "Inferred type of the new canonical entity (only used when action is create_new)",
                     },
                     "new_entity_properties": {
@@ -164,10 +168,15 @@ ENTITY_RESOLUTION_SYSTEM_PROMPT: str = (
     "2. CREATE_NEW: Si una referencia no coincide con ninguna entidad existente, crea una nueva "
     "entidad canónica infiriendo su nombre, tipo (place/person/object) y propiedades adicionales "
     "del contexto del documento.\n"
-    "3. UNCERTAIN: Si no puedes determinar si corresponde a una entidad existente o es nueva, "
-    "márcalo como incierto con baja confianza (< 0.7).\n\n"
-    "Resuelve cada tipo de referencia de forma independiente (lugares, personas, objetos). "
-    "Responde ÚNICAMENTE con el JSON estructurado, sin texto adicional."
+     "3. UNCERTAIN: Si no puedes determinar si corresponde a una entidad existente o es nueva, "
+     "márcalo como incierto con baja confianza (< 0.7).\n\n"
+     "4. CANDIDATE MATCHING: Cuando se proporcionen entidades candidatas en la sección ## Candidate Entities, "
+     "evalúa si cada referencia coincide con alguno de los candidatos. Si una referencia coincide con un "
+     "candidato, usa la acción \"match_existing\" y establece matched_candidate_id al id del candidato. "
+     "Si una referencia no coincide con ningún candidato, usa la acción \"create_new\" para crear una nueva "
+     "entidad canónica. La coincidencia con candidatos tiene prioridad sobre la creación de nuevas entidades "
+     "cuando exista una coincidencia razonable.\n\n"
+     "Responde ÚNICAMENTE con el JSON estructurado, sin texto adicional."
 )
 
 # ---------------------------------------------------------------------------
@@ -219,7 +228,9 @@ class LLMProvider(Protocol):
             ``reference_type``).
         existing_entities:
             List of existing canonical entity dicts (each with at least
-            ``id``, ``name``, and ``entity_type``).
+            ``id``, ``name``, and ``entity_type``). When used with
+            search-first resolution (Phase 17), this contains pre-filtered
+            candidate entities — not all entities of the type.
         document_context:
             Surrounding document text providing context for entity inference.
 
@@ -387,7 +398,9 @@ class OpenRouterProvider:
             ``reference_type``, etc.).
         existing_entities:
             List of existing canonical entity dicts (each with ``id``,
-            ``name``, ``entity_type``).
+            ``name``, ``entity_type``). When used with search-first
+            resolution (Phase 17), this contains pre-filtered candidate
+            entities — not all entities of the type.
         document_context:
             Surrounding document text providing context for entity inference.
 
@@ -536,8 +549,11 @@ class OpenRouterProvider:
             f"{document_context}\n\n"
             "REFERENCIAS A RESOLVER:\n"
             f"{json.dumps(references, ensure_ascii=False, indent=2)}\n\n"
-            "ENTIDADES CANÓNICAS EXISTENTES:\n"
-            f"{json.dumps(existing_entities, ensure_ascii=False, indent=2)}"
+             "ENTIDADES CANÓNICAS CANDIDATAS (PRE-FILTRADAS):\n"
+             f"{json.dumps(existing_entities, ensure_ascii=False, indent=2)}\n\n"
+             "Nota: Estas entidades candidatas han sido pre-filtradas de los resultados de búsqueda "
+             "y representan las coincidencias más probables. Prioriza la coincidencia con un candidato "
+             "antes de crear una nueva entidad."
         )
 
         return {
