@@ -781,8 +781,10 @@ async def store_extraction_results_activity(
                 # ---- Create references linked to this event ----
                 references = event_data.get("references", [])
                 for ref in references:
-                    ss = int(ref.get("span_start", 0))
-                    se = int(ref.get("span_end", 0))
+                    raw_ss = ref.get("span_start")
+                    raw_se = ref.get("span_end")
+                    ss = int(raw_ss) if raw_ss is not None else 0
+                    se = int(raw_se) if raw_se is not None else 0
 
                     if chunk_rows:
                         offset_result = compute_reference_offsets(

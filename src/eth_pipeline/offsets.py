@@ -32,7 +32,7 @@ def reconstruct_page_offsets(chunks: list[dict[str, Any]]) -> list[int]:
     chunks:
         List of chunk dicts sorted by ``chunk_index`` ascending.  Each dict
         has keys ``chunk_index``, ``offset_start``, ``offset_end``,
-        ``page_start``, ``page_end``.
+        ``page_start``, ``page_end``.  Must be non-empty.
 
     Returns
     -------
@@ -40,7 +40,15 @@ def reconstruct_page_offsets(chunks: list[dict[str, Any]]) -> list[int]:
         Cumulative page boundary offsets, e.g. ``[0, 600, 1000]`` for a
         two-page document where page 1 spans offsets 0–599 and page 2 spans
         offsets 600–999.
+
+    Raises
+    ------
+    ValueError
+        If *chunks* is empty.
     """
+    if not chunks:
+        raise ValueError("reconstruct_page_offsets: chunks list is empty")
+
     page_offsets: list[int] = []
     seen_pages: set[int] = set()
 
@@ -99,6 +107,14 @@ def compute_reference_offsets(
     """
     # ---- Plain-text: no page structure ----
     if is_plain_text:
+        return {
+            "page_number": None,
+            "page_offset_start": None,
+            "page_offset_end": None,
+        }
+
+    # ---- Empty chunks guard ----
+    if not chunks:
         return {
             "page_number": None,
             "page_offset_start": None,
