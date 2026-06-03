@@ -12,9 +12,9 @@ Requirements for this milestone. Each maps to roadmap phases.
 
 - [ ] **OFFS-01**: Reference records store `page_number` (int, 1-based, nullable) computed deterministically from existing chunk page_offsets
 - [ ] **OFFS-02**: Reference records store `page_offset_start` and `page_offset_end` (int, nullable) for page-relative character offsets
-- [ ] **OFFS-03**: Page offset computation happens in `store_extraction_results_activity` as a deterministic post-LLM step — no LLM hallucination of page numbers
+- [x] **OFFS-03**: Page offset computation happens in `store_extraction_results_activity` as a deterministic post-LLM step — no LLM hallucination of page numbers
 - [ ] **OFFS-04**: Page offset fields use DEFAULT null and are null-safe for plain-text documents (no page structure)
-- [ ] **OFFS-05**: Existing character offsets (span_start, span_end) remain unchanged and fully functional
+- [x] **OFFS-05**: Existing character offsets (span_start, span_end) remain unchanged and fully functional
 
 ### Processing Logs
 
@@ -84,9 +84,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 |-------------|-------|--------|
 | OFFS-01 | Phase 13 | Pending |
 | OFFS-02 | Phase 13 | Pending |
-| OFFS-03 | Phase 14 | Pending |
+| OFFS-03 | Phase 14 | Complete |
 | OFFS-04 | Phase 13 | Pending |
-| OFFS-05 | Phase 14 | Pending |
+| OFFS-05 | Phase 14 | Complete |
 | LOGS-01 | Phase 13 | Pending |
 | LOGS-02 | Phase 15 | Pending |
 | LOGS-03 | Phase 15 | Pending |
