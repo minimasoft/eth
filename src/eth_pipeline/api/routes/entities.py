@@ -9,6 +9,8 @@ from surrealdb import AsyncWsSurrealConnection
 from eth_pipeline.api import app
 
 from eth_pipeline.api.models import (
+    EntityDetailReference,
+    EntityDetailResponse,
     EntityListItem,
     EntityListResponse,
     MergeRequest,
@@ -47,7 +49,7 @@ async def list_entities(
 
     offset = (page - 1) * per_page
 
-    where_parts: list[str] = ["superseded_by IS NONE"]
+    where_parts: list[str] = ["superseded_by IS NULL"]
     query_params: dict[str, object] = {}
 
     if search:
@@ -337,6 +339,30 @@ async def merge_entities(request: MergeRequest) -> MergeResponse:
             "WHERE canonical_entity = $source_ref",
             {"source_ref": source_rid, "target_ref": target_rid},
         )
+
+        # v6.0: rewire location_place_id on events pointing to source place
+        try:
+            await db.query(
+                "UPDATE event SET location_place_id = $target_ref "
+                "WHERE location_place_id = $source_ref",
+                {"source_ref": source_rid, "target_ref": target_rid},
+            )
+        except Exception as exc:
+            logger.warning(
+                "location_place_id rewire skipped (may not exist yet): %s", exc,
+            )
+
+        # v6.0: rewire event_participant edges from source to target
+        try:
+            await db.query(
+                "UPDATE event_participant SET out = $target_ref "
+                "WHERE out = $source_ref",
+                {"source_ref": source_rid, "target_ref": target_rid},
+            )
+        except Exception as exc:
+            logger.warning(
+                "event_participant rewire skipped (may not exist yet): %s", exc,
+            )
 
         await db.query(
             f"UPDATE canonical_entity:{request.source_id} SET "
@@ -658,4 +684,154 @@ async def split_entity(
         new_entities=new_entities_info,
         partition_count=len(new_entities_info),
         total_references_moved=total_moved,
+    )
+
+
+# =======================================================================
+# Get entity details (with linked references)
+# =======================================================================
+
+
+@router.get(
+    "/entities/{entity_id}",
+    response_model=EntityDetailResponse,
+)
+async def get_entity(entity_id: str) -> EntityDetailResponse:
+    """Retrieve a canonical entity with its linked references."""
+    db: AsyncWsSurrealConnection | None = app.state.db
+
+    if db is None:
+        logger.error("GET /entities/%s rejected — SurrealDB unavailable", entity_id)
+        raise HTTPException(
+            status_code=503,
+            detail="SurrealDB is not available. Please try again later.",
+        )
+
+    from surrealdb.data.types.record_id import RecordID
+
+    ent_rid = RecordID("canonical_entity", entity_id)
+
+    try:
+        ent_result = await db.query(
+            "SELECT * FROM canonical_entity WHERE id = $entity_ref",
+            {"entity_ref": ent_rid},
+        )
+    except Exception as exc:
+        logger.error("Failed to query entity %s: %s", entity_id, exc)
+        raise HTTPException(
+            status_code=502,
+            detail="Failed to query database.",
+        ) from exc
+
+    ent_records: list[dict] = [
+        r for r in (ent_result or []) if isinstance(r, dict)
+    ]
+    if not ent_records:
+        logger.warning("Entity %s not found", entity_id)
+        raise HTTPException(
+            status_code=404,
+            detail=f"Canonical entity {entity_id} not found.",
+        )
+
+    record = ent_records[0]
+
+    ent_id_val = record.get("id")
+    resolved_id: str = ""
+    if isinstance(ent_id_val, RecordID):
+        resolved_id = ent_id_val.id
+    elif isinstance(ent_id_val, str):
+        resolved_id = ent_id_val.split(":", 1)[1] if ":" in ent_id_val else ent_id_val
+
+    # Count references
+    try:
+        ref_count_result = await db.query(
+            "SELECT count() AS total FROM reference WHERE canonical_entity = $entity_ref GROUP ALL",
+            {"entity_ref": ent_rid},
+        )
+    except Exception:
+        ref_count_result = []
+
+    ref_count = 0
+    ref_count_records: list[dict] = [
+        r for r in (ref_count_result or []) if isinstance(r, dict)
+    ]
+    if ref_count_records:
+        cnt_val = ref_count_records[0].get("total")
+        if isinstance(cnt_val, dict):
+            ref_count = int(cnt_val.get("value", 0))
+        elif cnt_val is not None:
+            ref_count = int(cnt_val)
+
+    # Fetch linked references with event and document info
+    try:
+        refs_result = await db.query(
+            "SELECT * FROM reference WHERE canonical_entity = $entity_ref "
+            "ORDER BY created_at DESC "
+            "FETCH event, event.document",
+            {"entity_ref": ent_rid},
+        )
+    except Exception as exc:
+        logger.warning("Failed to query references for entity %s: %s", entity_id, exc)
+        refs_result = []
+
+    ref_records: list[dict] = [
+        r for r in (refs_result or []) if isinstance(r, dict)
+    ]
+
+    references: list[EntityDetailReference] = []
+    for ref_record in ref_records:
+        ref_id_val = ref_record.get("id")
+        ref_id: str = ""
+        if isinstance(ref_id_val, RecordID):
+            ref_id = ref_id_val.id
+        elif isinstance(ref_id_val, str):
+            ref_id = ref_id_val.split(":", 1)[1] if ":" in ref_id_val else ref_id_val
+
+        event_data = ref_record.get("event")
+        event_que_paso: str | None = None
+        event_id: str | None = None
+        doc_filename: str | None = None
+        doc_id: str | None = None
+
+        if isinstance(event_data, dict):
+            event_que_paso = event_data.get("que_paso")
+            ev_id_val = event_data.get("id")
+            if isinstance(ev_id_val, RecordID):
+                event_id = ev_id_val.id
+            elif isinstance(ev_id_val, str):
+                event_id = ev_id_val.split(":", 1)[1] if ":" in ev_id_val else ev_id_val
+
+            doc_data = event_data.get("document")
+            if isinstance(doc_data, dict):
+                doc_filename = doc_data.get("filename")
+                doc_id_val = doc_data.get("id")
+                if isinstance(doc_id_val, RecordID):
+                    doc_id = doc_id_val.id
+                elif isinstance(doc_id_val, str):
+                    doc_id = doc_id_val.split(":", 1)[1] if ":" in doc_id_val else doc_id_val
+
+        references.append(EntityDetailReference(
+            reference_id=ref_id,
+            reference_type=ref_record.get("reference_type", ""),
+            verbatim_text=ref_record.get("verbatim_text", ""),
+            event_que_paso=event_que_paso,
+            event_id=event_id,
+            document_filename=doc_filename,
+            document_id=doc_id,
+        ))
+
+    logger.info(
+        "Entity detail for %s (%s) — %d references",
+        resolved_id,
+        record.get("name", ""),
+        len(references),
+    )
+
+    return EntityDetailResponse(
+        entity_id=resolved_id,
+        name=record.get("name", ""),
+        entity_type=record.get("entity_type", ""),
+        reference_count=ref_count,
+        properties=record.get("properties"),
+        references=references,
     )

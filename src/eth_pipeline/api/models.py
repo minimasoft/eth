@@ -232,6 +232,29 @@ class EntityListItem(BaseModel):
     """Number of references pointing to this entity."""
 
 
+class EntityDetailReference(BaseModel):
+    """A reference entry within an entity detail response."""
+
+    reference_id: str
+    reference_type: str
+    verbatim_text: str
+    event_que_paso: str | None = None
+    event_id: str | None = None
+    document_filename: str | None = None
+    document_id: str | None = None
+
+
+class EntityDetailResponse(BaseModel):
+    """Response body for ``GET /entities/{entity_id}``."""
+
+    entity_id: str
+    name: str
+    entity_type: str
+    reference_count: int = 0
+    properties: dict | None = None
+    references: list[EntityDetailReference]
+
+
 class EntityListResponse(BaseModel):
     """Paginated response body for ``GET /entities``."""
 
@@ -286,6 +309,18 @@ class ReferenceListItem(BaseModel):
     span_end: int | None = None
     """Character offset (exclusive) where the verbatim span ends."""
 
+    page_number: int | None = None
+    """1-based page number where this reference appears."""
+
+    element_field: str | None = None
+    """Specific event element this reference substantiates (v6.0)."""
+
+    reference_index: int | None = None
+    """Zero-based ordering within element_field group (v6.0)."""
+
+    resolution_confidence: float | None = None
+    """Confidence score for canonical entity resolution."""
+
     event_que_paso: str | None = None
     """The que_paso (what happened) from the linked event."""
 
@@ -301,6 +336,12 @@ class ReferenceListItem(BaseModel):
     canonical_entity_name: str | None = None
     """Name of the resolved canonical entity, if any."""
 
+    canonical_entity_id: str | None = None
+    """ID of the resolved canonical entity, if any."""
+
+    canonical_entity_type: str | None = None
+    """Type of the resolved canonical entity, if any."""
+
 
 class ReferenceListResponse(BaseModel):
     """Paginated response body for ``GET /references``."""
@@ -310,6 +351,74 @@ class ReferenceListResponse(BaseModel):
 
     total: int
     """Total number of references matching the query."""
+
+    page: int
+    """Current page number (1-based)."""
+
+    per_page: int
+    """Number of items per page."""
+
+    pages: int
+    """Total number of pages available."""
+
+
+class EventListItem(BaseModel):
+    """A single event entry in the paginated event list."""
+
+    event_id: str
+    """Unique identifier of the event."""
+
+    que_paso: str
+    """Core narrative: what happened."""
+
+    espacio: str | None = None
+    """Location context (free-form)."""
+
+    tiempo: str | None = None
+    """Temporal context (free-form)."""
+
+    humanos: str | None = None
+    """People involved (free-form)."""
+
+    objetos: str | None = None
+    """Objects involved (free-form)."""
+
+    time_window: dict | None = None
+    """Structured time {start, end} as ISO 8601 datetimes (v6.0)."""
+
+    location_point: dict | None = None
+    """Geolocation {lat, lon, label} for map display (v6.0)."""
+
+    location_place_name: str | None = None
+    """Name of the canonical place entity linked to this event."""
+
+    participant_count: int = 0
+    """Number of participant edges linked to this event."""
+
+    reference_count: int = 0
+    """Number of references linked to this event."""
+
+    document_id: str | None = None
+    """ID of the source document."""
+
+    document_filename: str | None = None
+    """Filename of the source document."""
+
+    extraction_confidence: float = 1.0
+    """LLM extraction confidence."""
+
+    created_at: str | None = None
+    """ISO-8601 timestamp of event creation."""
+
+
+class EventListResponse(BaseModel):
+    """Paginated response body for ``GET /events``."""
+
+    items: list[EventListItem]
+    """List of event entries on the current page."""
+
+    total: int
+    """Total number of events matching the query."""
 
     page: int
     """Current page number (1-based)."""
@@ -464,8 +573,12 @@ __all__ = [
     "DocumentListResponse",
     "DocumentStatus",
     "DocumentUploadCreated",
+    "EntityDetailReference",
+    "EntityDetailResponse",
     "EntityListItem",
     "EntityListResponse",
+    "EventListItem",
+    "EventListResponse",
     "EventsCleared",
     "GraphQLRequest",
     "HealthResponse",

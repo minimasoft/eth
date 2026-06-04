@@ -18,6 +18,8 @@ from eth_pipeline.api.models import (  # noqa: F401 — intentional re-export
     DocumentListResponse,
     DocumentStatus,
     DocumentUploadCreated,
+    EntityDetailReference,
+    EntityDetailResponse,
     EntityListItem,
     EntityListResponse,
     EventsCleared,
@@ -70,9 +72,11 @@ else:
 from eth_pipeline.api.routes.documents import router as documents_router  # noqa: E402
 from eth_pipeline.api.routes.entities import router as entities_router  # noqa: E402
 from eth_pipeline.api.routes.references import router as references_router  # noqa: E402
+from eth_pipeline.api.routes.events import router as events_router  # noqa: E402
 from eth_pipeline.api.graphql import router as graphql_router  # noqa: E402
 
 app.include_router(documents_router)
 app.include_router(entities_router)
 app.include_router(references_router)
+app.include_router(events_router)
 app.include_router(graphql_router)

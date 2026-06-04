@@ -26,8 +26,16 @@ async def list_references(
     per_page: int = Query(20, ge=1, le=100),
     search: str | None = Query(None),
     reference_type: str | None = Query(None),
+    document: str | None = Query(None),
+    event_element: str | None = Query(None),
+    entity_type: str | None = Query(None),
+    entity_id: str | None = Query(None),
 ) -> ReferenceListResponse:
-    """List verbatim references with pagination, search, and type filtering."""
+    """List verbatim references with pagination, search, and filtering.
+
+    New v6.0 filters: document (ID), event_element (tiempo/humanos/espacio/objetos),
+    entity_type (place/person/object), entity_id (canonical entity ID).
+    """
     db: AsyncWsSurrealConnection | None = app.state.db
 
     if db is None:
@@ -49,6 +57,24 @@ async def list_references(
     if reference_type:
         where_parts.append("reference_type = $ref_type")
         query_params["ref_type"] = reference_type
+
+    if document:
+        where_parts.append("event.document = $doc_rid")
+        from surrealdb.data.types.record_id import RecordID
+        query_params["doc_rid"] = RecordID("document", document)
+
+    if event_element:
+        where_parts.append("element_field = $ef")
+        query_params["ef"] = event_element
+
+    if entity_type:
+        where_parts.append("canonical_entity.entity_type = $ce_type")
+        query_params["ce_type"] = entity_type
+
+    if entity_id:
+        where_parts.append("canonical_entity = $ce_rid")
+        from surrealdb.data.types.record_id import RecordID
+        query_params["ce_rid"] = RecordID("canonical_entity", entity_id)
 
     where_clause = " AND ".join(where_parts)
     query_params["per_page"] = per_page
@@ -136,8 +162,16 @@ async def list_references(
 
         canonical_entity_data = record.get("canonical_entity")
         canonical_entity_name: str | None = None
+        canonical_entity_id: str | None = None
+        canonical_entity_type: str | None = None
         if isinstance(canonical_entity_data, dict):
             canonical_entity_name = canonical_entity_data.get("name")
+            ce_id_val = canonical_entity_data.get("id")
+            if isinstance(ce_id_val, RecordID):
+                canonical_entity_id = ce_id_val.id
+            elif isinstance(ce_id_val, str):
+                canonical_entity_id = ce_id_val.split(":", 1)[1] if ":" in ce_id_val else ce_id_val
+            canonical_entity_type = canonical_entity_data.get("entity_type")
 
         items.append(ReferenceListItem(
             reference_id=reference_id,
@@ -145,11 +179,17 @@ async def list_references(
             verbatim_text=record.get("verbatim_text", ""),
             span_start=record.get("span_start"),
             span_end=record.get("span_end"),
+            page_number=record.get("page_number"),
+            element_field=record.get("element_field"),
+            reference_index=record.get("reference_index"),
+            resolution_confidence=record.get("resolution_confidence"),
             event_que_paso=event_que_paso,
             event_id=event_id,
             document_filename=document_filename,
             document_id=document_id,
             canonical_entity_name=canonical_entity_name,
+            canonical_entity_id=canonical_entity_id,
+            canonical_entity_type=canonical_entity_type,
         ))
 
     logger.info(
