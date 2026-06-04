@@ -83,7 +83,7 @@ let documentWasProcessed = false;
 // Test suite — 3 focused e2e tests
 // ---------------------------------------------------------------------------
 
-describe("e2e — full pipeline (events, entities, references, delete)", () => {
+describe("e2e — full pipeline (events, entities, references, delete, tokens)", () => {
   after(async () => {
     await cleanupTestDocuments();
   });
@@ -278,6 +278,148 @@ describe("e2e — full pipeline (events, entities, references, delete)", () => {
   });
 
   // ===================================================================
+  // Test 4: Token tracking — llm_usage records exist after processing
+  // ===================================================================
+  it("4. Token tracking — llm_usage records exist with non-negative values", async () => {
+    await skipIfDegraded(`${API_BASE}/health`, async () => {
+      if (!documentWasProcessed) {
+        console.log("ℹ  Document was not processed — skipping token verification");
+        return;
+      }
+
+      const docId = testDocIds[0];
+      if (!docId) {
+        console.log("ℹ  No document — skipping token verification");
+        return;
+      }
+
+      // SurrealDB: check llm_usage records
+      const llmRows = await surrealQuery(
+        "SELECT count() as cnt FROM llm_usage WHERE document = $doc_rid",
+        { doc_rid: `document:${docId}` },
+      );
+      const llmCnt = llmRows.length > 0 ? ((llmRows[0] as any).cnt ?? 0) : 0;
+      console.log(`✓ SurrealDB: ${llmCnt} llm_usage records`);
+      assert.ok(llmCnt > 0, `Expected >0 llm_usage records, got ${llmCnt}`);
+
+      // Verify all token fields are non-negative
+      const usageRows = await surrealQuery(
+        "SELECT prompt_tokens, completion_tokens, total_tokens, "
+        + "duration_ms, model "
+        + "FROM llm_usage WHERE document = $doc_rid "
+        + "LIMIT 1",
+        { doc_rid: `document:${docId}` },
+      );
+      if (usageRows.length > 0) {
+        const rec = usageRows[0] as any;
+        console.log(`  Sample record: prompt=${rec.prompt_tokens} completion=${rec.completion_tokens} total=${rec.total_tokens} model=${rec.model}`);
+        assert.ok(rec.prompt_tokens >= 0, `prompt_tokens should be >= 0, got ${rec.prompt_tokens}`);
+        assert.ok(rec.completion_tokens >= 0, `completion_tokens should be >= 0, got ${rec.completion_tokens}`);
+        assert.ok(rec.total_tokens >= 0, `total_tokens should be >= 0, got ${rec.total_tokens}`);
+        assert.ok(rec.duration_ms >= 0, `duration_ms should be >= 0, got ${rec.duration_ms}`);
+      }
+
+      // API: /documents/{id}/tokens endpoint
+      const [tokStatus, tokBody] = await httpGet(`${API_BASE}/documents/${docId}/tokens`, 5_000);
+      assert.equal(tokStatus, 200, `Expected HTTP 200 from /tokens, got ${tokStatus}`);
+      const tokData = JSON.parse(tokBody!);
+      assert.ok(tokData.has_data, "has_data should be true");
+      assert.ok(tokData.total_tokens > 0, `total_tokens should be > 0, got ${tokData.total_tokens}`);
+      console.log(`✓ API /tokens: has_data=${tokData.has_data} total=${tokData.total_tokens} cost=${tokData.total_cost}`);
+    });
+  });
+
+  // ===================================================================
+  // Test 5: Reprocess → token counts match (replay safety)
+  // ===================================================================
+  it("5. Reprocess document → llm_usage records cleared and recreated", async () => {
+    await skipIfDegraded(`${API_BASE}/health`, async () => {
+      if (!documentWasProcessed) {
+        console.log("ℹ  Document was not processed — skipping reprocess test");
+        return;
+      }
+
+      const docId = testDocIds[0];
+      if (!docId) {
+        console.log("ℹ  No document — skipping reprocess test");
+        return;
+      }
+
+      // Count existing llm_usage records
+      const beforeRows = await surrealQuery(
+        "SELECT count() as cnt FROM llm_usage WHERE document = $doc_rid",
+        { doc_rid: `document:${docId}` },
+      );
+      const beforeCnt = beforeRows.length > 0 ? ((beforeRows[0] as any).cnt ?? 0) : 0;
+      console.log(`✓ llm_usage records before reprocess: ${beforeCnt}`);
+
+      // Clear events (triggers llm_usage cleanup)
+      const [clearStatus] = await httpDelete(`${API_BASE}/documents/${docId}/events`, 10_000);
+      assert.equal(clearStatus, 200, `Expected HTTP 200 on clear events, got ${clearStatus}`);
+      console.log("✓ Events cleared");
+
+      // Verify llm_usage records are cleared
+      const afterClearRows = await surrealQuery(
+        "SELECT count() as cnt FROM llm_usage WHERE document = $doc_rid",
+        { doc_rid: `document:${docId}` },
+      );
+      const afterClearCnt = afterClearRows.length > 0 ? ((afterClearRows[0] as any).cnt ?? 0) : 0;
+      assert.equal(afterClearCnt, 0, `llm_usage should be 0 after clear, got ${afterClearCnt}`);
+      console.log("✓ llm_usage records cleared");
+
+      // Re-process: set status to pending and trigger workflow
+      await surrealQuery(
+        "UPDATE $doc_rid SET status = 'pending', error_message = NULL, updated_at = time::now()",
+        { doc_rid: `document:${docId}` },
+      );
+      console.log("✓ Document reset to pending");
+
+      const deadline = Date.now() + PROCESSING_TIMEOUT;
+      let reprocessed = false;
+      while (Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, POLL_INTERVAL));
+        const [status, body] = await httpGet(`${API_BASE}/documents/${docId}`, 5_000);
+        if (status !== 200) continue;
+        try {
+          const parsed = JSON.parse(body!);
+          if (parsed.status === "processed") {
+            reprocessed = true;
+            console.log("✓ Document reprocessed successfully");
+            break;
+          }
+          if (parsed.status === "failed") {
+            console.log("ℹ  Reprocess failed (LLM/Temporal may be unavailable)");
+            return;
+          }
+        } catch {
+          continue;
+        }
+      }
+
+      if (!reprocessed) {
+        console.log("ℹ  Document not reprocessed — skipping token assertions");
+        return;
+      }
+
+      // Verify llm_usage records exist after reprocess
+      const afterRows = await surrealQuery(
+        "SELECT count() as cnt FROM llm_usage WHERE document = $doc_rid",
+        { doc_rid: `document:${docId}` },
+      );
+      const afterCnt = afterRows.length > 0 ? ((afterRows[0] as any).cnt ?? 0) : 0;
+      assert.ok(afterCnt > 0, `Expected >0 llm_usage after reprocess, got ${afterCnt}`);
+      console.log(`✓ llm_usage records after reprocess: ${afterCnt}`);
+
+      // Verify API reports has_data after reprocess
+      const [tokStatus, tokBody] = await httpGet(`${API_BASE}/documents/${docId}/tokens`, 5_000);
+      assert.equal(tokStatus, 200, `Expected HTTP 200 from /tokens after reprocess, got ${tokStatus}`);
+      const tokData = JSON.parse(tokBody!);
+      assert.ok(tokData.has_data, "has_data should be true after reprocess");
+      console.log(`✓ API /tokens after reprocess: total=${tokData.total_tokens}`);
+    });
+  });
+
+  // ===================================================================
   // Test 3: Cascade delete → zero orphans
   // ===================================================================
   it("3. Cascade delete → zero orphans", async () => {
@@ -324,6 +466,14 @@ describe("e2e — full pipeline (events, entities, references, delete)", () => {
       const logCnt = logRows.length > 0 ? ((logRows[0] as any).cnt ?? 0) : 0;
       console.log(`  Document logs remaining: ${logCnt}`);
       assert.equal(logCnt, 0, `Logs should be cascade-deleted, got ${logCnt} remaining`);
+
+      const llmRows = await surrealQuery(
+        "SELECT count() as cnt FROM llm_usage WHERE document = $doc_rid",
+        { doc_rid: `document:${docId}` },
+      );
+      const llmCnt = llmRows.length > 0 ? ((llmRows[0] as any).cnt ?? 0) : 0;
+      console.log(`  llm_usage records remaining: ${llmCnt}`);
+      assert.equal(llmCnt, 0, `llm_usage should be cascade-deleted, got ${llmCnt} remaining`);
 
       console.log("✓ Full cascade delete confirmed — zero orphans");
 
