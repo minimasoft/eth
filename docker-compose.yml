@@ -1,7 +1,7 @@
 services:
   surrealdb:
     image: surrealdb/surrealdb:latest
-    command: start --path /data -u root -p root
+    command: start /data -u root -p root
     ports:
     - 8000:8000
     volumes:
