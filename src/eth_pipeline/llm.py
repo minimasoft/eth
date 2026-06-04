@@ -379,44 +379,6 @@ class OpenRouterProvider:
             self._model,
             list(data.keys()),
         )
-                if not response.is_success:
-                    logger.warning(
-                        "LLM API non-200 [status=%d] [response_body=%s]",
-                        response.status_code,
-                        response.text[:1000],
-                    )
-                response.raise_for_status()
-                data = response.json()
-            except httpx.HTTPStatusError as exc:
-                status = exc.response.status_code
-                body = exc.response.text[:1000]
-                logger.error(
-                    "LLM API error [status=%d] [model=%s] [url=%s] "
-                    "[request_body=%s] [response_body=%s]",
-                    status,
-                    self._model,
-                    url,
-                    json.dumps(payload, indent=2, ensure_ascii=False)[:1000],
-                    body,
-                )
-                msg = f"OpenRouter API returned HTTP {status}: {body}"
-                raise RuntimeError(msg) from exc
-            except httpx.TimeoutException as exc:
-                msg = f"OpenRouter API timed out after 120s (model={self._model})"
-                logger.error("LLM API timeout [model=%s]", self._model)
-                raise TimeoutError(msg) from exc
-            except json.JSONDecodeError as exc:
-                body = response.text[:1000] if response else "(no response)"
-                msg = f"OpenRouter returned invalid JSON: {body}"
-                logger.error("LLM API invalid JSON [model=%s] [body=%s]", self._model, body)
-                raise RuntimeError(msg) from exc
-            except httpx.RequestError as exc:
-                msg = f"LLM API request failed [model={self._model}] [error={exc}]"
-                logger.error(msg)
-                raise RuntimeError(msg) from exc
-            except asyncio.CancelledError:
-                logger.warning("LLM API call cancelled [model=%s] [url=%s]", self._model, url)
-                raise
 
         duration_ms = int((time.monotonic() - start) * 1000)
 

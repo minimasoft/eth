@@ -1,3 +1,18 @@
+---
+gsd_state_version: 1.0
+milestone: v5.0
+milestone_name: LLM Cost & Usage Tracking
+status: Awaiting next milestone
+last_updated: "2026-06-04T19:03:48.961Z"
+last_activity: 2026-06-04 — Milestone v5.0 completed and archived
+progress:
+  total_phases: 10
+  completed_phases: 1
+  total_plans: 3
+  completed_plans: 3
+  percent: 10
+---
+
 # Project State
 
 ## Project Reference
@@ -10,10 +25,10 @@ See: .planning/PROJECT.md (updated 2026-06-02)
 
 ## Current Position
 
-Phase: Complete
+Phase: Milestone v5.0 complete
 Plan: —
-Status: Milestone complete
-Last activity: 2026-06-04 — v5.0 all 4 phases completed and verified
+Status: Awaiting next milestone
+Last activity: 2026-06-04 — Milestone v5.0 completed and archived
 
 ## Performance Metrics
 
@@ -51,4 +66,4 @@ All resolved. No open blockers.
 
 ## Operator Next Steps
 
-- Next milestone: TBD — run `/gsd-new-milestone` to define the next project phase
+- Start the next milestone with /gsd-new-milestone
