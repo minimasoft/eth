@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v4.0
 milestone_name: milestone
 status: executing
-stopped_at: Quick task 260604-2v5 completed (integration tests reviewed — 38/43 pass, 5 known infrastructure limitations)
-last_updated: "2026-06-04T04:43:36.000Z"
-last_activity: 2026-06-04 -- Quick task 260604-2v5: review status of integration tests and make fixes
+stopped_at: Quick task 260604-3p8 completed (cascade delete fix — RecordID bindings, event_entity_link cleanup, E2E test)
+last_updated: "2026-06-04T05:39:53.000Z"
+last_activity: 2026-06-04 -- Quick task 260604-3p8: fix cascade delete — RecordID bindings, event_entity_link + document_event_log cleanup, simplify tests
 progress:
   total_phases: 6
   completed_phases: 6
@@ -135,6 +135,14 @@ None — milestone just started.
   - Fixed 5 test failures in 13-schema-evolution.test.ts (camelCase→snake_case field names, graceful DESCRIBE TABLE, field-based SQL)
   - Result: 33→38 tests pass, 10→5 failures (remaining 5 are backend/Temporal infrastructure)
   - SUMMARY: `.planning/quick/260604-2v5-review-status-of-integration-tests-and-m/260604-2v5-SUMMARY.md`
+
+- **2026-06-04** — `260604-3p8`: Fix cascade delete — RecordID bindings, event_entity_link + document_event_log cleanup, simplify tests
+  - Changed ALL DELETE query params from string `"document:{id}"` to `RecordID` objects (SurrealDB v3 fails to bind string doc refs in DELETE queries — root cause of 463 orphan references)
+  - Added `event_entity_link` cleanup to both `DELETE /documents/{id}` and `DELETE /documents/{id}/events`
+  - Added `document_event_log` cleanup to `DELETE /documents/{id}`
+  - Removed redundant retry loops and pre-delete chunk checks from tests
+  - Added comprehensive cascade-delete E2E test that verifies zero orphans
+  - Commit: `f88e54d`
 
 ## Deferred Items
 
