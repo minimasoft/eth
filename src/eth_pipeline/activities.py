@@ -11,6 +11,7 @@ import asyncio
 import base64
 import io
 import os
+import time
 import unicodedata
 
 from surrealdb.data.types.record_id import RecordID
@@ -25,6 +26,7 @@ from eth_pipeline.extractors import (
     PdfExtractor,
 )
 from eth_pipeline.llm import DEFAULT_MODEL, EXTRACTION_CHUNK_SIZE, OpenRouterProvider
+from eth_pipeline.llm_usage import record_llm_usage
 from eth_pipeline.processing_log import ProcessingLogger
 from eth_pipeline.storage import get_storage
 
@@ -194,7 +196,24 @@ async def extract_events_activity(document_id: str) -> dict:
             len(chunk),
             len(all_events),
         )
-        chunk_result = await provider.extract_events(chunk, prior_events=prior)
+        chunk_result, usage = await provider.extract_events(chunk, prior_events=prior)
+        if usage is not None:
+            await record_llm_usage(
+                db_params=params,
+                document_id=document_id,
+                step_name="extract_events",
+                chunk_index=i,
+                model=model,
+                prompt_tokens=usage["prompt_tokens"],
+                completion_tokens=usage["completion_tokens"],
+                total_tokens=usage["total_tokens"],
+                duration_ms=usage["duration_ms"],
+                cached_tokens=usage.get("cached_tokens"),
+                cache_write_tokens=usage.get("cache_write_tokens"),
+                reasoning_tokens=usage.get("reasoning_tokens"),
+                cost=usage.get("cost"),
+                cost_source="openrouter" if usage.get("cost") is not None else None,
+            )
         if isinstance(chunk_result, list):
             chunk_result = {"events": chunk_result}
         chunk_events = chunk_result.get("events", [])
@@ -409,7 +428,7 @@ async def resolve_entities_activity(document_id: str) -> dict:
 
                 # ---- LLM batch resolution ----
                 try:
-                    resolution = await provider.resolve_references(
+                    resolution, usage = await provider.resolve_references(
                         references=refs,
                         existing_entities=existing_entities,
                         document_context=document_context,
@@ -426,6 +445,24 @@ async def resolve_entities_activity(document_id: str) -> dict:
                                    f"LLM resolution failed for {entity_type} references",
                                    {"error": str(exc)[:200]})
                     continue
+
+                if usage is not None:
+                    await record_llm_usage(
+                        db_params=params,
+                        document_id=document_id,
+                        step_name="resolve_entities",
+                        chunk_index=0,
+                        model=model,
+                        prompt_tokens=usage["prompt_tokens"],
+                        completion_tokens=usage["completion_tokens"],
+                        total_tokens=usage["total_tokens"],
+                        duration_ms=usage["duration_ms"],
+                        cached_tokens=usage.get("cached_tokens"),
+                        cache_write_tokens=usage.get("cache_write_tokens"),
+                        reasoning_tokens=usage.get("reasoning_tokens"),
+                        cost=usage.get("cost"),
+                        cost_source="openrouter" if usage.get("cost") is not None else None,
+                    )
 
                 resolutions = resolution.get("resolutions", [])
                 if not resolutions:
@@ -871,7 +908,7 @@ async def resolve_entities_with_search_activity(document_id: str) -> dict:
                     continue
 
                 try:
-                    resolution = await provider.resolve_references(
+                    resolution, usage = await provider.resolve_references(
                         references=remaining_refs,
                         existing_entities=candidates,
                         document_context=document_context,
@@ -891,6 +928,24 @@ async def resolve_entities_with_search_activity(document_id: str) -> dict:
                                    f"references",
                                    {"error": str(exc)[:200]})
                     continue
+
+                if usage is not None:
+                    await record_llm_usage(
+                        db_params=params,
+                        document_id=document_id,
+                        step_name="resolve_entities_with_search",
+                        chunk_index=0,
+                        model=model,
+                        prompt_tokens=usage["prompt_tokens"],
+                        completion_tokens=usage["completion_tokens"],
+                        total_tokens=usage["total_tokens"],
+                        duration_ms=usage["duration_ms"],
+                        cached_tokens=usage.get("cached_tokens"),
+                        cache_write_tokens=usage.get("cache_write_tokens"),
+                        reasoning_tokens=usage.get("reasoning_tokens"),
+                        cost=usage.get("cost"),
+                        cost_source="openrouter" if usage.get("cost") is not None else None,
+                    )
 
                 resolutions = resolution.get("resolutions", [])
                 if not resolutions:
@@ -1549,6 +1604,10 @@ async def store_extraction_results_activity(
             activity.logger.info(
                 "Clearing prior extraction results [document_id=%s]",
                 document_id,
+            )
+            await db.query(
+                "DELETE llm_usage WHERE document = $doc_rid",
+                {"doc_rid": doc_rid},
             )
             await db.query(
                 "DELETE reference WHERE event IN "

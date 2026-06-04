@@ -24,6 +24,7 @@ import asyncio
 import json
 import logging
 import os
+import time
 from typing import Protocol
 
 import httpx
@@ -218,7 +219,7 @@ class LLMProvider(Protocol):
         references: list[dict],
         existing_entities: list[dict],
         document_context: str,
-    ) -> dict:
+    ) -> tuple[dict, dict | None]:
         """Resolve verbatim references against existing canonical entities.
 
         Parameters
@@ -236,9 +237,8 @@ class LLMProvider(Protocol):
 
         Returns
         -------
-        dict
-            Parsed JSON matching ``ENTITY_RESOLUTION_SCHEMA`` (top-level key
-            ``"resolutions"``).
+        tuple[dict, dict | None]
+            (parsed JSON matching ``ENTITY_RESOLUTION_SCHEMA``, usage dict from OpenRouter response or None).
         """
         ...
 
@@ -295,7 +295,7 @@ class OpenRouterProvider:
     # Public API
     # ------------------------------------------------------------------
 
-    async def extract_events(self, text: str, prior_events: list[dict] | None = None) -> dict:
+    async def extract_events(self, text: str, prior_events: list[dict] | None = None) -> tuple[dict, dict | None]:
         """Call OpenRouter and return parsed JSON matching the extraction schema.
 
         Parameters
@@ -308,8 +308,8 @@ class OpenRouterProvider:
 
         Returns
         -------
-        dict
-            Parsed JSON response body matching ``EVENT_EXTRACTION_SCHEMA``.
+        tuple[dict, dict | None]
+            (parsed JSON response body matching ``EVENT_EXTRACTION_SCHEMA``, usage dict from OpenRouter response or None).
         """
         payload = self._build_payload(text, prior_events)
         url = f"{self._base_url}/api/v1/chat/completions"
@@ -324,6 +324,8 @@ class OpenRouterProvider:
         )
         logger.debug("LLM request payload: %s", json.dumps(payload, indent=2, ensure_ascii=False)[:2000])
         logger.debug("LLM request headers (key suffix): ...%s", headers.get("Authorization", "")[-8:])
+
+        start = time.monotonic()
 
         async with httpx.AsyncClient() as client:
             try:
@@ -377,14 +379,87 @@ class OpenRouterProvider:
             self._model,
             list(data.keys()),
         )
-        return self._parse_choice(data)
+                if not response.is_success:
+                    logger.warning(
+                        "LLM API non-200 [status=%d] [response_body=%s]",
+                        response.status_code,
+                        response.text[:1000],
+                    )
+                response.raise_for_status()
+                data = response.json()
+            except httpx.HTTPStatusError as exc:
+                status = exc.response.status_code
+                body = exc.response.text[:1000]
+                logger.error(
+                    "LLM API error [status=%d] [model=%s] [url=%s] "
+                    "[request_body=%s] [response_body=%s]",
+                    status,
+                    self._model,
+                    url,
+                    json.dumps(payload, indent=2, ensure_ascii=False)[:1000],
+                    body,
+                )
+                msg = f"OpenRouter API returned HTTP {status}: {body}"
+                raise RuntimeError(msg) from exc
+            except httpx.TimeoutException as exc:
+                msg = f"OpenRouter API timed out after 120s (model={self._model})"
+                logger.error("LLM API timeout [model=%s]", self._model)
+                raise TimeoutError(msg) from exc
+            except json.JSONDecodeError as exc:
+                body = response.text[:1000] if response else "(no response)"
+                msg = f"OpenRouter returned invalid JSON: {body}"
+                logger.error("LLM API invalid JSON [model=%s] [body=%s]", self._model, body)
+                raise RuntimeError(msg) from exc
+            except httpx.RequestError as exc:
+                msg = f"LLM API request failed [model={self._model}] [error={exc}]"
+                logger.error(msg)
+                raise RuntimeError(msg) from exc
+            except asyncio.CancelledError:
+                logger.warning("LLM API call cancelled [model=%s] [url=%s]", self._model, url)
+                raise
+
+        duration_ms = int((time.monotonic() - start) * 1000)
+
+        logger.info(
+            "LLM request succeeded [model=%s] [response_keys=%s]",
+            self._model,
+            list(data.keys()),
+        )
+
+        usage_raw: dict | None = data.get("usage")
+        usage: dict | None = None
+        if isinstance(usage_raw, dict):
+            usage = {
+                "prompt_tokens": usage_raw.get("prompt_tokens", 0),
+                "completion_tokens": usage_raw.get("completion_tokens", 0),
+                "total_tokens": usage_raw.get("total_tokens", 0),
+                "cached_tokens": usage_raw.get("cached_tokens"),
+                "cache_write_tokens": usage_raw.get("cache_write_tokens"),
+                "reasoning_tokens": usage_raw.get("reasoning_tokens"),
+                "model": data.get("model", self._model),
+                "cost": usage_raw.get("cost"),
+                "duration_ms": duration_ms,
+            }
+            if usage["prompt_tokens"] > 0 and usage["completion_tokens"] > 0 and usage["total_tokens"] > 0:
+                logger.info(
+                    "Captured LLM usage [model=%s] [prompt=%d] [completion=%d]",
+                    usage["model"], usage["prompt_tokens"], usage["completion_tokens"],
+                )
+            else:
+                logger.warning(
+                    "LLM response has zero tokens — usage data may be incomplete [usage=%s]",
+                    usage,
+                )
+                usage = None
+
+        return self._parse_choice(data), usage
 
     async def resolve_references(
         self,
         references: list[dict],
         existing_entities: list[dict],
         document_context: str,
-    ) -> dict:
+    ) -> tuple[dict, dict | None]:
         """Resolve verbatim references against existing canonical entities.
 
         Builds a user prompt that includes the references, existing entities,
@@ -406,9 +481,8 @@ class OpenRouterProvider:
 
         Returns
         -------
-        dict
-            Parsed JSON response body matching ``ENTITY_RESOLUTION_SCHEMA``
-            (top-level key ``"resolutions"``).
+        tuple[dict, dict | None]
+            (parsed JSON response body matching ``ENTITY_RESOLUTION_SCHEMA``, usage dict from OpenRouter response or None).
         """
         payload = self._build_resolution_payload(references, existing_entities, document_context)
         url = f"{self._base_url}/api/v1/chat/completions"
@@ -423,6 +497,8 @@ class OpenRouterProvider:
         )
         logger.debug("LLM resolution payload: %s", json.dumps(payload, indent=2, ensure_ascii=False)[:2000])
         logger.debug("LLM resolution headers (key suffix): ...%s", headers.get("Authorization", "")[-8:])
+
+        start = time.monotonic()
 
         async with httpx.AsyncClient() as client:
             try:
@@ -464,12 +540,41 @@ class OpenRouterProvider:
                 logger.error("LLM resolution invalid JSON [model=%s] [body=%s]", self._model, body)
                 raise RuntimeError(msg) from exc
 
+        duration_ms = int((time.monotonic() - start) * 1000)
+
         logger.info(
             "LLM resolution succeeded [model=%s] [response_keys=%s]",
             self._model,
             list(data.keys()),
         )
-        return self._parse_choice(data)
+
+        usage_raw: dict | None = data.get("usage")
+        usage: dict | None = None
+        if isinstance(usage_raw, dict):
+            usage = {
+                "prompt_tokens": usage_raw.get("prompt_tokens", 0),
+                "completion_tokens": usage_raw.get("completion_tokens", 0),
+                "total_tokens": usage_raw.get("total_tokens", 0),
+                "cached_tokens": usage_raw.get("cached_tokens"),
+                "cache_write_tokens": usage_raw.get("cache_write_tokens"),
+                "reasoning_tokens": usage_raw.get("reasoning_tokens"),
+                "model": data.get("model", self._model),
+                "cost": usage_raw.get("cost"),
+                "duration_ms": duration_ms,
+            }
+            if usage["prompt_tokens"] > 0 and usage["completion_tokens"] > 0 and usage["total_tokens"] > 0:
+                logger.info(
+                    "Captured LLM usage [model=%s] [prompt=%d] [completion=%d]",
+                    usage["model"], usage["prompt_tokens"], usage["completion_tokens"],
+                )
+            else:
+                logger.warning(
+                    "LLM response has zero tokens — usage data may be incomplete [usage=%s]",
+                    usage,
+                )
+                usage = None
+
+        return self._parse_choice(data), usage
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -626,7 +731,7 @@ class OpenRouterProvider:
 # ---------------------------------------------------------------------------
 
 
-async def extract_events(text: str, provider: LLMProvider | None = None) -> dict:
+async def extract_events(text: str, provider: LLMProvider | None = None) -> tuple[dict, dict | None]:
     """Extract structured events from *text* using the given or default provider.
 
     If *provider* is ``None``, creates an ``OpenRouterProvider`` using the
@@ -643,8 +748,8 @@ async def extract_events(text: str, provider: LLMProvider | None = None) -> dict
 
     Returns
     -------
-    dict
-        Parsed JSON matching ``EVENT_EXTRACTION_SCHEMA``.
+    tuple[dict, dict | None]
+        (parsed JSON matching ``EVENT_EXTRACTION_SCHEMA``, usage dict from OpenRouter response or None).
     """
     if provider is not None:
         return await provider.extract_events(text)
@@ -667,7 +772,7 @@ async def resolve_references(
     existing_entities: list[dict],
     document_context: str,
     provider: LLMProvider | None = None,
-) -> dict:
+) -> tuple[dict, dict | None]:
     """Resolve verbatim references against existing canonical entities.
 
     If *provider* is ``None``, creates an ``OpenRouterProvider`` using the
@@ -690,9 +795,8 @@ async def resolve_references(
 
     Returns
     -------
-    dict
-        Parsed JSON matching ``ENTITY_RESOLUTION_SCHEMA`` (top-level key
-        ``"resolutions"``).
+    tuple[dict, dict | None]
+        (parsed JSON matching ``ENTITY_RESOLUTION_SCHEMA``, usage dict from OpenRouter response or None).
     """
     if provider is not None:
         return await provider.resolve_references(references, existing_entities, document_context)

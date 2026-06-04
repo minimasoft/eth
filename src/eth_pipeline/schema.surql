@@ -360,5 +360,76 @@ DEFINE INDEX idx_event_entity_link_entity ON TABLE event_entity_link COLUMNS ent
     COMMENT 'Index for efficient reverse graph traversal from entity to linked events';
 
 -- ==========================================================================
+-- v5.0: LLM Cost & Usage Tracking
+-- ==========================================================================
+-- Phase 19: Token Recording & Schema — additive DDL for llm_usage table.
+-- All statements are idempotent on re-apply.
+-- ==========================================================================
+
+DEFINE TABLE llm_usage SCHEMAFULL
+    PERMISSIONS FOR update NONE, FOR delete NONE
+    COMMENT 'Token usage and cost per LLM call during document processing. Deterministic SHA256 IDs for Temporal replay safety.';
+
+DEFINE FIELD id ON TABLE llm_usage TYPE string
+    COMMENT 'Deterministic record ID: crypto::sha256(document_id + ":" + step_name + ":" + string::from(chunk_index)) — enables UPSERT idempotency on Temporal replays';
+
+DEFINE FIELD document ON TABLE llm_usage TYPE record<document>
+    COMMENT 'Link to the source document being processed when this LLM call was made';
+
+DEFINE FIELD step_name ON TABLE llm_usage TYPE string
+    COMMENT 'Processing step that made the LLM call: "extract_events", "resolve_entities", or "resolve_entities_with_search"';
+
+DEFINE FIELD chunk_index ON TABLE llm_usage TYPE int
+    DEFAULT 0
+    ASSERT $value >= 0
+    COMMENT 'Zero-based chunk index within the step (0 for single-call steps)';
+
+DEFINE FIELD model ON TABLE llm_usage TYPE string
+    COMMENT 'Model identifier as returned by OpenRouter (e.g. "deepseek/deepseek-v4-flash")';
+
+DEFINE FIELD prompt_tokens ON TABLE llm_usage TYPE int
+    ASSERT $value > 0
+    COMMENT 'Number of tokens in the prompt (input) — OpenRouter usage.prompt_tokens';
+
+DEFINE FIELD completion_tokens ON TABLE llm_usage TYPE int
+    ASSERT $value > 0
+    COMMENT 'Number of tokens in the completion (output) — OpenRouter usage.completion_tokens';
+
+DEFINE FIELD total_tokens ON TABLE llm_usage TYPE int
+    ASSERT $value > 0
+    COMMENT 'Sum of prompt_tokens + completion_tokens — OpenRouter usage.total_tokens';
+
+DEFINE FIELD cached_tokens ON TABLE llm_usage TYPE int | null
+    DEFAULT null
+    COMMENT 'Tokens served from cache (null when provider does not report caching)';
+
+DEFINE FIELD cache_write_tokens ON TABLE llm_usage TYPE int | null
+    DEFAULT null
+    COMMENT 'Tokens written to cache (null when not reported)';
+
+DEFINE FIELD reasoning_tokens ON TABLE llm_usage TYPE int | null
+    DEFAULT null
+    COMMENT 'Reasoning/deep-thinking tokens (null for non-reasoning models)';
+
+DEFINE FIELD cost ON TABLE llm_usage TYPE float | null
+    DEFAULT null
+    COMMENT 'Estimated monetary cost in USD — OpenRouter usage.cost when available';
+
+DEFINE FIELD cost_source ON TABLE llm_usage TYPE string | null
+    DEFAULT null
+    COMMENT 'Source of the cost value: "openrouter" or null';
+
+DEFINE FIELD duration_ms ON TABLE llm_usage TYPE int
+    ASSERT $value >= 0
+    COMMENT 'Wall-clock duration of the HTTP request in milliseconds';
+
+DEFINE FIELD created_at ON TABLE llm_usage TYPE datetime
+    DEFAULT time::now() READONLY
+    COMMENT 'Timestamp when the usage record was created';
+
+DEFINE INDEX idx_llm_usage_document_created_at ON TABLE llm_usage COLUMNS document, created_at
+    COMMENT 'Composite index for per-document time-range lookups';
+
+-- ==========================================================================
 -- End of schema
 -- ==========================================================================
