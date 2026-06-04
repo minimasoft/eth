@@ -2180,7 +2180,7 @@ async def split_entity(
                 "Split rejected — reference %s does not point to entity %s (points to %s)",
                 ref_id,
                 entity_id,
-                ref_canonical_str,
+                str(source_rid),
             )
             raise HTTPException(
                 status_code=400,
