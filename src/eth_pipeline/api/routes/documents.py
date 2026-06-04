@@ -911,6 +911,154 @@ async def list_documents(
 
 
 # =======================================================================
+# Delete document endpoint (full cascade)
+# =======================================================================
+
+
+@router.delete(
+    "/documents/{document_id}",
+    response_model=DocumentDeleted,
+)
+async def delete_document(document_id: str) -> DocumentDeleted:
+    """Delete a document and all its associated data (full cascade)."""
+    db: AsyncWsSurrealConnection | None = app.state.db
+
+    if db is None:
+        logger.error(
+            "DELETE /documents/%s rejected — SurrealDB unavailable",
+            document_id,
+        )
+        raise HTTPException(
+            status_code=503,
+            detail="SurrealDB is not available. Please try again later.",
+        )
+
+    try:
+        from surrealdb.data.types.record_id import RecordID
+
+        doc_id_obj = RecordID("document", document_id)
+        exists_result = await db.query(
+            "SELECT * FROM document WHERE id = $doc_id",
+            {"doc_id": doc_id_obj},
+        )
+    except Exception as exc:
+        logger.error("Failed to query document %s: %s", document_id, exc)
+        raise HTTPException(
+            status_code=502,
+            detail="Failed to query database.",
+        ) from exc
+
+    exists_records: list[dict] = [
+        r for r in (exists_result or []) if isinstance(r, dict)
+    ]
+    if not exists_records:
+        logger.warning("Document %s not found for cascade delete", document_id)
+        raise HTTPException(
+            status_code=404,
+            detail=f"Document {document_id} not found.",
+        )
+
+    try:
+        affected_ce_query = await db.query(
+            "SELECT VALUE canonical_entity FROM reference "
+            "WHERE event.document = $doc_id "
+            "AND canonical_entity IS NOT NONE "
+            "AND canonical_entity IS NOT NULL",
+            {"doc_id": doc_id_obj},
+        )
+        affected_ce_rids = list({
+            r for r in (affected_ce_query or [])
+            if isinstance(r, str)
+        })
+
+        await db.query(
+            "DELETE event_entity_link WHERE event IN ("
+            "SELECT id FROM canonical_entity "
+            "WHERE entity_type = 'event' AND properties.document_id = $doc_id"
+            ")",
+            {"doc_id": document_id},
+        )
+
+        await db.query(
+            "DELETE document_chunk WHERE document = $doc_id",
+            {"doc_id": doc_id_obj},
+        )
+
+        await db.query(
+            "DELETE reference WHERE event IN "
+            "(SELECT id FROM event WHERE document = $doc_id)",
+            {"doc_id": doc_id_obj},
+        )
+
+        await db.query(
+            "DELETE event WHERE document = $doc_id",
+            {"doc_id": doc_id_obj},
+        )
+
+        await db.query(
+            "DELETE document_event_log WHERE document = $doc_id",
+            {"doc_id": doc_id_obj},
+        )
+
+        await db.query(
+            "DELETE document WHERE id = $doc_id",
+            {"doc_id": doc_id_obj},
+        )
+
+        orphaned = 0
+        if affected_ce_rids:
+            params = {f"ce_{i}": rid for i, rid in enumerate(affected_ce_rids)}
+            rid_list = ", ".join(f"$ce_{i}" for i in range(len(affected_ce_rids)))
+
+            result = await db.query(
+                f"DELETE canonical_entity WHERE id IN [{rid_list}] "
+                f"AND count((SELECT id FROM reference WHERE canonical_entity = parent.id)) = 0",
+                params,
+            )
+            orphaned = result[0].get("count", 0) if result and isinstance(result[0], dict) else 0
+
+        logger.info(
+            "Deleted document %s (cascade complete, %d orphaned entities cleaned)",
+            document_id,
+            orphaned,
+        )
+
+        temporal = getattr(app.state, "temporal", None)
+        if temporal is not None:
+            workflow_id = f"doc-{document_id}"
+            try:
+                handle = temporal.get_workflow_handle(workflow_id)
+                await handle.terminate(reason="document deleted via API")
+                logger.info(
+                    "Terminated Temporal workflow %s for deleted document %s",
+                    workflow_id,
+                    document_id,
+                )
+            except Exception as exc:
+                logger.info(
+                    "No active Temporal workflow to terminate for %s: %s",
+                    workflow_id,
+                    exc,
+                )
+    except Exception as exc:
+        logger.error(
+            "Failed to delete document %s: %s",
+            document_id,
+            exc,
+        )
+        raise HTTPException(
+            status_code=502,
+            detail="Failed to delete document.",
+        ) from exc
+
+    return DocumentDeleted(
+        document_id=document_id,
+        document_deleted=True,
+        orphaned_entities_cleaned=orphaned,
+    )
+
+
+# =======================================================================
 # Clear document events endpoint
 # =======================================================================
 
@@ -960,11 +1108,19 @@ async def clear_document_events(document_id: str) -> EventsCleared:
 
     try:
         await db.query(
-            "DELETE event_entity_link WHERE event IN ("
-            "SELECT id FROM canonical_entity "
-            "WHERE entity_type = 'event' AND properties.document_id = $doc_id"
-            ")",
-            {"doc_id": document_id},
+            "DELETE document_chunk WHERE document = $doc_id",
+            {"doc_id": doc_id_obj},
+        )
+
+        await db.query(
+            "DELETE reference WHERE event IN "
+            "(SELECT id FROM event WHERE document = $doc_id)",
+            {"doc_id": doc_id_obj},
+        )
+
+        await db.query(
+            "DELETE event WHERE document = $doc_id",
+            {"doc_id": doc_id_obj},
         )
 
         await db.query(
@@ -978,66 +1134,25 @@ async def clear_document_events(document_id: str) -> EventsCleared:
         )
 
         await db.query(
-            "DELETE document WHERE id = $doc_id",
+            "UPDATE document SET status = 'pending', "
+            "text_content = '', error_message = NULL, "
+            "updated_at = time::now() WHERE id = $doc_id",
             {"doc_id": doc_id_obj},
         )
 
-        # Delete event-type canonical entities created for this document
-        await db.query(
-            "DELETE canonical_entity "
-            "WHERE entity_type = 'event' AND properties.document_id = $doc_id",
-            {"doc_id": document_id},
-        )
-
-        orphaned = 0
-        if affected_ce_rids:
-            deduplicated = list({str(r) for r in affected_ce_rids})
-            params = {f"ce_{i}": rid for i, rid in enumerate(affected_ce_rids)}
-            rid_list = ", ".join(f"$ce_{i}" for i in range(len(affected_ce_rids)))
-
-            orphaned = len(deduplicated)
-
-            await db.query(
-                f"DELETE canonical_entity WHERE id IN [{rid_list}]",
-                params,
-            )
-
         logger.info(
-            "Deleted document %s (cascade complete, %d orphaned entities cleaned)",
+            "Cleared events and reset status for document %s",
             document_id,
-            orphaned,
         )
-
-        temporal = getattr(app.state, "temporal", None)
-        if temporal is not None:
-            workflow_id = f"doc-{document_id}"
-            try:
-                handle = temporal.get_workflow_handle(workflow_id)
-                await handle.terminate(reason="document deleted via API")
-                logger.info(
-                    "Terminated Temporal workflow %s for deleted document %s",
-                    workflow_id,
-                    document_id,
-                )
-            except Exception as exc:
-                logger.info(
-                    "No active Temporal workflow to terminate for %s: %s",
-                    workflow_id,
-                    exc,
-                )
     except Exception as exc:
         logger.error(
-            "Failed to delete document %s: %s",
+            "Failed to clear events for document %s: %s",
             document_id,
             exc,
         )
         raise HTTPException(
             status_code=502,
-            detail="Failed to delete document.",
+            detail="Failed to clear extraction results.",
         ) from exc
 
-    return DocumentDeleted(
-        document_id=document_id,
-        document_deleted=True,
-        orphaned_entities_cleaned=orphaned,
-    )
+    return EventsCleared(document_id=document_id, status="pending", events_cleared=True)

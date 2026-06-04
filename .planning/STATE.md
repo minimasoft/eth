@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-06-02)
 Phase: 23. Entity Resolution Prompt & Batching Fix
 Plan: 1 plan
 Status: In progress
-Last activity: 2026-06-04 — Started Phase 23: Entity Resolution Prompt & Batching Fix
+Last activity: 2026-06-04 — Completed quick task 260604-n9q: Fix document delete 405 Method Not Allowed error
 
 ## Performance Metrics
 
@@ -77,6 +77,7 @@ All resolved. No open blockers.
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
 | 260604-mex | Fix 404 on /documents/{id}/logs API route — restore accidentally deleted handler | 2026-06-04 | 4724bfc | [260604-mex-fix-404-on-documents-id-logs-api-route-r](./quick/260604-mex-fix-404-on-documents-id-logs-api-route-r/) |
+| 260604-n9q | Fix document delete 405 Method Not Allowed error — restore delete_document route | 2026-06-04 | 17186b3 | [260604-n9q-fix-document-delete-405-method-not-allow](./quick/260604-n9q-fix-document-delete-405-method-not-allow/) |
 
 ## Operator Next Steps
 
