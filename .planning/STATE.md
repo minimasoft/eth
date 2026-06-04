@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v4.0
 milestone_name: milestone
 status: executing
-stopped_at: Quick task 260604-3p8 completed (cascade delete fix — RecordID bindings, event_entity_link cleanup, E2E test)
-last_updated: "2026-06-04T05:39:53.000Z"
-last_activity: 2026-06-04 -- Quick task 260604-3p8: fix cascade delete — RecordID bindings, event_entity_link + document_event_log cleanup, simplify tests
+stopped_at: Quick task 260604-3x3 completed (fix RecordID binding, IN subqueries → dot notation, remove result anti-pattern, consolidate tests)
+last_updated: "2026-06-04T06:10:29.000Z"
+last_activity: 2026-06-04 -- Quick task 260604-3x3: fix RecordID binding, IN subqueries → dot notation, remove result anti-pattern, consolidate 6 test files into 1 E2E test
 progress:
   total_phases: 6
   completed_phases: 6
@@ -82,6 +82,13 @@ None — milestone just started.
 - 260604-1px (MEDIUM): reference_type validation — **RESOLVED** (fix deployed; 1 stale Temporal replay remains, needs workflow termination)
 
 ### Quick Tasks Completed
+
+- **2026-06-04** — `260604-3x3`: Fix RecordID binding, IN subqueries → dot notation, remove result anti-pattern, consolidate tests
+  - Fixed silent data loss: RecordID parameter binding (strings → RecordID objects) and IN subqueries → dot notation for SurrealDB v3
+  - Removed extraction result dict from Temporal workflow payloads (activities now query DB directly)
+  - Consolidated 6 test files (43 tests) into 1 comprehensive E2E test with named entity content
+  - Commits: `a3a631d` (fix), `fc8bdd3` (test consolidation)
+  - SUMMARY: `.planning/quick/260604-3x3-review-current-document-logs-for-mini-es/260604-3x3-SUMMARY.md`
 
 - **2026-06-03** — `260603-u19`: Docker Compose log review (7 issues found: I-01 through I-07)
   - REPORT: `.planning/quick/260603-u19-review-docker-compose-logs-and-report-po/260603-u19-REPORT.md`
