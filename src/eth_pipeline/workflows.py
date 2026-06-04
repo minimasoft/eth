@@ -206,7 +206,7 @@ class DocumentProcessingWorkflow:
             # Step 7: Create event canonical entities
             event_entity_result = await workflow.execute_activity(
                 create_event_canonical_entities_activity,
-                args=[document_id, result],
+                args=[document_id],
                 start_to_close_timeout=timedelta(seconds=30),
             )
             if "error" in event_entity_result:
@@ -215,7 +215,7 @@ class DocumentProcessingWorkflow:
             # Step 8: Resolve verbatim references (search-first)
             resolve_result = await workflow.execute_activity(
                 resolve_entities_with_search_activity,
-                args=[document_id, result],
+                args=[document_id],
                 start_to_close_timeout=timedelta(seconds=30),
             )
             if "error" in resolve_result:

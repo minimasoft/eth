@@ -221,7 +221,7 @@ async def extract_events_activity(document_id: str) -> dict:
 
 
 @activity.defn
-async def resolve_entities_activity(document_id: str, result: dict) -> dict:
+async def resolve_entities_activity(document_id: str) -> dict:
     """Resolve verbatim references to canonical entities using LLM matching.
 
     **Replay-safe**: First nullifies any prior ``canonical_entity`` and
@@ -248,14 +248,14 @@ async def resolve_entities_activity(document_id: str, result: dict) -> dict:
     LLM failures for individual type batches are logged but do **not** block
     resolution of other reference types.
 
+    Queries event count and references directly from SurrealDB — does NOT
+    accept the LLM extraction result dict.  The document's ``text_content``
+    is queried directly from SurrealDB for the LLM context window.
+
     Parameters
     ----------
     document_id:
         SurrealDB record ID of the document (e.g. ``"abc123"``).
-    result:
-        LLM extraction result dict (top-level ``"events"`` array).  The
-        document's ``text_content`` is queried directly from SurrealDB for
-        the LLM context window.
 
     Returns
     -------
@@ -265,35 +265,42 @@ async def resolve_entities_activity(document_id: str, result: dict) -> dict:
     """
     params = _db_params()
     _log = ProcessingLogger(params)
-    doc_ref = f"document:{document_id}"
-    events = result.get("events", [])
+    doc_rid = RecordID("document", document_id)
 
     activity.logger.info(
-        "resolve_entities_activity called [document_id=%s] [event_count=%d]",
+        "resolve_entities_activity called [document_id=%s]",
         document_id,
-        len(events),
     )
     await _log.log(document_id, "resolve_entities", "info",
-                   f"Starting entity resolution for {len(events)} events")
-
-    if not events:
-        activity.logger.info(
-            "No events — nothing to resolve [document_id=%s]",
-            document_id,
-        )
-        await _log.log(document_id, "resolve_entities", "warning",
-                       "No events — nothing to resolve")
-        return {"document_id": document_id, "resolved": 0, "created": 0, "skipped": 0}
+                   "Starting entity resolution")
 
     try:
         async with get_db(**params) as db:
             # ------------------------------------------------------------------
+            # 0. Early-return: query event count from DB
+            # ------------------------------------------------------------------
+            count_raw = await db.query(
+                "SELECT count() FROM event WHERE document = $doc_rid GROUP ALL",
+                {"doc_rid": doc_rid},
+            )
+            count_rows = _extract_query_results(count_raw)
+            event_count = count_rows[0].get("count", 0) if count_rows else 0
+
+            if event_count == 0:
+                activity.logger.info(
+                    "No events — nothing to resolve [document_id=%s]",
+                    document_id,
+                )
+                await _log.log(document_id, "resolve_entities", "warning",
+                               "No events — nothing to resolve")
+                return {"document_id": document_id, "resolved": 0, "created": 0, "skipped": 0}
+
+            # ------------------------------------------------------------------
             # 1. Query all references for this document
             # ------------------------------------------------------------------
             refs_raw = await db.query(
-                "SELECT * FROM reference WHERE event IN "
-                "(SELECT id FROM event WHERE document = $doc_ref)",
-                {"doc_ref": doc_ref},
+                "SELECT * FROM reference WHERE event.document = $doc_rid",
+                {"doc_rid": doc_rid},
             )
             references = _extract_query_results(refs_raw)
 
@@ -322,8 +329,8 @@ async def resolve_entities_activity(document_id: str, result: dict) -> dict:
             await db.query(
                 "UPDATE reference SET canonical_entity = null, "
                 "resolution_confidence = null "
-                "WHERE event IN (SELECT id FROM event WHERE document = $doc_ref)",
-                {"doc_ref": doc_ref},
+                "WHERE event.document = $doc_rid",
+                {"doc_rid": doc_rid},
             )
 
             # ------------------------------------------------------------------
@@ -534,7 +541,7 @@ async def resolve_entities_activity(document_id: str, result: dict) -> dict:
 
 
 @activity.defn
-async def resolve_entities_with_search_activity(document_id: str, result: dict) -> dict:
+async def resolve_entities_with_search_activity(document_id: str) -> dict:
     """Resolve verbatim references to canonical entities using search-first resolution.
 
     **Replay-safe**: First nullifies any prior ``canonical_entity``,
@@ -554,12 +561,13 @@ async def resolve_entities_with_search_activity(document_id: str, result: dict) 
     References are grouped by ``reference_type`` with the same mapping as
     ``resolve_entities_activity``.
 
+    Queries event count and references directly from SurrealDB — does NOT
+    accept the LLM extraction result dict.
+
     Parameters
     ----------
     document_id:
         SurrealDB record ID of the document (e.g. ``"abc123"``).
-    result:
-        LLM extraction result dict (top-level ``"events"`` array).
 
     Returns
     -------
@@ -570,44 +578,55 @@ async def resolve_entities_with_search_activity(document_id: str, result: dict) 
     """
     params = _db_params()
     _log = ProcessingLogger(params)
-    doc_ref = f"document:{document_id}"
-    events = result.get("events", [])
+    doc_rid = RecordID("document", document_id)
 
     activity.logger.info(
         "resolve_entities_with_search_activity called "
-        "[document_id=%s] [event_count=%d]",
+        "[document_id=%s]",
         document_id,
-        len(events),
     )
     await _log.log(document_id, "resolve_entities_search", "info",
-                   f"Starting search-first entity resolution for "
-                   f"{len(events)} events")
-
-    if not events:
-        activity.logger.info(
-            "No events — nothing to resolve [document_id=%s]",
-            document_id,
-        )
-        await _log.log(document_id, "resolve_entities_search", "warning",
-                       "No events — nothing to resolve")
-        return {
-            "document_id": document_id,
-            "resolved": 0,
-            "created": 0,
-            "skipped": 0,
-            "llm_calls": 0,
-            "exact_matches": 0,
-        }
+                   "Starting search-first entity resolution")
 
     try:
         async with get_db(**params) as db:
             # ------------------------------------------------------------------
+            # 0. Early-return: query event count from DB
+            # ------------------------------------------------------------------
+            count_raw = await db.query(
+                "SELECT count() FROM event WHERE document = $doc_rid GROUP ALL",
+                {"doc_rid": doc_rid},
+            )
+            count_rows = _extract_query_results(count_raw)
+            event_count = count_rows[0].get("count", 0) if count_rows else 0
+
+            if event_count == 0:
+                activity.logger.info(
+                    "No events — nothing to resolve [document_id=%s]",
+                    document_id,
+                )
+                await _log.log(document_id, "resolve_entities_search", "warning",
+                               "No events — nothing to resolve")
+                return {
+                    "document_id": document_id,
+                    "resolved": 0,
+                    "created": 0,
+                    "skipped": 0,
+                    "llm_calls": 0,
+                    "exact_matches": 0,
+                }
+
+            activity.logger.info(
+                "Found %d stored events [document_id=%s]",
+                event_count,
+                document_id,
+            )
+            # ------------------------------------------------------------------
             # 1. Query all references for this document
             # ------------------------------------------------------------------
             refs_raw = await db.query(
-                "SELECT * FROM reference WHERE event IN "
-                "(SELECT id FROM event WHERE document = $doc_ref)",
-                {"doc_ref": doc_ref},
+                "SELECT * FROM reference WHERE event.document = $doc_rid",
+                {"doc_rid": doc_rid},
             )
             references = _extract_query_results(refs_raw)
 
@@ -639,8 +658,8 @@ async def resolve_entities_with_search_activity(document_id: str, result: dict) 
             await db.query(
                 "UPDATE reference SET canonical_entity = null, "
                 "entity_id = null, resolution_confidence = null "
-                "WHERE event IN (SELECT id FROM event WHERE document = $doc_ref)",
-                {"doc_ref": doc_ref},
+                "WHERE event.document = $doc_rid",
+                {"doc_rid": doc_rid},
             )
 
             # ------------------------------------------------------------------
@@ -1006,7 +1025,6 @@ async def resolve_entities_with_search_activity(document_id: str, result: dict) 
 @activity.defn
 async def create_event_canonical_entities_activity(
     document_id: str,
-    result: dict,
 ) -> dict:
     """Create canonical_entity records for extracted events.
 
@@ -1014,7 +1032,12 @@ async def create_event_canonical_entities_activity(
     scoped to this document (and their event_entity_link edges), then
     recreates them from scratch. This guarantees idempotency across retries.
 
-    For each event in ``result["events"]``:
+    Queries stored events directly from SurrealDB — does NOT accept the LLM
+    extraction result dict.  This avoids passing large payloads through
+    Temporal serialization and ensures the activity works with actual stored
+    data.
+
+    For each stored event:
       1. Creates a ``canonical_entity`` record with ``entity_type="event"``
          and properties mapped from event fields.
       2. Creates ``event_entity_link`` RELATE edges to matching
@@ -1026,8 +1049,6 @@ async def create_event_canonical_entities_activity(
     ----------
     document_id:
         SurrealDB record ID of the source document (e.g. ``"abc123"``).
-    result:
-        LLM extraction result dict with top-level ``"events"`` array.
 
     Returns
     -------
@@ -1038,35 +1059,51 @@ async def create_event_canonical_entities_activity(
     """
     params = _db_params()
     _log = ProcessingLogger(params)
-    doc_ref = f"document:{document_id}"
-    events_from_input = result.get("events", [])
+    doc_rid = RecordID("document", document_id)
 
     activity.logger.info(
         "create_event_canonical_entities_activity called "
-        "[document_id=%s] [event_count=%d]",
+        "[document_id=%s]",
         document_id,
-        len(events_from_input),
     )
     await _log.log(document_id, "create_event_entities", "info",
-                   f"Starting event canonical entity creation for "
-                   f"{len(events_from_input)} events")
-
-    if not events_from_input:
-        activity.logger.info(
-            "No events — nothing to create [document_id=%s]",
-            document_id,
-        )
-        await _log.log(document_id, "create_event_entities", "warning",
-                       "No events — nothing to create")
-        return {
-            "document_id": document_id,
-            "events_processed": 0,
-            "entities_created": 0,
-            "links_created": 0,
-        }
+                   "Starting event canonical entity creation")
 
     try:
         async with get_db(**params) as db:
+            # ------------------------------------------------------------------
+            # 0. Early-return: query event count from DB
+            # ------------------------------------------------------------------
+            count_raw = await db.query(
+                "SELECT count() FROM event WHERE document = $doc_rid GROUP ALL",
+                {"doc_rid": doc_rid},
+            )
+            count_rows = _extract_query_results(count_raw)
+            event_count = count_rows[0].get("count", 0) if count_rows else 0
+
+            if event_count == 0:
+                activity.logger.info(
+                    "No stored events — nothing to create [document_id=%s]",
+                    document_id,
+                )
+                await _log.log(document_id, "create_event_entities", "warning",
+                               "No stored events — nothing to create")
+                return {
+                    "document_id": document_id,
+                    "events_processed": 0,
+                    "entities_created": 0,
+                    "links_created": 0,
+                }
+
+            activity.logger.info(
+                "Found %d stored events [document_id=%s]",
+                event_count,
+                document_id,
+            )
+            await _log.log(document_id, "create_event_entities", "info",
+                           f"Found {event_count} stored events for canonical entity creation",
+                           {"event_count": event_count})
+
             # ------------------------------------------------------------------
             # 1. Nullify: delete prior event entities and their links
             # ------------------------------------------------------------------
@@ -1095,8 +1132,8 @@ async def create_event_canonical_entities_activity(
             # 2. Query stored events for this document
             # ------------------------------------------------------------------
             events_raw = await db.query(
-                "SELECT * FROM event WHERE document = $doc_ref",
-                {"doc_ref": doc_ref},
+                "SELECT * FROM event WHERE document = $doc_rid",
+                {"doc_rid": doc_rid},
             )
             stored_events = _extract_query_results(events_raw)
 
@@ -1475,8 +1512,8 @@ async def store_extraction_results_activity(
     """
     params = _db_params()
     _log = ProcessingLogger(params)
-    doc_ref = f"document:{document_id}"
-    doc_record = RecordID("document", document_id)
+    doc_rid = RecordID("document", document_id)
+    doc_record = doc_rid
     events = result.get("events", [])
 
     activity.logger.info(
@@ -1507,21 +1544,22 @@ async def store_extraction_results_activity(
                 "Clearing prior extraction results [document_id=%s]",
                 document_id,
             )
-            # Inline DELETE with f-string - SurrealDB v3 variable
-            # binding doesn't work for doc ref strings in DELETE queries.
             await db.query(
-                f"DELETE reference WHERE event IN "
-                "(SELECT id FROM event WHERE document = $doc_ref)",
-                {"doc_ref": doc_ref},
+                "DELETE reference WHERE event IN "
+                "(SELECT id FROM event WHERE document = $doc_rid)",
+                {"doc_rid": doc_rid},
             )
             await db.query(
-                f"DELETE event WHERE document = $doc_ref",
-                {"doc_ref": doc_ref},
+                "DELETE event WHERE document = $doc_rid",
+                {"doc_rid": doc_rid},
             )
 
             # ---- Query document metadata and chunks for offset computation ----
             doc_rows = _extract_query_results(
-                await db.query(f"SELECT mime_type FROM {doc_ref}")
+                await db.query(
+                    "SELECT mime_type FROM ONLY $doc_rid",
+                    {"doc_rid": doc_rid},
+                )
             )
             mime_type = doc_rows[0].get("mime_type", "") if doc_rows else ""
             is_plain_text = mime_type.startswith("text/")
@@ -1531,9 +1569,9 @@ async def store_extraction_results_activity(
                     "SELECT chunk_index, page_start, page_end, "
                     "offset_start, offset_end "
                     "FROM document_chunk "
-                    "WHERE document = $doc_ref "
+                    "WHERE document = $doc_rid "
                     "ORDER BY chunk_index ASC",
-                    {"doc_ref": doc_ref},
+                    {"doc_rid": doc_rid},
                 )
             )
             if not chunk_rows:
