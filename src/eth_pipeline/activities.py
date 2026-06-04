@@ -1314,8 +1314,9 @@ async def create_event_canonical_entities_activity(
                     seen_ids: set[str] = set()
                     for match in matched_entities + reverse_entities:
                         match_id = match.get("id")
-                        if match_id and match_id not in seen_ids:
-                            seen_ids.add(match_id)
+                        match_id_str = str(match_id) if match_id else ""
+                        if match_id_str and match_id_str not in seen_ids:
+                            seen_ids.add(match_id_str)
                             try:
                                 await db.query(
                                     "CREATE event_entity_link CONTENT { "
