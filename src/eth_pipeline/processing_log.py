@@ -115,7 +115,7 @@ class ProcessingLogger:
                 # 6. Write the log entry (UPSERT via UPDATE ... CONTENT)
                 doc_record = RecordID("document", document_id)
                 await db.query(
-                    "UPDATE document_event_log:$rid CONTENT { "
+                    "UPDATE type::record('document_event_log', $rid) CONTENT { "
                     "document: $doc, step_name: $step, "
                     "severity: $sev, message: $msg, details: $det, "
                     "created_at: time::now() "

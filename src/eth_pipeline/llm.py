@@ -578,10 +578,29 @@ class OpenRouterProvider:
             logger.error("LLM API empty choices")
             raise RuntimeError(msg)
 
-        content = choices[0].get("message", {}).get("content", "")
+        choice = choices[0]
+        message = choice.get("message", {})
+        content = message.get("content", "")
         if not content:
-            msg = "OpenRouter returned empty content in the first choice"
-            logger.error("LLM API empty content")
+            finish_reason = choice.get("finish_reason", "N/A")
+            refusal = message.get("refusal")
+            model = data.get("model", "unknown")
+            msg = (
+                f"OpenRouter returned empty content in the first choice "
+                f"[model={model}] [finish_reason={finish_reason}]"
+            )
+            if refusal:
+                msg += f" [refusal={refusal[:200]}]"
+            logger.error(
+                "LLM API empty content [model=%s] [finish_reason=%s] "
+                "[refusal=%s] [choice_keys=%s] [data_keys=%s]",
+                model,
+                finish_reason,
+                refusal,
+                list(choice.keys()),
+                list(data.keys()),
+            )
+            logger.debug("LLM API empty content — full choice: %s", json.dumps(choice, indent=2, default=str)[:2000])
             raise RuntimeError(msg)
 
         try:
