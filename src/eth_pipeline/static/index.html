@@ -933,6 +933,20 @@
   </main>
 
   <script>
+    // Deferred loading: only show loading spinner if fetch takes >200ms
+    const deferredLoaders = {};
+    function deferredLoading(key, showFn, hideFn) {
+      deferredLoaders[key] = setTimeout(function() {
+        showFn();
+      }, 200);
+      return {
+        done: function() {
+          clearTimeout(deferredLoaders[key]);
+          hideFn();
+        }
+      };
+    }
+
     const tabs = document.querySelectorAll('nav button');
     const sections = {
       upload: document.getElementById('tab-upload'),
@@ -1146,7 +1160,7 @@
     async function fetchDocuments() {
       if (docsLoadingFlag) return;
       docsLoadingFlag = true;
-      showDocLoading();
+      var loader = deferredLoading('docs', showDocLoading, hideDocLoading);
 
       const params = new URLSearchParams();
       params.set('page', String(docsCurrentPage));
@@ -1168,7 +1182,7 @@
         renderDocuments(data);
       } catch (err) {
         console.error('fetchDocuments error:', err);
-        hideDocLoading();
+        loader.done();
         docTableContainer.style.display = 'none';
         docPagination.style.display = 'none';
         docEmpty.style.display = 'block';
@@ -1180,7 +1194,8 @@
     }
 
     function renderDocuments(data) {
-      hideDocLoading();
+      var loader = deferredLoaders['docs'];
+      if (loader) { clearTimeout(loader); hideDocLoading(); }
 
       if (!data || !data.items || data.items.length === 0) {
         docTableContainer.style.display = 'none';
@@ -1375,7 +1390,7 @@
     async function fetchEntities() {
       if (entitiesLoadingFlag) return;
       entitiesLoadingFlag = true;
-      showEntityLoading();
+      var loader = deferredLoading('entities', showEntityLoading, hideEntityLoading);
 
       const params = new URLSearchParams();
       params.set('page', String(entitiesCurrentPage));
@@ -1397,7 +1412,7 @@
         renderEntities(data);
       } catch (err) {
         console.error('fetchEntities error:', err);
-        hideEntityLoading();
+        loader.done();
         entityTableContainer.style.display = 'none';
         entityPagination.style.display = 'none';
         entityEmpty.style.display = 'block';
@@ -1409,7 +1424,8 @@
     }
 
     function renderEntities(data) {
-      hideEntityLoading();
+      var loader = deferredLoaders['entities'];
+      if (loader) { clearTimeout(loader); hideEntityLoading(); }
 
       if (!data || !data.items || data.items.length === 0) {
         entityTableContainer.style.display = 'none';
@@ -1531,7 +1547,7 @@
     async function fetchReferences() {
       if (refsLoadingFlag) return;
       refsLoadingFlag = true;
-      showRefLoading();
+      var loader = deferredLoading('refs', showRefLoading, hideRefLoading);
 
       const params = new URLSearchParams();
       params.set('page', String(refsCurrentPage));
@@ -1553,7 +1569,7 @@
         renderReferences(data);
       } catch (err) {
         console.error('fetchReferences error:', err);
-        hideRefLoading();
+        loader.done();
         refTableContainer.style.display = 'none';
         refPagination.style.display = 'none';
         refEmpty.style.display = 'block';
@@ -1565,7 +1581,8 @@
     }
 
     function renderReferences(data) {
-      hideRefLoading();
+      var loader = deferredLoaders['refs'];
+      if (loader) { clearTimeout(loader); hideRefLoading(); }
 
       if (!data || !data.items || data.items.length === 0) {
         refTableContainer.style.display = 'none';
@@ -1729,7 +1746,7 @@
     async function fetchLogs(docId, page) {
       if (logsLoadingFlag) return;
       logsLoadingFlag = true;
-      showLogsLoading();
+      var loader = deferredLoading('logs', showLogsLoading, hideLogsLoading);
 
       const params = new URLSearchParams();
       params.set('page', String(page));
@@ -1748,7 +1765,7 @@
         renderLogs(data);
       } catch (err) {
         console.error('fetchLogs error:', err);
-        hideLogsLoading();
+        loader.done();
         logsTableContainer.style.display = 'none';
         logsPagination.style.display = 'none';
         logsEmpty.style.display = 'block';
@@ -1759,7 +1776,8 @@
     }
 
     function renderLogs(data) {
-      hideLogsLoading();
+      var loader = deferredLoaders['logs'];
+      if (loader) { clearTimeout(loader); hideLogsLoading(); }
 
       if (!data || !data.items || data.items.length === 0) {
         logsTableContainer.style.display = 'none';
