@@ -579,6 +579,7 @@ async def resolve_entities_with_search_activity(document_id: str) -> dict:
     params = _db_params()
     _log = ProcessingLogger(params)
     doc_rid = RecordID("document", document_id)
+    doc_ref = str(doc_rid)
 
     activity.logger.info(
         "resolve_entities_with_search_activity called "
