@@ -1593,6 +1593,20 @@ async def store_extraction_results_activity(
                     ss = int(raw_ss) if raw_ss is not None else 0
                     se = int(raw_se) if raw_se is not None else 0
 
+                    ref_type = ref.get("reference_type", "")
+                    if ref_type not in ("espacio", "tiempo", "humanos", "objetos"):
+                        activity.logger.warning(
+                            "Skipping reference with invalid reference_type='%s' "
+                            "[document_id=%s] [verbatim_text=%.40s]",
+                            ref_type,
+                            document_id,
+                            ref.get("verbatim_text", ""),
+                        )
+                        await _log.log(document_id, "store_results", "warning",
+                                       f"Ignored reference with invalid reference_type='{ref_type}': "
+                                       f"{(ref.get('verbatim_text', '') or '')[:80]}")
+                        continue
+
                     if chunk_rows:
                         offset_result = compute_reference_offsets(
                             span_start=ss,
@@ -1637,7 +1651,7 @@ async def store_extraction_results_activity(
                         "event: $evt "
                         "}",
                         {
-                            "ref_type": ref.get("reference_type", ""),
+                            "ref_type": ref_type,
                             "vt": ref.get("verbatim_text", ""),
                             "ss": ss,
                             "se": se,
@@ -2111,7 +2125,6 @@ async def get_document_metadata_activity(document_id: str) -> dict:
                 "document_id": document_id,
                 "blob_format": doc.get("blob_format"),
                 "has_text_content": has_text_content,
-                "text_content": text_content if has_text_content else "",
             }
 
     except ConnectionError as exc:
