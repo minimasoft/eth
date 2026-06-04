@@ -1,0 +1,78 @@
+from __future__ import annotations
+
+import logging
+from pathlib import Path
+
+from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
+
+from eth_pipeline.api.lifespan import lifespan
+
+# Re-export all models for backward compatibility
+from eth_pipeline.api.models import (  # noqa: F401 — intentional re-export
+    APIInfo,
+    DocumentCreated,
+    DocumentDeleted,
+    DocumentInput,
+    DocumentListItem,
+    DocumentListResponse,
+    DocumentStatus,
+    DocumentUploadCreated,
+    EntityListItem,
+    EntityListResponse,
+    EventsCleared,
+    GraphQLRequest,
+    HealthResponse,
+    MergeRequest,
+    MergeResponse,
+    ProcessingLogListItem,
+    ProcessingLogListResponse,
+    ReferenceListItem,
+    ReferenceListResponse,
+    SplitPartition,
+    SplitRequest,
+    SplitResponse,
+    _parse_count,
+)
+
+logger = logging.getLogger(__name__)
+
+# =======================================================================
+# Application
+# =======================================================================
+
+app = FastAPI(
+    title="eth-pipeline",
+    description="Document processing pipeline with Temporal and SurrealDB",
+    version="0.1.0",
+    lifespan=lifespan,
+)
+
+# Serve the web UI from /ui (single-page static application)
+# The static directory lives at eth_pipeline/static/ — one level above the api/ package.
+STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
+if STATIC_DIR.is_dir():
+    app.mount(
+        "/ui",
+        StaticFiles(directory=str(STATIC_DIR), html=True),
+        name="ui",
+    )
+else:
+    logger.warning("Static directory %s not found — UI will not be served at /ui", STATIC_DIR)
+
+# =======================================================================
+# Include route modules via their routers
+# =======================================================================
+
+# Import routers AFTER app is created to avoid circular imports.
+# Each route module imports `app` from this package, which is now available.
+
+from eth_pipeline.api.routes.documents import router as documents_router  # noqa: E402
+from eth_pipeline.api.routes.entities import router as entities_router  # noqa: E402
+from eth_pipeline.api.routes.references import router as references_router  # noqa: E402
+from eth_pipeline.api.graphql import router as graphql_router  # noqa: E402
+
+app.include_router(documents_router)
+app.include_router(entities_router)
+app.include_router(references_router)
+app.include_router(graphql_router)
