@@ -1,11 +1,12 @@
 services:
   surrealdb:
     image: surrealdb/surrealdb:latest
-    command: start /data -u root -p root
+    command: start --username root --password root rocksdb:/data
     ports:
     - 8000:8000
     volumes:
     - surrealdb_data:/data
+    user: root
     environment:
       SURREAL_USER: root
       SURREAL_PASS: root
