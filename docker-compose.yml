@@ -150,7 +150,7 @@ services:
     image: node:22-slim
     working_dir: /tests
     command:
-      sh -c "npm install --silent && npx tsc && node --test dist/*.test.js"
+      sh -c "npm install --silent && npm test"
     volumes:
       - ./tests/integration:/tests
     environment:

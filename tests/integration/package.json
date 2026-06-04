@@ -5,7 +5,7 @@
   "type": "module",
   "description": "Integration tests for eth-pipeline — executable API documentation",
   "scripts": {
-    "test": "node --test e2e_pipeline.test.ts",
+    "test": "npx tsc && node --test dist/e2e_pipeline.test.js",
     "test:watch": "node --test --watch"
   },
   "devDependencies": {
