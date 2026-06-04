@@ -624,7 +624,6 @@
     }
 
     .log-details-json {
-      display: none;
       font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
       font-size: 12px;
       line-height: 1.5;
@@ -632,15 +631,23 @@
       border: 1px solid #e2e8f0;
       border-radius: 4px;
       padding: 8px;
-      margin-top: 4px;
       max-height: 200px;
       overflow: auto;
       white-space: pre-wrap;
       word-break: break-all;
     }
 
-    .log-details-json.open {
-      display: block;
+    .log-details-row {
+      display: none;
+    }
+
+    .log-details-row.open {
+      display: table-row;
+    }
+
+    .log-details-row td {
+      border-top: none;
+      padding-top: 0;
     }
 
     .log-message-cell {
@@ -1800,7 +1807,7 @@
         var hasDetails = item.details && Object.keys(item.details).length > 0;
         if (hasDetails) {
           var detailsStr = JSON.stringify(item.details, null, 2);
-          detailsHtml = '<button class="log-details-toggle" data-json="' + escapeHtml(detailsStr) + '">Mostrar</button><div class="log-details-json">' + escapeHtml(detailsStr) + '</div>';
+          detailsHtml = '<button class="log-details-toggle">Mostrar</button>';
         } else {
           detailsHtml = '<span style="color:#94a3b8;font-size:12px">—</span>';
         }
@@ -1813,6 +1820,13 @@
           '<td style="text-align:center">' + detailsHtml + '</td>';
 
         logsTbody.appendChild(tr);
+
+        if (hasDetails) {
+          var detailsRow = document.createElement('tr');
+          detailsRow.className = 'log-details-row';
+          detailsRow.innerHTML = '<td colspan="5"><pre class="log-details-json">' + escapeHtml(detailsStr) + '</pre></td>';
+          logsTbody.appendChild(detailsRow);
+        }
       });
 
       var page = data.page || 1;
@@ -1837,10 +1851,12 @@
     logsTbody.addEventListener('click', function(e) {
       var btn = e.target.closest('.log-details-toggle');
       if (!btn) return;
-      var jsonDiv = btn.nextElementSibling;
-      if (!jsonDiv || !jsonDiv.classList.contains('log-details-json')) return;
-      var isOpen = jsonDiv.classList.contains('open');
-      jsonDiv.classList.toggle('open');
+      var row = btn.closest('tr');
+      if (!row) return;
+      var detailsRow = row.nextElementSibling;
+      if (!detailsRow || !detailsRow.classList.contains('log-details-row')) return;
+      var isOpen = detailsRow.classList.contains('open');
+      detailsRow.classList.toggle('open');
       btn.textContent = isOpen ? 'Mostrar' : 'Ocultar';
     });
 
