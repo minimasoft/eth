@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v5.0
 milestone_name: LLM Cost & Usage Tracking
 status: Awaiting next milestone
-last_updated: "2026-06-04T19:03:48.961Z"
-last_activity: 2026-06-04 — Milestone v5.0 completed and archived
+last_updated: "2026-06-04T19:08:19.452Z"
+last_activity: 2026-06-04 — Completed quick task 260604-mex: Fix 404 on /documents/{id}/logs API route — restore accidentally deleted handler
 progress:
   total_phases: 10
   completed_phases: 1
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-06-02)
 Phase: Milestone v5.0 complete
 Plan: —
 Status: Awaiting next milestone
-Last activity: 2026-06-04 — Milestone v5.0 completed and archived
+Last activity: 2026-06-04 — Completed quick task 260604-mex: Fix 404 on /documents/{id}/logs API route
 
 ## Performance Metrics
 
@@ -63,6 +63,12 @@ Last activity: 2026-06-04 — Milestone v5.0 completed and archived
 ### Blockers/Concerns
 
 All resolved. No open blockers.
+
+### Quick Tasks Completed
+
+| # | Description | Date | Commit | Directory |
+|---|-------------|------|--------|-----------|
+| 260604-mex | Fix 404 on /documents/{id}/logs API route — restore accidentally deleted handler | 2026-06-04 | 4724bfc | [260604-mex-fix-404-on-documents-id-logs-api-route-r](./quick/260604-mex-fix-404-on-documents-id-logs-api-route-r/) |
 
 ## Operator Next Steps
 
