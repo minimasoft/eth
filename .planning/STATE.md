@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v4.0
 milestone_name: milestone
 status: executing
-stopped_at: Quick task 260604-h1i completed (fix doc_ref NameError, rebuild worker, stuck workflow resolved)
-last_updated: "2026-06-04T15:22:00.000Z"
-last_activity: 2026-06-04 -- Quick task 260604-h1i: fix doc_ref NameError in resolve_entities_with_search_activity
+stopped_at: Quick task 260604-hwn completed (consolidated tests to 3 e2e, removed verify scripts and unit tests)
+last_updated: "2026-06-04T15:59:00.000Z"
+last_activity: 2026-06-04 -- Quick task 260604-hwn: consolidate tests to 3 e2e, remove verify scripts and unit tests
 progress:
   total_phases: 6
   completed_phases: 6
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-06-02)
 Phase: 19 (api-split-and-bugfix) — EXECUTING
 Plan: 1 of 2
 Status: Executing Phase 19
-Last activity: 2026-06-04 -- Phase 19 execution started
+Last activity: 2026-06-04 -- Quick task 260604-hwn: consolidate tests to 3 e2e, remove verify scripts and unit tests
 
 ## Performance Metrics
 
@@ -83,6 +83,14 @@ None — milestone just started.
 - 260604-1px (MEDIUM): reference_type validation — **RESOLVED** (fix deployed; 1 stale Temporal replay remains, needs workflow termination)
 
 ### Quick Tasks Completed
+
+- **2026-06-04** — `260604-hwn`: Consolidate to 3 e2e tests, remove verify scripts and unit tests
+  - Deleted 8 verify_s*.py scripts + test_llm.py (~6,500 lines of token-wasting code)
+  - Disabled 4 Python unit tests (renamed to .bak, preserved for reference)
+  - Consolidated e2e_pipeline.test.ts from 9 it() blocks to 3 essential e2e tests
+  - Updated package.json test script to target only e2e_pipeline.test.ts
+  - Commit: `537c0f2` (cleanup)
+  - SUMMARY: `.planning/quick/260604-hwn-we-have-way-too-many-tests-that-are-not-/260604-hwn-SUMMARY.md`
 
 - **2026-06-04** — `260604-h1i`: Fix doc_ref NameError in resolve_entities_with_search_activity
   - Added missing `doc_ref = str(doc_rid)` at line 582 (fixes 48 crash instances)
@@ -170,5 +178,5 @@ Items acknowledged and carried forward from previous milestone close:
 ## Session Continuity
 
 Last session: 2026-06-04
-Stopped at: Quick task 260604-h1i completed (fix doc_ref NameError, rebuild worker, stuck workflow resolved)
-Resume file: .planning/quick/260604-h1i-review-docker-compose-worker-logs-and-fi/260604-h1i-SUMMARY.md
+Stopped at: Quick task 260604-hwn completed (consolidated tests to 3 e2e, removed verify scripts and unit tests)
+Resume file: .planning/quick/260604-hwn-we-have-way-too-many-tests-that-are-not-/260604-hwn-SUMMARY.md
