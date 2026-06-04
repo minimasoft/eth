@@ -1,24 +1,26 @@
 # Codebase Concerns
 
-**Analysis Date:** 2026-06-02
+**Analysis Date:** 2026-06-03
 
 ## Critical Bug: NameError in Split Endpoint Validation
 
-**Issue:** `ref_canonical_str` is referenced in a log message at `api.py:1844` but never defined. When the split endpoint's reference validation fails (a reference does not point to the expected entity), this will raise a `NameError` instead of returning the proper 400 error.
+**Issue:** `ref_canonical_str` is referenced in a log message at `api.py:2183` but never defined. When the split endpoint's reference validation fails (a reference does not point to the expected entity), this will raise a `NameError` instead of returning the proper 400 error.
 
-**Files:** `src/eth_pipeline/api.py:1844`
+**Files:** `src/eth_pipeline/api.py:2183`
 
-**Impact:** The `POST /entities/{entity_type}/{entity_id}/split` endpoint crashes with a 500 error when verifying that a reference belongs to the source entity. The log message uses the undefined variable `ref_canonical_str` — it should use `str(ref_canonical)` or `str(ref_canonical_entity)`.
+**Impact:** The `POST /entities/{entity_type}/{entity_id}/split` endpoint crashes with a 500 error when verifying that a reference belongs to the source entity. The log message uses the undefined variable `ref_canonical_str` — it should use `str(ref_canonical)` or `str(source_rid)`.
 
 **Trigger:** Any call to the split endpoint where a reference ID's `canonical_entity` field does not match the source entity.
 
-**Fix approach:** Change line 1844 from `ref_canonical_str` to `str(ref_canonical)` (or similar).
+**Fix approach:** Change line 2183 from `ref_canonical_str` to `str(ref_canonical)` or `str(source_rid)`.
+
+**Status:** UNFIXED — present since the split endpoint was introduced.
 
 ## Tech Debt
 
 ### 1. Massive `api.py` File
 
-**Issue:** `src/eth_pipeline/api.py` is 2,257 lines containing all Pydantic models, the lifespan function, all REST endpoints, GraphQL proxy, and helpers. This violates the single-responsibility principle and makes navigation difficult.
+**Issue:** `src/eth_pipeline/api.py` is 2,596 lines containing all Pydantic models, the lifespan function, all REST endpoints, GraphQL proxy, and helpers. This violates the single-responsibility principle and makes navigation difficult. Grew by +339 lines since the previous audit (from 2,257).
 
 **Impact:** High cognitive load when modifying any endpoint. Increased merge conflict probability. Hard to test individual components.
 
@@ -31,16 +33,16 @@
 ### 2. Duplicated Worker Registration
 
 **Issue:** Two files register the same Temporal worker with the same activities and workflows:
-- `src/eth_pipeline/worker.py` (88 lines, proper shutdown handling)
-- `scripts/run_worker.py` (67 lines, no shutdown handling)
+- `src/eth_pipeline/worker.py` (90 lines, proper shutdown handling with signal handlers)
+- `scripts/run_worker.py` (71 lines, no shutdown handling)
 
 **Files:**
 - `src/eth_pipeline/worker.py`
 - `scripts/run_worker.py`
 
-**Impact:** Maintenance burden — any new activity or workflow must be registered in both files. The `scripts/run_worker.py` version lacks graceful shutdown (no signal handling).
+**Impact:** Maintenance burden — any new activity or workflow must be registered in both files. The `scripts/run_worker.py` version lacks graceful shutdown (no signal handling). Docker compose at `docker-compose.yml:136` references `scripts/run_worker.py`, not `worker.py`.
 
-**Fix approach:** Remove `scripts/run_worker.py` and use `src/eth_pipeline/worker.py` as the single entrypoint. Update Docker/docker-compose references accordingly.
+**Fix approach:** Remove `scripts/run_worker.py` and use `src/eth_pipeline/worker.py` as the single entrypoint. Update `docker-compose.yml` worker command accordingly.
 
 ### 3. Dead Code: `run_worker_plus.py`
 
@@ -70,7 +72,7 @@
 **Issue:** SurrealDB and MinIO connection defaults (root/root, ws://localhost:8000/rpc, eth/pipeline, minioadmin/minioadmin, etc.) are duplicated across:
 - `src/eth_pipeline/db.py` — Python defaults
 - `src/eth_pipeline/storage.py` — Python defaults
-- `src/eth_pipeline/activities.py` (`_db_params()`) — separate definition
+- `src/eth_pipeline/activities.py` (`_db_params()`) — separate definition with same defaults
 - `src/eth_pipeline/api.py` — lifespan and GraphQL proxy use separate defaults
 - `scripts/init_schema.py` — separate defaults
 - `scripts/init_bucket.py` — separate defaults
@@ -83,23 +85,18 @@
 
 ### 6. Repeated SurrealDB Result Parsing Logic
 
-**Issue:** The pattern for parsing SurrealDB count results (handling both `{"value": N}` dict and plain int) is duplicated at least 6 times:
+**Issue:** The pattern for parsing SurrealDB count results (handling both `{"value": N}` dict and plain int) is now **duplicated in 3 separate files**:
 
-```python
-cnt_val = count_records[0].get("total")
-if isinstance(cnt_val, dict):
-    total = int(cnt_val.get("value", 0))
-elif cnt_val is not None:
-    total = int(cnt_val)
-```
+- `src/eth_pipeline/api.py` — `_parse_count()` at line 461
+- `src/eth_pipeline/processing_log.py` — `_parse_count()` at line 146 (different implementation, same purpose)
+- `src/eth_pipeline/activities.py` — similar inline pattern repeated in multiple activities
 
-**Files:**
-- `src/eth_pipeline/api.py` (lines 936-940, 1079-1083, 1140-1144, 1615-1619)
-- `src/eth_pipeline/activities.py` (similar patterns in multiple activities)
+Additionally, a different result-normalization pattern exists:
+- `src/eth_pipeline/activities.py` — `_extract_query_results()` at line 1287 (handles `{"result": [...]}` shape from `db.query()`)
 
-**Impact:** Code duplication. If SurrealDB changes its response format or a bug is found in parsing, every instance must be updated individually.
+**Impact:** Code duplication. If SurrealDB changes its response format or a bug is found in parsing, every instance must be updated individually. The `processing_log.py` version is a different implementation that misses edge cases.
 
-**Fix approach:** Create a shared helper function `_parse_count(result) -> int` in `db.py` or a new utility module.
+**Fix approach:** Create shared helper functions `_parse_count(result) -> int` and `_extract_query_results(result) -> list[dict]` in `db.py` or a new utility module.
 
 ### 7. Error Handling Inconsistency
 
@@ -110,7 +107,7 @@ if "error" in metadata:
     raise RuntimeError(metadata["error"])
 ```
 
-**Files:** `src/eth_pipeline/workflows.py:118-119`, `src/eth_pipeline/workflows.py:140-141`, `src/eth_pipeline/workflows.py:149-150`, and throughout `activities.py`.
+**Files:** `src/eth_pipeline/workflows.py:123-124`, `workflows.py:145-146`, `workflows.py:154-155`, `workflows.py:203-204`, `workflows.py:212-213`, `workflows.py:221-222`, and throughout `activities.py`.
 
 **Impact:** Easy to forget the error check (one missing check can cause cryptic downstream failures). The dual pattern adds cognitive overhead.
 
@@ -130,32 +127,80 @@ if "error" in metadata:
 
 **Fix approach:** Remove migration files that have been superseded by `schema.surql`, or implement a proper migration system with version tracking.
 
+### 9. `_normalize` Function Duplication
+
+**Issue:** The accent-insensitive text normalization function is defined in two places with slightly different implementations:
+
+```python
+# activities.py:696 — nested function in resolve_entities_with_search_activity
+def _normalize(text: str) -> str:
+    nfd = unicodedata.normalize("NFD", text)
+    stripped = "".join(c for c in nfd if unicodedata.combining(c) == 0)
+    return stripped.casefold()
+
+# tests/test_search_first_resolution.py:23 — standalone for unit testing
+def _normalize(text: str) -> str:
+    nfd = unicodedata.normalize("NFD", text)
+    return "".join(c for c in nfd if not unicodedata.combining(c)).casefold()
+```
+
+**Files:**
+- `src/eth_pipeline/activities.py:696-699`
+- `tests/test_search_first_resolution.py:23-38`
+
+**Impact:** The implementations are logically equivalent but use different API (`unicodedata.combining(c) == 0` vs `not unicodedata.combining(c)`). The test version has a docstring; the activity version does not. No shared utility exists.
+
+**Fix approach:** Extract to a shared module (e.g., `src/eth_pipeline/utils.py`) and import in both places.
+
+### 10. 8 Standalone Verification Scripts
+
+**Issue:** 8 verification scripts in `scripts/` perform ad-hoc checks against SurrealDB without any central test runner:
+- `scripts/verify_s01.py` through `scripts/verify_s04_m2.py`
+
+**Files:** `scripts/verify_*.py`
+
+**Impact:** These scripts are not integrated with any test framework. They duplicate logic that may be covered by Python unit tests or TypeScript integration tests. No CI runs them automatically.
+
+**Fix approach:** Consolidate into Python integration tests or remove if superseded.
+
 ## Known Bugs
 
 ### 1. NameError in Split Endpoint (see Critical Bug above)
 
 ### 2. GraphQL Proxy Reads Config at Request Time
 
-**Symptoms:** The GraphQL proxy at `api.py:2189-2195` reads connection credentials from environment variables on every request, ignoring the connection established during lifespan startup in `app.state.db`.
+**Symptoms:** The GraphQL proxy at `api.py:2517-2596` reads connection credentials from environment variables on every request (lines 2530-2534), ignoring the connection established during lifespan startup in `app.state.db`.
 
-**Files:** `src/eth_pipeline/api.py:2178-2257`
+**Files:** `src/eth_pipeline/api.py:2517-2596`
 
 **Trigger:** Every `POST /graphql` request.
 
-**Impact:** Potential inconsistency if credentials change between requests (unlikely but possible in container orchestration). Minor performance overhead from re-reading env vars.
+**Impact:** Potential inconsistency if credentials change between requests (unlikely but possible in container orchestration). Minor performance overhead from re-reading env vars. Creates a second HTTP connection to SurrealDB instead of reusing the WebSocket connection from lifespan.
 
 **Workaround:** Currently functions correctly because env vars don't change at runtime.
+
+### 3. Processing Logger Potentially Silences Errors
+
+**Symptoms:** The `ProcessingLogger.log()` method at `processing_log.py:133-143` catches all `Exception` types and only logs a warning, never propagating failures.
+
+**Files:** `src/eth_pipeline/processing_log.py:133-143`
+
+**Trigger:** Any failure during processing log writes (SurrealDB connection drop, query syntax error, etc.).
+
+**Impact:** Callers in `activities.py` assume log writes succeeded. A failed log entry is silently dropped with only a `logger.warning` message.
 
 ## Security Considerations
 
 ### 1. Hardcoded Default Credentials
 
 **Risk:** Default credentials `root:root` for SurrealDB and `minioadmin:minioadmin` for MinIO are hardcoded in:
-- `docker-compose.yml` (surrealdb command-line, minio env vars)
-- `src/eth_pipeline/db.py` (DEFAULT_USER, DEFAULT_PASS)
-- `src/eth_pipeline/storage.py` (DEFAULT_ACCESS_KEY, DEFAULT_SECRET_KEY)
+- `docker-compose.yml:4,10-11` (surrealdb command-line, surrealdb env vars)
+- `docker-compose.yml:33-34` (minio env vars with default fallback)
+- `src/eth_pipeline/db.py:22-23` (DEFAULT_USER, DEFAULT_PASS)
+- `src/eth_pipeline/storage.py:35-37` (DEFAULT_ACCESS_KEY, DEFAULT_SECRET_KEY)
+- `.env.example:23-24,32-33` (documentation defaults)
 
-**Files:** `docker-compose.yml:4,33-34`, `src/eth_pipeline/db.py:22-23`, `src/eth_pipeline/storage.py:35-37`, `.env.example:23-24,32-33`
+**Files:** `docker-compose.yml:4,10-11,33-34`, `src/eth_pipeline/db.py:22-23`, `src/eth_pipeline/storage.py:35-37`, `.env.example:23-24,32-33`
 
 **Current mitigation:** Docker compose uses `.env` file for overriding defaults. Example file shows fake values.
 
@@ -166,9 +211,9 @@ if "error" in metadata:
 
 ### 2. Basic Auth Over HTTP
 
-**Risk:** The GraphQL proxy sends credentials as Basic auth (`api.py:2200`) and the `schema-init` script does the same (`init_schema.py:38-46`). In the local development setup, this goes over plain HTTP (`ws://` not `wss://`).
+**Risk:** The GraphQL proxy sends credentials as Basic auth (`api.py:2538-2549`) and the `schema-init` script does the same (`init_schema.py:38-46`). In the local development setup, this goes over plain HTTP (`ws://` not `wss://`).
 
-**Files:** `src/eth_pipeline/api.py:2200`, `scripts/init_schema.py:38-46`
+**Files:** `src/eth_pipeline/api.py:2538-2549`, `scripts/init_schema.py:38-46`
 
 **Current mitigation:** Traffic is within a Docker network for local dev. Production should use TLS.
 
@@ -176,24 +221,32 @@ if "error" in metadata:
 
 ### 3. Secret Logging in Debug Mode
 
-**Risk:** The LLM provider logs the full API key suffix in debug mode:
+**Risk:** The LLM provider logs the full API key suffix in debug mode at two locations:
 ```python
 logger.debug("LLM request headers (key suffix): ...%s", headers.get("Authorization", "")[-8:])
 ```
 
-**Files:** `src/eth_pipeline/llm.py:315,412`
+**Files:** `src/eth_pipeline/llm.py:326,425`
 
 **Current mitigation:** Only active at DEBUG log level. Still, the last 8 characters of a Bearer token are exposed.
 
 **Recommendations:** Remove API key logging entirely, or mask to fewer characters. Consider using a structured approach that never logs secrets.
 
+### 4. `.env` File Committed
+
+**Risk:** The `.env` file at project root exists in the working directory and may contain real credentials.
+
+**Current mitigation:** `.env` is presumably in `.gitignore`.
+
+**Recommendations:** Verify `.env` is in `.gitignore` and never committed. If it contains production credentials, rotate them.
+
 ## Performance Bottlenecks
 
 ### 1. N+1 Queries in Entity Listing
 
-**Problem:** The `GET /entities` endpoint at `api.py:1120-1144` executes a separate SurrealDB `count()` query for **each** entity to get reference counts. For 100 entities with the default per_page limit, this generates 101 queries (1 list + 100 counts).
+**Problem:** The `GET /entities` endpoint at `api.py:1288-1311` executes a separate SurrealDB `count()` query for **each** entity to get reference counts. For 20 entities with the default per_page limit, this generates 21 queries (1 list + 20 counts). With the max 100 per_page, it generates 101 queries.
 
-**Files:** `src/eth_pipeline/api.py:1120-1144`
+**Files:** `src/eth_pipeline/api.py:1288-1311`
 
 **Cause:** SurrealDB's current query approach fetches entities first, then counts references individually because the reference count isn't stored on the entity record.
 
@@ -210,7 +263,7 @@ for i, chunk in enumerate(chunks):
     chunk_result = await provider.extract_events(chunk, prior_events=prior)
 ```
 
-**Files:** `src/eth_pipeline/activities.py:173-194`
+**Files:** `src/eth_pipeline/activities.py:186-209`
 
 **Cause:** Prior events from previous chunks are fed as context to avoid duplicate extraction, creating a serial dependency.
 
@@ -220,17 +273,37 @@ for i, chunk in enumerate(chunks):
 
 **Problem:** The MinIO client (`minio.Minio`) is synchronous but used in async contexts via `asyncio.to_thread()` in both storage operations and activity functions.
 
-**Files:** `src/eth_pipeline/storage.py:186-195`, `src/eth_pipeline/activities.py:74-82`
+**Files:** `src/eth_pipeline/storage.py:78-85`, `src/eth_pipeline/activities.py:51-85`
 
 **Cause:** The `minio` Python package does not provide a native async client.
 
 **Improvement path:** Consider using `minio-extensions` or an S3-compatible async library (e.g., `aioboto3` for AWS S3) when MinIO is used in S3-compatible mode.
 
+### 4. N+1 Count Queries in Document Status
+
+**Problem:** The `GET /documents/{document_id}` endpoint at `api.py:952-978` executes 3 separate count queries (references, entities, chunks) sequentially for a single document.
+
+**Files:** `src/eth_pipeline/api.py:952-978`
+
+**Cause:** Each count query is a separate `db.query()` call to SurrealDB.
+
+**Improvement path:** Combine into a single SurrealDB query with multiple subqueries, or use a single `SELECT count() ... GROUP ALL` with UNION.
+
+### 5. N+1 Count Queries in Document Listing
+
+**Problem:** The `GET /documents` endpoint at `api.py:1115-1148` executes 3 separate count queries per document in the list.
+
+**Files:** `src/eth_pipeline/api.py:1115-1148`
+
+**Cause:** Same pattern as entity listing — reference count, entity count, and chunk count are queried separately per document.
+
+**Improvement path:** Use a single batched query or denormalize counts onto the document record.
+
 ## Fragile Areas
 
 ### 1. `_get_blob_from_minio` Thread Safety
 
-**Files:** `src/eth_pipeline/activities.py:48-82`
+**Files:** `src/eth_pipeline/activities.py:51-85`
 
 **Why fragile:** The function creates and destroys a MinIO client per call using `get_storage()` context manager. Each call involves a new TCP connection, authentication, and bucket existence check. Under high concurrency (many documents processing simultaneously), this creates connection churn.
 
@@ -238,22 +311,35 @@ for i, chunk in enumerate(chunks):
 
 ### 2. `page_offsets` Adjustment Logic
 
-**Files:** `src/eth_pipeline/extractors.py:221-223`
+**Files:** `src/eth_pipeline/extractors.py:222-223`
 
 **Why fragile:** The `\f` separator offset adjustment (`for i in range(2, len(page_offsets)): page_offsets[i] += i - 1`) makes assumptions about the number of separator characters inserted. If the join separator changes or pages produce empty text, offsets drift.
 
-**Test coverage:** No Python unit tests verify the offset arithmetic. Only tested indirectly through integration tests.
+**Test coverage:** Python unit tests now exist in `tests/test_offsets.py` for the `offsets.py` module, but the `extractors.py` offset adjustment logic remains untested at unit level. Only tested indirectly through integration tests.
 
 ### 3. SurrealDB Version Compatibility
 
 **Files:** Multiple files throughout `src/eth_pipeline/`
 
 **Why fragile:** Several workarounds exist for SurrealDB v3 behavior:
-- Use of `RecordID` parameter to avoid subtraction errors on nonexistent records (`api.py:820-825`)
+- Use of `RecordID` parameter to avoid subtraction errors on nonexistent records (`api.py:949-951`)
 - Result parsing that handles both `dict` and `list` return shapes
 - `DELETE` queries using f-strings for doc refs because variable binding doesn't work (`activities.py:706-707`)
+- `query()` returning inconsistent shapes requiring `_extract_query_results()` normalization
 
 These workarounds may break with SurrealDB v4 or v5 updates.
+
+### 4. Broad `except Exception` Patterns
+
+**Files:** 57 instances across the codebase, including:
+- `src/eth_pipeline/api.py` — 34 instances
+- `src/eth_pipeline/activities.py` — 17 instances
+- `src/eth_pipeline/extractors.py` — 3 instances
+- `src/eth_pipeline/db.py` — 1 instance
+- `src/eth_pipeline/processing_log.py` — 1 instance
+- `src/eth_pipeline/workflows.py` — 1 instance
+
+**Why fragile:** Nearly every database operation and endpoint is wrapped in a bare `except Exception` that logs and returns a generic 502 or 503 response. Specific error types (connection errors, query syntax errors, constraint violations) are not distinguished. A query bug would manifest as "Failed to query database" with no actionable details.
 
 ## Scaling Limits
 
@@ -298,11 +384,21 @@ These workarounds may break with SurrealDB v4 or v5 updates.
 
 **Impact:** Silent quality degradation if the wrong backend is selected. The pypdf fallback doesn't provide real page counts — it estimates from character count.
 
-### 4. `openai/gpt-4o-mini` Default Model
+### 4. `openai/gpt-4o-mini` (Default OpenRouter Model)
 
-**Risk:** The default model is `deepseek/deepseek-v4-flash`. If this model is deprecated, removed, or rate-limited by OpenRouter, extraction silently degrades.
+**Risk:** The default model in `.env.example` is `openai/gpt-4o-mini`. If this model is deprecated, removed, or rate-limited by OpenRouter, extraction silently degrades.
 
 **Impact:** The system produces lower-quality or no event extractions without clear error signaling.
+
+### 5. Docker Images Use `:latest` Tags
+
+**Risk:** `docker-compose.yml` uses `:latest` tags for SurrealDB, MinIO, Temporal, Temporal UI, and cloudflared images. This means deployments get unpinned, potentially breaking, updates.
+
+**Files:** `docker-compose.yml:3,25,47,68,169`
+
+**Impact:** A `docker compose pull` can introduce breaking changes without version pinning.
+
+**Fix approach:** Pin to specific versions: `surrealdb/surrealdb:v2.1.2`, `minio/minio:RELEASE.2024-01-01T...`, etc.
 
 ## Missing Critical Features
 
@@ -314,27 +410,34 @@ These workarounds may break with SurrealDB v4 or v5 updates.
 
 ### 2. No Document-level Deletion Notification to Workflows
 
-**Problem:** The `delete_document` endpoint (`api.py:1401-1419`) attempts to terminate associated Temporal workflows, but there's no acknowledgment mechanism to ensure in-flight processing stops cleanly.
+**Problem:** The `delete_document` endpoint (`api.py:1622-1779`) attempts to terminate associated Temporal workflows, but there's no acknowledgment mechanism to ensure in-flight processing stops cleanly.
 
 **Blocks:** Race condition where a document is deleted while an activity is mid-execution, potentially creating orphaned records.
 
+### 3. No Health Check for MinIO or Temporal
+
+**Problem:** The `/health` endpoint (`api.py:603-610`) only checks SurrealDB availability. MinIO and Temporal are not checked. A worker or blob storage outage goes unnoticed.
+
+**Files:** `src/eth_pipeline/api.py:603-610`
+
 ## Test Coverage Gaps
 
-**Untested area:** Python unit tests
+**Status:** **Improved since last audit** — 4 Python unit test files now exist:
+- `tests/test_offsets.py` (151 lines) — Tests for `reconstruct_page_offsets` and `compute_reference_offsets`
+- `tests/test_processing_log.py` (78 lines) — Tests for deterministic ID computation and sequence counter
+- `tests/test_event_entities.py` (400 lines) — Tests for event entity naming, properties, and matching heuristics
+- `tests/test_search_first_resolution.py` (625 lines) — Tests for search-first entity resolution matching logic
 
-**What's not tested:** All Python modules (`api.py`, `activities.py`, `extractors.py`, `chunker.py`, `llm.py`, `db.py`, `storage.py`, `workflows.py`) have zero unit tests. Only TypeScript integration tests exist in `tests/integration/`.
+**What's still untested:**
+- `src/eth_pipeline/chunker.py`: No tests for `_offset_to_page` or edge cases (empty text, single-page docs)
+- `src/eth_pipeline/extractors.py`: No tests for `_estimate_page_count`, `_apply_quality_gate`, or pypdf/pypdfium2 extraction (requires real PDF files)
+- `src/eth_pipeline/llm.py`: No tests for `_parse_choice`, `_build_payload`, or `_build_resolution_payload`
+- `src/eth_pipeline/api.py`: No unit tests for any endpoint logic (all endpoint tests are TypeScript integration tests)
+- `src/eth_pipeline/activities.py`: No tests for `_extract_query_results` or `_create_canonical_entity`
+- `src/eth_pipeline/storage.py`: No tests for MinIO connection logic
+- `src/eth_pipeline/db.py`: No tests for SurrealDB connection logic
 
-**Files:** All of `src/eth_pipeline/`
-
-**Risk:** Logic errors in Python code are only caught by integration tests, which require a full Docker environment (SurrealDB, MinIO, Temporal, API). This makes debugging slow:
-
-- **`src/eth_pipeline/chunker.py`**: No tests for `_offset_to_page` or edge cases (empty text, single-page docs)
-- **`src/eth_pipeline/extractors.py`**: No tests for `_estimate_page_count`, `_apply_quality_gate`, or pypdf/pypdfium2 extraction (requires real PDF files)
-- **`src/eth_pipeline/llm.py`**: No tests for `_parse_choice`, `_build_payload`, or `_build_resolution_payload`
-- **`src/eth_pipeline/activities.py`**: No tests for `_extract_query_results` or `_create_canonical_entity`
-- **`src/eth_pipeline/api.py`**: No tests for any endpoint logic
-
-**Priority:** High — any code change to core logic requires full Docker-integration test run to validate.
+**Risk:** Logic errors in Python code are only caught by integration tests, which require a full Docker environment (SurrealDB, MinIO, Temporal, API).
 
 **Untested area:** PDF extraction fallback path (pypdf)
 
@@ -346,4 +449,4 @@ These workarounds may break with SurrealDB v4 or v5 updates.
 
 ---
 
-*Concerns audit: 2026-06-02*
+*Concerns audit: 2026-06-03*
