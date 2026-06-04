@@ -212,8 +212,12 @@
     }
 
     .col-actions {
-      width: 60px;
+      width: 100px;
       text-align: center;
+    }
+
+    .col-actions button + button {
+      margin-left: 4px;
     }
 
     .file-list {
@@ -567,6 +571,85 @@
       background: #eff6ff;
     }
 
+    .btn-icon.btn-logs:hover {
+      color: #2563eb;
+      background: #eff6ff;
+    }
+
+    /* ---- Log severity badges ---- */
+
+    .severity-badge {
+      display: inline-block;
+      font-size: 13px;
+      font-weight: 500;
+      line-height: 1.4;
+      padding: 2px 8px;
+      border-radius: 4px;
+      border: 1px solid;
+      white-space: nowrap;
+      text-transform: uppercase;
+    }
+
+    .severity-badge.severity-info {
+      background: #eff6ff;
+      border-color: #bfdbfe;
+      color: #1d4ed8;
+    }
+
+    .severity-badge.severity-warning {
+      background: #fffbeb;
+      border-color: #fde68a;
+      color: #b45309;
+    }
+
+    .severity-badge.severity-error {
+      background: #fef2f2;
+      border-color: #fecaca;
+      color: #991b1b;
+    }
+
+    .log-details-toggle {
+      background: none;
+      border: 1px solid #e2e8f0;
+      border-radius: 4px;
+      padding: 2px 8px;
+      font-size: 12px;
+      cursor: pointer;
+      color: #64748b;
+    }
+
+    .log-details-toggle:hover {
+      background: #f1f5f9;
+      color: #1e293b;
+    }
+
+    .log-details-json {
+      display: none;
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+      font-size: 12px;
+      line-height: 1.5;
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 4px;
+      padding: 8px;
+      margin-top: 4px;
+      max-height: 200px;
+      overflow: auto;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+
+    .log-details-json.open {
+      display: block;
+    }
+
+    .log-message-cell {
+      max-width: 400px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
     /* ---- Entity type labels ---- */
 
     .entity-type-label {
@@ -634,6 +717,7 @@
     <button role="tab" aria-selected="false" aria-controls="tab-documents" id="tab-btn-documents" data-tab="documents">Documents</button>
     <button role="tab" aria-selected="false" aria-controls="tab-entities" id="tab-btn-entities" data-tab="entities">Entities</button>
     <button role="tab" aria-selected="false" aria-controls="tab-references" id="tab-btn-references" data-tab="references">References</button>
+    <button role="tab" aria-selected="false" aria-controls="tab-logs" id="tab-btn-logs" data-tab="logs">Logs</button>
   </nav>
 
   <main>
@@ -799,6 +883,53 @@
         </div>
       </div>
     </section>
+
+    <section id="tab-logs" role="tabpanel" aria-labelledby="tab-btn-logs" class="tab-content">
+      <div id="logs-container">
+        <div class="documents-header">
+          <h2>Processing Logs</h2>
+        </div>
+        <div id="logs-doc-info" style="display:none;margin-bottom:16px;padding:12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px">
+          <div style="display:flex;align-items:center;gap:12px">
+            <button class="btn-outline" id="logs-back-btn" type="button" style="flex-shrink:0">&larr; Back</button>
+            <div>
+              <div style="font-size:14px;font-weight:600;color:#1e293b" id="logs-doc-filename"></div>
+              <div style="font-size:13px;color:#64748b;font-family:monospace" id="logs-doc-id"></div>
+            </div>
+            <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
+              <span id="logs-poll-indicator" style="font-size:12px;color:#64748b;display:none">Auto-refreshing...</span>
+              <button class="btn-icon btn-refresh" id="logs-refresh-btn" aria-label="Refresh logs" title="Refresh logs">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+              </button>
+            </div>
+          </div>
+        </div>
+        <div id="logs-loading" class="documents-loading">Loading logs...</div>
+        <div id="logs-table-container" class="table-container" style="display:none">
+          <table class="documents-table">
+            <thead>
+              <tr>
+                <th style="width:170px">Timestamp</th>
+                <th style="width:110px">Severity</th>
+                <th style="width:140px">Step</th>
+                <th style="width:auto">Message</th>
+                <th style="width:80px">Details</th>
+              </tr>
+            </thead>
+            <tbody id="logs-tbody"></tbody>
+          </table>
+        </div>
+        <div id="logs-empty" class="placeholder-card" style="display:none">
+          <h2>No logs found</h2>
+          <p id="logs-empty-msg">Select a document to view its processing logs</p>
+        </div>
+        <div id="logs-pagination" class="documents-pagination" style="display:none">
+          <button id="logs-prev-btn" class="btn-outline" disabled>&larr; Previous</button>
+          <span id="logs-page-info" class="page-info">Page 1 of 1</span>
+          <button id="logs-next-btn" class="btn-outline" disabled>Next &rarr;</button>
+        </div>
+      </div>
+    </section>
   </main>
 
   <script>
@@ -808,6 +939,7 @@
       documents: document.getElementById('tab-documents'),
       entities: document.getElementById('tab-entities'),
       references: document.getElementById('tab-references'),
+      logs: document.getElementById('tab-logs'),
     };
 
     function switchTab(tabName) {
@@ -834,6 +966,7 @@
       if (tabName === 'documents') fetchDocuments();
       if (tabName === 'entities') fetchEntities();
       if (tabName === 'references') fetchReferences();
+      if (tabName === 'logs') resumeLogPolling();
     }
 
     tabs.forEach(tab => {
@@ -1071,7 +1204,11 @@
           '<td class="col-count">' + (item.entity_count ?? '-') + '</td>' +
           '<td class="col-count">' + (item.chunk_count ?? '-') + '</td>' +
           '<td class="col-count">' + (item.text_word_count ?? '-') + '</td>' +
-          '<td class="col-actions"><button class="btn-icon btn-delete" data-document-id="' + escapeHtml(item.document_id) + '" data-filename="' + escapeHtml(item.filename || '') + '" aria-label="Delete document" title="Delete document">' +
+          '<td class="col-actions">' +
+          '<button class="btn-icon btn-logs" data-document-id="' + escapeHtml(item.document_id) + '" data-filename="' + escapeHtml(item.filename || '') + '" aria-label="View logs" title="View processing logs">' +
+          '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>' +
+          '</button>' +
+          '<button class="btn-icon btn-delete" data-document-id="' + escapeHtml(item.document_id) + '" data-filename="' + escapeHtml(item.filename || '') + '" aria-label="Delete document" title="Delete document">' +
           '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>' +
           '</button></td>';
 
@@ -1486,6 +1623,234 @@
 
     // Refresh button
     document.getElementById('ref-refresh-btn').addEventListener('click', fetchReferences);
+
+    // ===== Logs tab =====
+
+    const logsDocInfo = document.getElementById('logs-doc-info');
+    const logsDocFilename = document.getElementById('logs-doc-filename');
+    const logsDocId = document.getElementById('logs-doc-id');
+    const logsBackBtn = document.getElementById('logs-back-btn');
+    const logsRefreshBtn = document.getElementById('logs-refresh-btn');
+    const logsPollIndicator = document.getElementById('logs-poll-indicator');
+    const logsTbody = document.getElementById('logs-tbody');
+    const logsTableContainer = document.getElementById('logs-table-container');
+    const logsLoading = document.getElementById('logs-loading');
+    const logsEmpty = document.getElementById('logs-empty');
+    const logsEmptyMsg = document.getElementById('logs-empty-msg');
+    const logsPagination = document.getElementById('logs-pagination');
+    const logsPrevBtn = document.getElementById('logs-prev-btn');
+    const logsNextBtn = document.getElementById('logs-next-btn');
+    const logsPageInfo = document.getElementById('logs-page-info');
+
+    let logsDocumentId = null;
+    let logsFilename = '';
+    let logsCurrentPage = 1;
+    let logsLoadingFlag = false;
+    let logsPollTimer = null;
+    let logsShouldPoll = false;
+
+    function showLogsLoading() {
+      logsLoading.style.display = 'flex';
+      logsTableContainer.style.display = 'none';
+      logsEmpty.style.display = 'none';
+      logsPagination.style.display = 'none';
+    }
+
+    function hideLogsLoading() {
+      logsLoading.style.display = 'none';
+    }
+
+    function stopLogPolling() {
+      logsShouldPoll = false;
+      if (logsPollTimer) {
+        clearTimeout(logsPollTimer);
+        logsPollTimer = null;
+      }
+      logsPollIndicator.style.display = 'none';
+    }
+
+    function resumeLogPolling() {
+      if (logsDocumentId && logsShouldPoll) {
+        logsPollIndicator.style.display = '';
+        scheduleLogPoll();
+      }
+    }
+
+    function scheduleLogPoll() {
+      if (!logsShouldPoll || !logsDocumentId) return;
+      if (logsPollTimer) clearTimeout(logsPollTimer);
+      logsPollTimer = setTimeout(function() {
+        if (logsShouldPoll && logsDocumentId) {
+          fetchLogs(logsDocumentId, logsCurrentPage);
+        }
+      }, 5000);
+    }
+
+    function severityClass(severity) {
+      return 'severity-badge severity-' + (severity || 'info');
+    }
+
+    function openLogEntry(docId, filename) {
+      stopLogPolling();
+      logsDocumentId = docId;
+      logsFilename = filename || 'Unknown';
+      logsCurrentPage = 1;
+      logsDocFilename.textContent = logsFilename;
+      logsDocId.textContent = docId;
+      logsDocInfo.style.display = '';
+      logsEmptyMsg.textContent = 'Loading logs...';
+      switchTab('logs');
+      logsShouldPoll = true;
+      fetchLogs(docId, 1);
+    }
+
+    async function fetchLogs(docId, page) {
+      if (logsLoadingFlag) return;
+      logsLoadingFlag = true;
+      showLogsLoading();
+
+      const params = new URLSearchParams();
+      params.set('page', String(page));
+
+      try {
+        const res = await fetch('/documents/' + encodeURIComponent(docId) + '/logs?' + params.toString());
+        if (!res.ok) {
+          let detail = 'Failed to fetch logs';
+          try {
+            const errData = await res.json();
+            if (errData && errData.detail) detail = errData.detail;
+          } catch (_pe) { /* ignore parse error */ }
+          throw new Error(detail);
+        }
+        const data = await res.json();
+        renderLogs(data);
+      } catch (err) {
+        console.error('fetchLogs error:', err);
+        hideLogsLoading();
+        logsTableContainer.style.display = 'none';
+        logsPagination.style.display = 'none';
+        logsEmpty.style.display = 'block';
+        logsEmptyMsg.textContent = 'Error loading logs: ' + err.message;
+      } finally {
+        logsLoadingFlag = false;
+      }
+    }
+
+    function renderLogs(data) {
+      hideLogsLoading();
+
+      if (!data || !data.items || data.items.length === 0) {
+        logsTableContainer.style.display = 'none';
+        logsPagination.style.display = 'none';
+        logsEmpty.style.display = 'block';
+        logsEmptyMsg.textContent = 'No processing logs found for this document.';
+        scheduleLogPoll();
+        return;
+      }
+
+      logsEmpty.style.display = 'none';
+      logsTableContainer.style.display = '';
+      logsPagination.style.display = 'flex';
+
+      logsTbody.innerHTML = '';
+      data.items.forEach(function(item) {
+        var tr = document.createElement('tr');
+
+        var detailsHtml = '';
+        var hasDetails = item.details && Object.keys(item.details).length > 0;
+        if (hasDetails) {
+          var detailsStr = JSON.stringify(item.details, null, 2);
+          detailsHtml = '<button class="log-details-toggle" data-json="' + escapeHtml(detailsStr) + '">Show</button><div class="log-details-json">' + escapeHtml(detailsStr) + '</div>';
+        } else {
+          detailsHtml = '<span style="color:#94a3b8;font-size:12px">—</span>';
+        }
+
+        tr.innerHTML =
+          '<td style="white-space:nowrap;color:#64748b;font-size:13px;font-variant-numeric:tabular-nums">' + escapeHtml(formatDate(item.created_at)) + '</td>' +
+          '<td><span class="' + severityClass(item.severity) + '">' + escapeHtml(item.severity || 'info') + '</span></td>' +
+          '<td style="font-family:monospace;font-size:13px;color:#1e293b">' + escapeHtml(item.step_name || '') + '</td>' +
+          '<td class="log-message-cell" title="' + escapeHtml(item.message || '') + '">' + escapeHtml(item.message || '') + '</td>' +
+          '<td style="text-align:center">' + detailsHtml + '</td>';
+
+        logsTbody.appendChild(tr);
+      });
+
+      var page = data.page || 1;
+      var pages = data.pages || 0;
+
+      logsPageInfo.textContent = 'Page ' + page + ' of ' + pages;
+
+      logsPrevBtn.disabled = page <= 1;
+      logsNextBtn.disabled = page >= pages;
+
+      var hasActive = data.items.some(function(item) {
+        return item.step_name && item.step_name !== 'complete' && item.step_name !== 'fail';
+      });
+      if (hasActive && logsShouldPoll) {
+        scheduleLogPoll();
+      } else {
+        logsPollIndicator.style.display = 'none';
+      }
+    }
+
+    // Logs details toggle (event delegation)
+    logsTbody.addEventListener('click', function(e) {
+      var btn = e.target.closest('.log-details-toggle');
+      if (!btn) return;
+      var jsonDiv = btn.nextElementSibling;
+      if (!jsonDiv || !jsonDiv.classList.contains('log-details-json')) return;
+      var isOpen = jsonDiv.classList.contains('open');
+      jsonDiv.classList.toggle('open');
+      btn.textContent = isOpen ? 'Show' : 'Hide';
+    });
+
+    // Back button
+    logsBackBtn.addEventListener('click', function() {
+      stopLogPolling();
+      logsDocumentId = null;
+      logsDocInfo.style.display = 'none';
+      switchTab('documents');
+      fetchDocuments();
+    });
+
+    // Refresh
+    logsRefreshBtn.addEventListener('click', function() {
+      if (logsDocumentId) {
+        fetchLogs(logsDocumentId, logsCurrentPage);
+      }
+    });
+
+    // Pagination
+    logsPrevBtn.addEventListener('click', function() {
+      if (logsPrevBtn.disabled || !logsDocumentId) return;
+      logsCurrentPage = Math.max(1, logsCurrentPage - 1);
+      fetchLogs(logsDocumentId, logsCurrentPage);
+    });
+
+    logsNextBtn.addEventListener('click', function() {
+      if (logsNextBtn.disabled || !logsDocumentId) return;
+      logsCurrentPage = logsCurrentPage + 1;
+      fetchLogs(logsDocumentId, logsCurrentPage);
+    });
+
+    // Wire up View Logs buttons (event delegation on doc tbody)
+    docTbody.addEventListener('click', function(e) {
+      var btn = e.target.closest('.btn-logs');
+      if (!btn) return;
+      var documentId = btn.getAttribute('data-document-id');
+      var filename = btn.getAttribute('data-filename');
+      if (!documentId) return;
+      openLogEntry(documentId, filename);
+    });
+
+    // Stop polling when switching away from logs — override switchTab to clean up
+    var _origSwitchTab = switchTab;
+    switchTab = function(tabName) {
+      if (tabName !== 'logs') {
+        stopLogPolling();
+      }
+      _origSwitchTab(tabName);
+    };
   </script>
 </body>
 </html>

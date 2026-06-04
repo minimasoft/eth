@@ -5,7 +5,7 @@ milestone_name: milestone
 status: executing
 stopped_at: Phase 18 — plans created
 last_updated: "2026-06-04T00:45:00.000Z"
-last_activity: 2026-06-04 -- Fixed I-01 (ProcessingLogger $rid syntax bug) + I-02 (LLM empty content diagnostic logging)
+last_activity: 2026-06-04 - Completed quick task 260603-vk0: Add document log inspection UI
 progress:
   total_phases: 6
   completed_phases: 4
@@ -83,6 +83,10 @@ None — milestone just started.
 - **2026-06-03** — `260603-u19`: Docker Compose log review (7 issues found: I-01 through I-07)
   - REPORT: `.planning/quick/260603-u19-review-docker-compose-logs-and-report-po/260603-u19-REPORT.md`
   - Blockers noted: I-01 (ProcessingLogger `$rid` syntax bug) and I-03 (SurrealDB in-memory storage) require fix before production deployment
+
+- **2026-06-04** — `260603-vk0`: Add document log inspection UI
+  - Added Logs tab with severity badges, pagination, expandable details, auto-refresh
+  - Direct link from Documents table via "View Logs" button
 
 ## Deferred Items
 
