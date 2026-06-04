@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v4.0
 milestone_name: milestone
 status: executing
-stopped_at: Quick task 260604-3x3 completed (fix RecordID binding, IN subqueries → dot notation, remove result anti-pattern, consolidate tests)
-last_updated: "2026-06-04T06:10:29.000Z"
-last_activity: 2026-06-04 -- Quick task 260604-3x3: fix RecordID binding, IN subqueries → dot notation, remove result anti-pattern, consolidate 6 test files into 1 E2E test
+stopped_at: Quick task 260604-h1i completed (fix doc_ref NameError, rebuild worker, stuck workflow resolved)
+last_updated: "2026-06-04T15:22:00.000Z"
+last_activity: 2026-06-04 -- Quick task 260604-h1i: fix doc_ref NameError in resolve_entities_with_search_activity
 progress:
   total_phases: 6
   completed_phases: 6
@@ -70,6 +70,7 @@ Recent decisions affecting current work:
 - D026: Phase 18 README v4.0 features structured as brief subsections with forward links to full Processing Logs and Audit Trail sections to avoid content duplication
 - D027: Quick task 260603-wqw uses DEFINE FIELD OVERWRITE (not DEFINE FIELD) for schema migration compatibility on already-initialized schemas
 - D028: Quick task 260603-wqw uses retry loop (3x, 500ms) for DELETE chunk count check to handle race condition between worker chunking and verification
+- D029: Quick task 260604-h1i uses str(doc_rid) instead of f-string to stay DRY — RecordID already knows its format
 
 ### Pending Todos
 
@@ -82,6 +83,13 @@ None — milestone just started.
 - 260604-1px (MEDIUM): reference_type validation — **RESOLVED** (fix deployed; 1 stale Temporal replay remains, needs workflow termination)
 
 ### Quick Tasks Completed
+
+- **2026-06-04** — `260604-h1i`: Fix doc_ref NameError in resolve_entities_with_search_activity
+  - Added missing `doc_ref = str(doc_rid)` at line 582 (fixes 48 crash instances)
+  - Rebuilt Docker worker image and restarted with fix
+  - Stuck workflow `doc-560521dc96614e1bbadd1ab37a505791` resolved (found already completed)
+  - Commit: `c96c9d2` (fix)
+  - SUMMARY: `.planning/quick/260604-h1i-review-docker-compose-worker-logs-and-fi/260604-h1i-SUMMARY.md`
 
 - **2026-06-04** — `260604-3x3`: Fix RecordID binding, IN subqueries → dot notation, remove result anti-pattern, consolidate tests
   - Fixed silent data loss: RecordID parameter binding (strings → RecordID objects) and IN subqueries → dot notation for SurrealDB v3
@@ -162,5 +170,5 @@ Items acknowledged and carried forward from previous milestone close:
 ## Session Continuity
 
 Last session: 2026-06-04
-Stopped at: Quick task 260604-279 completed (worker log diagnostic — all fixes verified, 0 live bugs)
-Resume file: .planning/quick/260604-279-check-docker-compose-worker-logs-there-s/260604-279-SUMMARY.md
+Stopped at: Quick task 260604-h1i completed (fix doc_ref NameError, rebuild worker, stuck workflow resolved)
+Resume file: .planning/quick/260604-h1i-review-docker-compose-worker-logs-and-fi/260604-h1i-SUMMARY.md
