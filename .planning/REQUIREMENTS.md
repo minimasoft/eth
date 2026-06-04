@@ -36,18 +36,18 @@ Requirements for this milestone. Each maps to roadmap phases.
 
 ### Search-First Entity Resolution
 
-- [ ] **RSOL-01**: New `resolve_entities_with_search_activity` replaces `resolve_entities_activity` with search-first flow
-- [ ] **RSOL-02**: Exact match on entity name + type bypasses LLM call entirely (saves 20-50% LLM calls)
-- [ ] **RSOL-03**: Fuzzy/LIKE search with verbatim text tokens produces up to 5 candidate entities for LLM context injection
-- [ ] **RSOL-04**: LLM receives candidate entity context and decides whether each reference matches an existing entity or requires a new one
-- [ ] **RSOL-05**: `entity_id` field on reference records carries pre-resolved canonical entity links
-- [ ] **RSOL-06**: Preserves nullify-then-recreate Temporal replay safety and existing merge/split correction flow
+- [x] **RSOL-01**: New `resolve_entities_with_search_activity` replaces `resolve_entities_activity` with search-first flow
+- [x] **RSOL-02**: Exact match on entity name + type bypasses LLM call entirely (saves 20-50% LLM calls)
+- [x] **RSOL-03**: Fuzzy/LIKE search with verbatim text tokens produces up to 5 candidate entities for LLM context injection
+- [x] **RSOL-04**: LLM receives candidate entity context and decides whether each reference matches an existing entity or requires a new one
+- [x] **RSOL-05**: `entity_id` field on reference records carries pre-resolved canonical entity links
+- [x] **RSOL-06**: Preserves nullify-then-recreate Temporal replay safety and existing merge/split correction flow
 
 ### Test Corpus & Docs
 
-- [ ] **TEST-01**: Real Spanish legal document(s) added as test fixtures (not synthetic text)
-- [ ] **TEST-02**: Integration tests verify offset computation, processing logs, event entities, and search-first resolution
-- [ ] **TEST-03**: All existing integration tests continue to pass (no regressions)
+- [x] **TEST-01**: Real Spanish legal document(s) added as test fixtures (not synthetic text)
+- [x] **TEST-02**: Integration tests verify offset computation, processing logs, event entities, and search-first resolution
+- [x] **TEST-03**: All existing integration tests continue to pass (no regressions)
 - [x] **TEST-04**: README updated with core pipeline explanation (ingest → extract → resolve → query)
 - [x] **TEST-05**: Docs clarify the full audit trail: blob → text → chunks → events → references → canonical entities
 
@@ -99,21 +99,21 @@ Which phases cover which requirements. Updated during roadmap creation.
 | EVNT-04 | Phase 16 | Complete |
 | EVNT-05 | Phase 13 | Complete |
 | EVNT-06 | Phase 16 | Complete |
-| RSOL-01 | Phase 17 | Pending |
-| RSOL-02 | Phase 17 | Pending |
-| RSOL-03 | Phase 17 | Pending |
-| RSOL-04 | Phase 17 | Pending |
-| RSOL-05 | Phase 17 | Pending |
-| RSOL-06 | Phase 17 | Pending |
-| TEST-01 | Phase 18 | Pending |
-| TEST-02 | Phase 18 | Pending |
-| TEST-03 | Phase 18 | Pending |
+| RSOL-01 | Phase 17 | Complete |
+| RSOL-02 | Phase 17 | Complete |
+| RSOL-03 | Phase 17 | Complete |
+| RSOL-04 | Phase 17 | Complete |
+| RSOL-05 | Phase 17 | Complete |
+| RSOL-06 | Phase 17 | Complete |
+| TEST-01 | Phase 18 | Complete |
+| TEST-02 | Phase 18 | Complete |
+| TEST-03 | Phase 18 | Complete |
 | TEST-04 | Phase 18 | Complete |
 | TEST-05 | Phase 18 | Complete |
 
 **Coverage:**
 - v4.0 requirements: 28 total
-- Completed: 21
+- Completed: 28
 - Mapped to phases: 28
 - Unmapped: 0 ✓
 

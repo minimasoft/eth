@@ -7,7 +7,7 @@
 - ✅ **v1.2 M002 Integration Test Fixes** — Phases 3-5 (shipped 2026-05-31)
 - ✅ **v2.0 Blob & Chunk Pipeline** — Phases 6-8 (shipped 2026-06-01)
 - ✅ **v3.0 Web UI** — Phases 9-12 (shipped 2026-06-02)
-- 🟦 **v4.0 Pipeline Quality & Entity Resolution** — Phases 13-18 (in progress)
+- ✅ **v4.0 Pipeline Quality & Entity Resolution** — Phases 13-18 (shipped 2026-06-04)
 
 ## Phases
 
@@ -239,7 +239,7 @@ Plans:
 - [x] **Phase 15: Per-Document Processing Logs** — document_event_log table, log_processing_event_activity, and GET /documents/{id}/logs endpoint
 - [x] **Phase 16: Event Canonical Entities** — create_event_canonical_entities_activity with event-type canonical entities (completed 2026-06-03)
 - [x] **Phase 17: Search-First Entity Resolution** — resolve_entities_with_search_activity with candidate pre-filtering and LLM context injection
-- [/] **Phase 18: Full Integration + Test Corpus + Docs** — Integration tests with real Spanish legal documents, README/docs update (Plan 02 complete, Plan 01 pending)
+- [x] **Phase 18: Full Integration + Test Corpus + Docs** — Integration tests with real Spanish legal documents, README/docs update (Plan 02 complete, Plan 01 complete)
 
 ## Phase Details
 
@@ -383,4 +383,4 @@ Plans:
 | 15. Per-Document Processing Logs | 1/1 | Complete | 2026-06-03 |
 | 16. Event Canonical Entities | 1/1 | Complete | 2026-06-03 |
 | 17. Search-First Entity Resolution | 2/2 | Complete   | 2026-06-03 |
-| 18. Full Integration + Test Corpus + Docs | 0/2 | Planned | - |
+| 18. Full Integration + Test Corpus + Docs | 2/2 | Complete | 2026-06-04 |

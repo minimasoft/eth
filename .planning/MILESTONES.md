@@ -1,5 +1,20 @@
 # Milestones
 
+## v4.0 v4.0 (Shipped: 2026-06-04)
+
+**Phases completed:** 6 phases, 9 plans, 15 tasks
+
+**Key accomplishments:**
+
+- Appended complete v4.0 Schema Evolution block to schema.surql — 3 new reference offset fields, entity_type enum extension to include 'event', and 2 new SCHEMAFULL tables (document_event_log and event_entity_link) with 3 indexes
+- Integration test file with 7 test groups verifying all v4.0 schema changes via GraphQL introspection and direct SurrealDB SQL — covering reference offset fields, document_event_log, event_entity_link, entity_type 'event' enum, and no-regression checks
+- None
+- Fire-and-forget per-document audit trail for all Temporal activities with deterministic SHA256 record IDs, severity levels (info/warning/error), 100-entry cap, and a paginated REST endpoint matching existing API envelope patterns
+- 1. [Rule 1 - Bug] `_normalize()` did not strip combining marks after NFD decomposition
+- Updated README.md (417→595 lines) with v4.0 architecture diagram, data flow, feature docs, processing logs, and 6-layer audit trail documentation
+
+---
+
 ## v3.0 Web UI (Shipped: 2026-06-02)
 
 **Phases completed:** 4 phases, 4 plans, 0 tasks

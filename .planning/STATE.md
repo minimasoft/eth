@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v4.0
 milestone_name: milestone
-status: executing
+status: Awaiting next milestone
 stopped_at: Quick task 260604-hwn completed (consolidated tests to 3 e2e, removed verify scripts and unit tests)
-last_updated: "2026-06-04T15:59:00.000Z"
-last_activity: 2026-06-04 -- Quick task 260604-hwn: consolidate tests to 3 e2e, remove verify scripts and unit tests
+last_updated: "2026-06-04T16:37:52.395Z"
+last_activity: 2026-06-04 — Milestone v4.0 completed and archived
 progress:
   total_phases: 6
   completed_phases: 6
@@ -22,14 +22,14 @@ See: .planning/PROJECT.md (updated 2026-06-02)
 
 **Core value:** Every extracted event must be traceable to its exact source text in the original document, and every resolved entity must show its evidential references.
 
-**Current focus:** Phase 19 — api-split-and-bugfix
+**Current focus:** Milestone v4.0 — shipped
 
 ## Current Position
 
-Phase: 19 (api-split-and-bugfix) — EXECUTING
-Plan: 1 of 2
-Status: Executing Phase 19
-Last activity: 2026-06-04 -- Quick task 260604-hwn: consolidate tests to 3 e2e, remove verify scripts and unit tests
+Phase: Milestone v4.0 complete
+Plan: —
+Status: Awaiting next milestone
+Last activity: 2026-06-04 — Milestone v4.0 completed and archived
 
 ## Performance Metrics
 
@@ -180,3 +180,7 @@ Items acknowledged and carried forward from previous milestone close:
 Last session: 2026-06-04
 Stopped at: Quick task 260604-hwn completed (consolidated tests to 3 e2e, removed verify scripts and unit tests)
 Resume file: .planning/quick/260604-hwn-we-have-way-too-many-tests-that-are-not-/260604-hwn-SUMMARY.md
+
+## Operator Next Steps
+
+- Start the next milestone with /gsd-new-milestone
