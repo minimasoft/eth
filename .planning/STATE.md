@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v5.1
 milestone_name: Entity Resolution Prompt & Batching Fix
-status: Phase 23 in progress
-last_updated: "2026-06-04T19:08:19.452Z"
-last_activity: 2026-06-04 — Started Phase 23: Entity Resolution Prompt & Batching Fix
+status: All phases complete — running lifecycle
+last_updated: "2026-06-04"
+last_activity: 2026-06-04 — Completed Phase 23: Entity Resolution Prompt & Batching Fix
 progress:
   total_phases: 1
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 1
-  completed_plans: 0
-  percent: 0
+  completed_plans: 1
+  percent: 100
 ---
 
 # Project State
@@ -21,14 +21,14 @@ See: .planning/PROJECT.md (updated 2026-06-02)
 
 **Core value:** Every extracted event must be traceable to its exact source text in the original document, and every resolved entity must show its evidential references.
 
-**Current focus:** Milestone v5.1 — Entity Resolution Prompt & Batching Fix — **Phase 23 in progress 🚧**
+**Current focus:** Milestone v5.1 — Entity Resolution Prompt & Batching Fix — **ALL COMPLETE ✅**
 
 ## Current Position
 
 Phase: 23. Entity Resolution Prompt & Batching Fix
-Plan: 1 plan
-Status: In progress
-Last activity: 2026-06-04 — Completed quick task 260604-n9q: Fix document delete 405 Method Not Allowed error
+Plan: 1 plan (verification)
+Status: Complete ✅
+Last activity: 2026-06-04 — Verified all 5 requirements (RES-01 through RES-05) satisfied; 37/37 integration tests pass
 
 ## Performance Metrics
 
@@ -36,9 +36,10 @@ Last activity: 2026-06-04 — Completed quick task 260604-n9q: Fix document dele
 
 | Phase | Plans | Status | Completed |
 |-------|-------|--------|-----------|
-| 23. Entity Resolution Prompt & Batching Fix | — | In Progress 🚧 | — |
+| 23. Entity Resolution Prompt & Batching Fix | 1/1 | Complete ✅ | 2026-06-04 |
 
-**Totals:** 1 phase, 0 plans — **IN PROGRESS 🚧**
+**Totals:** 1 phase, 1 plan — **ALL COMPLETE ✅**
+**Timeline:** Started 2026-06-04, completed 2026-06-04 (same day)
 
 ### v5.0 LLM Cost & Usage Tracking (complete)
 
@@ -68,6 +69,14 @@ Last activity: 2026-06-04 — Completed quick task 260604-n9q: Fix document dele
 - D039: Token/cost columns in UI use tabular-nums font for alignment
 - D040: Tooltips in Spanish for all token/cost UI elements
 
+### v5.1 Decisions
+
+- D041: Phase 23 (v5.1) requirements (RES-01 through RES-05) were already satisfied by existing codebase — no code changes needed
+- D042: v5.1 scope was verification-only — confirmed 5/5 requirements met, 37/37 tests pass
+- D043: `_build_resolution_payload()` already sends only verbatim_text + reference_type (no document_context)
+- D044: Both `batch_references()` and `_estimate_tokens()` were already implemented in llm.py
+- D045: Entity grouping is LLM-driven; DB dedup is code-driven (exact NFD+casefold → fuzzy CONTAINS → create new)
+
 ### Blockers/Concerns
 
 All resolved. No open blockers.
@@ -81,4 +90,4 @@ All resolved. No open blockers.
 
 ## Operator Next Steps
 
-- Start the next milestone with /gsd-new-milestone
+Milestone v5.1 complete — ready for lifecycle (audit → complete → cleanup).
