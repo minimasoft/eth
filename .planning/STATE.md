@@ -1,16 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v5.1
-milestone_name: Entity Resolution Prompt & Batching Fix
-status: All phases complete — running lifecycle
-last_updated: "2026-06-04"
-last_activity: 2026-06-04 — Completed Phase 23: Entity Resolution Prompt & Batching Fix
+milestone: v6.0
+milestone_name: Event-Centric Data Quality & UI
+status: planning
+last_updated: "2026-06-04T21:20:37.852Z"
+last_activity: 2026-06-04
 progress:
-  total_phases: 1
-  completed_phases: 1
-  total_plans: 1
-  completed_plans: 1
-  percent: 100
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -25,10 +25,10 @@ See: .planning/PROJECT.md (updated 2026-06-02)
 
 ## Current Position
 
-Phase: 23. Entity Resolution Prompt & Batching Fix
-Plan: 1 plan (verification)
-Status: Complete ✅
-Last activity: 2026-06-04 — Verified all 5 requirements (RES-01 through RES-05) satisfied; 37/37 integration tests pass
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-06-04 — Milestone v6.0 started
 
 ## Performance Metrics
 

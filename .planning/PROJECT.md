@@ -29,13 +29,20 @@ Every extracted event must be traceable to its exact source text in the original
 
 **v4.0: Pipeline Quality & Entity Resolution — COMPLETE.** Reference offsets (character + page), structured event objects as canonical entities, per-document processing logs, search-first entity resolution (20-50% LLM call savings), real Spanish legal document test corpus, and comprehensive README/docs.
 
-## Current Milestone: v5.1 Entity Resolution Prompt & Batching Fix
+## Current Milestone: v6.0 Event-Centric Data Quality & UI
 
-**Status:** Complete ✅
+**Goal:** Improve data structure quality for references and entities so events can be represented on a timeline, map, and listed by participants.
 
-All 5 requirements verified satisfied by existing codebase. The entity resolution prompt fix (removing full document text from LLM prompts, adding reference-only batching, and code-side DB dedup) was already fully implemented during v5.0 development. 37/37 integration tests pass with zero regressions.
-
-**Next:** Planning next milestone.
+**Target features:**
+- Schema refactoring for events (time window, participants, location, act/description, N references)
+- Event entities linked to canonical places/persons/objects
+- References UI tab (between Documents and Entities)
+- Timeline visualization for events
+- Map view for geolocated events
+- Participant-based event listing
+- LLM prompt improvements for structured event extraction
+- API endpoint improvements for new data structures
+- E2E test improvements for validation
 
 ## Requirements
 
@@ -47,17 +54,23 @@ All 5 requirements verified satisfied by existing codebase. The entity resolutio
 - ✓ M002: Entity Resolution — Canonical entities (place/person/object/tiempo), reference accumulation, merge/split correction
 - ✓ v2.0: Blob & Chunk Pipeline — MinIO blob storage, PDF extraction, chunking, workflow integration
 - ✓ v3.0: Web UI — Static SPA with Upload/Documents/Entities tabs, pagination, search/filter
+- ✓ v4.0: Pipeline Quality & Entity Resolution — Reference offsets, processing logs, event canonical entities, search-first entity resolution, real test corpus
+- ✓ v5.0: LLM Cost & Usage Tracking — Token/cost recording per LLM call, API aggregation, UI display, no-regression verification
+- ✓ v5.1: Entity Resolution Prompt & Batching Fix — Verification-only, 5/5 requirements satisfied, 37/37 tests pass
 
 ### Active
 
 <!-- Current scope. Building toward these. -->
 
-- [ ] Track input/output tokens per LLM call, stored in DB
-- [ ] Per-document token tracking (cached/input/output totals)
-- [ ] UI display of token usage per document
-- [ ] LLM event detail includes processing time + all token statistics
-- [ ] OpenRouter cost reporting (if API provides it)
-- [ ] E2E tests pass with token count verification — no regressions
+- [ ] Event data model improved — time window, participants, location, act/description per event
+- [ ] Events linked to canonical entities (places, persons, objects) with N references
+- [ ] LLM extraction prompts improved for structured event data
+- [ ] References UI tab (between Documents and Entities)
+- [ ] Timeline visualization for events
+- [ ] Map view for geolocated events
+- [ ] Participant-based event listing
+- [ ] API endpoint improvements for new data structures
+- [ ] E2E tests verify event data quality
 
 ### Out of Scope
 
@@ -66,10 +79,15 @@ All 5 requirements verified satisfied by existing codebase. The entity resolutio
 - Authentication / Multi-user — Not needed for single-user research tool
 - Real-time collaboration — Out of scope until multi-user exists
 - Mobile app — Web-first, defer indefinitely
+- Separate frontend app — Extend existing vanilla JS SPA
 
 ## Context
 
-Current pipeline extracts raw events with verbatim references. References lack precise text offsets and page provenance. Entity resolution is post-hoc (merge/split after extraction) rather than search-first during extraction. Event objects are flat — no structured time/place/participants fields. Processing errors cause hard failures rather than accumulating warnings.
+Current pipeline extracts raw events with verbatim references. Events have time/place/participant/objects/que-paso fields but the data quality needs improvement — references are not explicitly linked to specific event elements (which reference established the time, which established the participant). Entity resolution works (search-first with merge/split correction) but references live as flat collections rather than structured evidence for each event element. The UI has Documents and Entities tabs but no References tab, timeline, map, or participant views.
+
+v6.0 focuses on making events first-class: each event requires N references to establish its time window, participants, location, and key objects. References become a first-class UI concept (new tab). Timeline and map visualizations enable spatial-temporal browsing. Participant views list events by involved persons.
+
+The existing vanilla JS SPA at /ui will be extended with new tabs — no separate frontend app.
 
 ## Architecture / Key Patterns
 
@@ -100,6 +118,7 @@ See `.planning/REQUIREMENTS.md` for the explicit capability contract, requiremen
 - [x] v4.0: Pipeline Quality & Entity Resolution — COMPLETE
 - [x] v5.0: LLM Cost & Usage Tracking — COMPLETE
 - [x] v5.1: Entity Resolution Prompt & Batching Fix — COMPLETE
+- [ ] **v6.0: Event-Centric Data Quality & UI** — Current milestone
 
 ## Evolution
 
@@ -119,4 +138,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---  
-*Last updated: 2026-06-04 after v5.1 milestone completion*
+*Last updated: 2026-06-04 after v6.0 milestone start*
