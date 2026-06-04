@@ -1507,12 +1507,16 @@ async def get_document_logs(
             detail=f"Document {document_id} not found.",
         )
 
+    from surrealdb.data.types.record_id import RecordID
+
+    doc_ref_obj = RecordID("document", document_id)
+
     # Count total log entries for this document
     try:
         count_result = await db.query(
             "SELECT count() AS total FROM document_event_log "
             "WHERE document = $doc_ref GROUP ALL",
-            {"doc_ref": doc_ref},
+            {"doc_ref": doc_ref_obj},
         )
     except Exception as exc:
         logger.error(
@@ -1540,7 +1544,7 @@ async def get_document_logs(
             "ORDER BY created_at DESC "
             "LIMIT $limit START $offset",
             {
-                "doc_ref": doc_ref,
+                "doc_ref": doc_ref_obj,
                 "limit": per_page,
                 "offset": offset,
             },
@@ -1555,8 +1559,6 @@ async def get_document_logs(
             status_code=502,
             detail="Failed to query database.",
         ) from exc
-
-    from surrealdb.data.types.record_id import RecordID
 
     data_records: list[dict] = [
         r for r in (data_result or []) if isinstance(r, dict)
