@@ -27,19 +27,19 @@ Every extracted event must be traceable to its exact source text in the original
 
 **v3.0: Web UI — COMPLETE.** FastAPI serves static HTML/CSS/JS single-page application at `/ui` — no build step, no authentication. Three-tab navigation (Upload, Documents, Entities). Document upload via file picker with success/error feedback and loading states. Paginated document list (20/page) with search, status filter, and colored status badges. Paginated entity list (20/page) with search, type filter, reference counts, and plain-text type labels. 4 phases (9-12), 4 plans, all verified.
 
-**v4.0: Pipeline Quality & Entity Resolution — IN PROGRESS.** Improving extraction quality: reference offsets (character + page), structured event objects as canonical entities (event type with time/place/participants/objects), search-first entity resolution during extraction, per-document processing logs with error/warning accumulation, short legal document test corpus, and README/docs update.
+**v4.0: Pipeline Quality & Entity Resolution — COMPLETE.** Reference offsets (character + page), structured event objects as canonical entities, per-document processing logs, search-first entity resolution (20-50% LLM call savings), real Spanish legal document test corpus, and comprehensive README/docs.
 
-## Current Milestone: v4.0 Pipeline Quality & Entity Resolution
+## Current Milestone: v5.0 LLM Cost & Usage Tracking
 
-**Goal:** Improve extraction quality with proper offsets, structured event objects, search-first entity resolution, processing logs, and comprehensive tests.
+**Goal:** Track LLM token usage and cost across the pipeline, display in UI, and verify no regressions.
 
 **Target features:**
-- Reference offsets (character + page) in extracted references
-- Structured event objects as canonical entities (event type) with time/place/participants/objects
-- Search-first entity resolution during extraction (query existing entities, LLM-assisted create)
-- Per-document processing log (JSON-like entries per step, error/warning accumulation)
-- Short legal document(s) as test examples
-- README/docs update explaining the core pipeline
+- Log input/output token counts per LLM call (stored in DB)
+- Per-document input/output token tracking (include cache hits if reported)
+- UI display: tokens as [cached]/input/output totals
+- OpenRouter cost reporting (bonus)
+- LLM event detail includes processing time + all token statistics
+- All e2e tests pass with token count verification
 
 ## Requirements
 
@@ -56,12 +56,12 @@ Every extracted event must be traceable to its exact source text in the original
 
 <!-- Current scope. Building toward these. -->
 
-- [ ] Improve reference extraction with character + page offsets
-- [ ] Extract structured event objects as canonical entity type
-- [ ] Link events to canonical entities (search-first, LLM-assisted create)
-- [ ] Per-document processing log with error/warning accumulation
-- [ ] Short legal document test corpus
-- [ ] README/docs update explaining core pipeline
+- [ ] Track input/output tokens per LLM call, stored in DB
+- [ ] Per-document token tracking (cached/input/output totals)
+- [ ] UI display of token usage per document
+- [ ] LLM event detail includes processing time + all token statistics
+- [ ] OpenRouter cost reporting (if API provides it)
+- [ ] E2E tests pass with token count verification — no regressions
 
 ### Out of Scope
 
@@ -101,7 +101,8 @@ See `.planning/REQUIREMENTS.md` for the explicit capability contract, requiremen
 - [x] M002: Entity Resolution — Canonical places/persons/objects, reference accumulation via LLM-powered per-type batching (place/person/object, skip tiempo), merge/split correction operations. Temporal integration with nullify-then-recreate replay safety. Validated: 14/14 Python checks, 6/6 TypeScript tests, all cross-slice boundaries honored.
 - [x] v2.0: Blob & Chunk Pipeline — MinIO blob storage, PDF extraction, chunking, workflow integration. 3 phases (6-8), 6 plans.
 - [x] v3.0: Web UI — Static HTML/CSS/JS SPA served at /ui with three-tab navigation, document upload, paginated document list, and paginated entity list. 4 phases (9-12), 4 plans.
-- [ ] v4.0: Pipeline Quality & Entity Resolution — IN PROGRESS
+- [x] v4.0: Pipeline Quality & Entity Resolution — COMPLETE
+- [ ] v5.0: LLM Cost & Usage Tracking — IN PROGRESS
 
 ## Evolution
 
@@ -121,4 +122,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---  
-*Last updated: 2026-06-02 after v4.0 milestone start*
+*Last updated: 2026-06-04 after v5.0 milestone start*
