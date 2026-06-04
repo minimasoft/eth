@@ -1,237 +1,208 @@
 # Project Research Summary
 
-**Project:** eth-pipeline — v5.0 LLM Cost & Usage Tracking
-**Domain:** Token/cost observability for document extraction pipeline
+**Project:** Espacio Tiempo Humanos — v6.0 "Event-Centric Data Quality & UI"
+**Domain:** Spanish legal document processing — structured event extraction, investigative timeline/map visualization, participant-based browsing
 **Researched:** 2026-06-04
-**Confidence:** HIGH (stack, features, pitfalls); MEDIUM (architecture — conflict resolved below)
+**Confidence:** HIGH
 
 ## Executive Summary
 
-This project adds per-LLM-call token and cost tracking to an existing document extraction pipeline powered by OpenRouter and Temporal workflows. The pipeline processes documents through extraction chunks and entity resolution steps, each making independent LLM API calls — currently invisible in terms of cost. The research confirms this is a well-understood domain with standard patterns: capture `usage` from the OpenAI-compatible response body, store in a dedicated table, aggregate at query time, and display in the existing vanilla-JS SPA.
+This is an LLM-powered Spanish legal document analysis system being upgraded from a flat event list to an investigative analysis platform. The v6.0 milestone adds structured event data (time windows, geolocation, participant links with N mandatory references per field), a References-first UI tab, interactive timeline and map visualizations, and participant-based event browsing — all extending the existing vanilla JS SPA with zero new infrastructure services.
 
-**The recommended approach** diverges from the initial "reuse existing log infrastructure" assumption. A critical finding from the pitfalls research — the 100-entry cap on `document_event_log` — makes a separate `llm_usage` table mandatory. Token data must use deterministic record IDs with UPSERT semantics to survive Temporal replay without double-counting, and must be included in the existing nullify-then-recreate cycle for reprocessing safety. The result is a replay-safe, append-only audit trail of every LLM call the pipeline makes.
+The recommended approach is surgical, not architectural: two CDN-loaded JavaScript libraries (Leaflet 1.9.4 for maps, vis-timeline 8.5.1 for timeline), two Python libraries for Spanish date parsing (dateparser + python-dateutil), and SurrealDB's built-in geospatial features — all integrated into the existing FastAPI/Temporal/SurrealDB pipeline. No npm, no build step, no new Docker services. The core differentiator is the "chain of evidence" audit trail: every extracted date, location, and participant is backed by N verbatim text references traceable to the exact character offset in the source document.
 
-**The key risk** is Temporal replay double-counting (Pitfall #1, CRITICAL severity). Every activity retry, worker restart, or workflow replay must produce identical token records — which requires careful design of deterministic ID derivation, UPSERT persistence, and inclusion in the delete cycle. The secondary risk is the 100-entry ProcessingLogger cap silently dropping token data if shoehorned into the existing infrastructure. Both risks have clear mitigations documented in the pitfalls research.
+The primary risk is schema bloat and entity resolution breakage. The existing pipeline has 7 SurrealDB tables, 8 Temporal activities, 5 REST endpoints, and complex nullify-then-recreate replay safety — adding new tables cascades into every layer. The research is unanimous: use the existing `canonical_entity.properties` FLEXIBLE JSON field for structured event metadata, create at most ONE new table (`event_participant` junction for person→event graph edges), make all new fields nullable with `DEFAULT null`, and back every schema change with integration tests covering resolution, replay, and cascade delete. The secondary risk is LLM prompt regression: expanding the extraction JSON Schema risks degrading quality on the existing 5 event fields. All new fields must be optional; benchmark testing on 5+ documents must show <10% event count change before merging.
 
 ## Key Findings
 
 ### Recommended Stack
 
-**Core finding:** Zero new dependencies. All token/cost data is extracted from the OpenRouter API response body using existing packages (httpx, surrealdb, temporalio) and stdlib (`time.monotonic()`). The vanilla JS SPA needs only `Intl.NumberFormat` and `toFixed()`.
+Four surgical additions to the existing Python/FastAPI/Temporal/SurrealDB/vanilla JS SPA stack. No new infrastructure services, no build system, no npm.
 
-**Core technologies:**
-- **SurrealDB `llm_usage` table** (new): Schemaful table with `PERMISSIONS FOR update NONE, FOR delete NONE` — append-only audit trail of every LLM call
-- **OpenRouter `response.usage` dict**: Source of `prompt_tokens`, `completion_tokens`, `total_tokens`, `cached_tokens`, and optional `cost`
-- **`time.monotonic()` from stdlib**: Wall-clock round-trip timing for each LLM call (labeled as such, not "inference time")
-- **SurrealQL `math::sum()`**: Per-document aggregation — identical pattern to existing reference/entity count queries
+**Core technologies (new):**
+- **dateparser ~1.2.1** — Parses Spanish natural-language dates from legal text (`"Martes 21 de Octubre de 2014"`, `"3 de marzo de 2020"`) using `languages=['es']`. Called once per event during processing (not in hot paths). Confidence: HIGH.
+- **python-dateutil ~2.9.0** — ISO 8601 parsing and `relativedelta` for date arithmetic. Complements dateparser by handling structured date operations. Confidence: HIGH.
+- **Leaflet.js 1.9.4 (CDN)** — Interactive map visualization. Lightest (42KB gzipped), best-documented, zero-build-step CDN map library. Uses free OpenStreetMap tiles — no API key needed. Lazy-loaded on map tab activation to avoid penalizing non-map users. Confidence: HIGH.
+- **vis-timeline 8.5.1 standalone UMD (CDN)** — Horizontal event timeline with ISO date ranges, zoom, clustering, groups-by-document. Zero dependencies. Spanish locale bug fixed in v8.4.1. Confidence: HIGH.
 
-**See:** [STACK.md](./STACK.md) for full schema definition, field-by-field extraction logic, and UI formatting helpers.
+**Existing stack used as-is:** SurrealDB geospatial (`type::point()`, `geo::distance()` already built into Rust core), FastAPI (new endpoints for timeline/map/participant data), Temporal (prompt changes only, no infrastructure changes), vanilla JS SPA (extend with new tabs), OpenRouter LLM (extraction prompt enhancement).
+
+**What NOT to use:** D3.js (500+ lines to match vis-timeline's 5-line init), Mapbox/Google Maps (external API keys violate zero-dependency constraint), npm/build tools (break existing vanilla JS pattern), Moment.js/Luxon on frontend (all dates come from backend as ISO strings; vis-timeline accepts them natively), pandas (50MB dependency for what dateparser + dateutil do in <5MB).
 
 ### Expected Features
 
-**Must have (table stakes):**
-- **T1: Per-LLM-call token accounting** — capture `prompt_tokens`, `completion_tokens`, `total_tokens`, `cached_tokens`, `cost` from every OpenRouter response
-- **T2: Per-document token aggregation** — sum token/cost across all LLM calls for a document (extraction chunks + entity resolution)
-- **T3: Processing time per LLM call** — `time.monotonic()` round-trip timing alongside token data
-- **T4: Storage in a dedicated table** — NOT in `document_event_log` (100-entry cap is the deal-breaker)
+**Must have (table stakes) — v6.0 launch:**
 
-**Should have (differentiators):**
-- **D1: Token/cost in document list** — single aggregated column (e.g., "1,234 / 567 | $0.02") rather than separate columns
-- **D2: Cache-hit indicator** — show cached tokens separately (e.g., "500/1,234/567" meaning 500 cached + 1,234 input + 567 output)
-- **D3: LLM-call filter in Logs tab** — `?llm_only=true` filter on `GET /documents/{id}/logs`
-- **D4: Retry/error tracking** — `attempt_number` and `retry_of` in token records
+- **T1: Structured Event Data Model** — Time window (`time_start`/`time_end` as datetime), location linked to canonical place entity, participants linked via `event_participant` junction table, N references per non-null field (minimum 1 per field), `element_field` on each reference tagging which event element it substantiates. Touches ALL layers (schema, LLM prompt, extraction pipeline, entity resolution, API, UI). COMPLEXITY: HIGH. Keystone dependency — every other feature depends on T1.
 
-**Defer (v2+):**
-- Real-time streaming token display (non-streaming pipeline)
-- Cost charts/graphs (vanilla JS SPA limitation)
-- Token usage budgets/threshold alerts (single-user tool)
-- Prompt/response content storage (too large, stored elsewhere)
+- **T2: References as First-Class UI Objects** — New UI tab (between Documents and Entities) showing paginated, filterable references with verbatim text, context excerpts, source document links, page numbers, color-coded type badges, canonical entity links, resolution confidence, and element field tags. Data already exists in the `reference` table — this is a new view over existing data. COMPLEXITY: MEDIUM.
 
-**Anti-features (explicitly warned against by research):**
-- Do NOT push token data into `document_event_log.details` (100-entry cap swallows it — Pitfall #4)
-- Do NOT create a new table when a separate approach is needed — actually CREATE the separate `llm_usage` table (the architecture researcher's anti-pattern #2 is overridden by the critical pitfall finding)
-- Do NOT compute cost from model pricing lookups when `usage.cost` is available from OpenRouter
-- Do NOT add 4 new columns to the document table (layout over-crowding — Pitfall #5)
+- **T3: Timeline Visualization** — vis-timeline-based chronological event browser with date range filtering, zoom levels (years→months→days), color-coded items by document, click-for-detail, clustering for dense periods, and group-by-document support. Events without structured dates shown in "N eventos sin fecha" banner. COMPLEXITY: MEDIUM. Depends on T1 for `time_start`/`time_end` fields.
 
-**See:** [FEATURES.md](./FEATURES.md) for full feature breakdown, MVP prioritization, and test patterns.
+- **D1: LLM-Extracted Structured Time with Confidence** — LLM outputs `time_parsed` with `start`, `end`, `precision` (day/month/year), and `confidence` (0.0–1.0) alongside free-form `tiempo` text. Marginal cost to add to extraction schema — bundled with T1 prompt rewrite. COMPLEXITY: LOW.
+
+**Should have (differentiators) — defer to v6.1:**
+
+- **T4: Map View** — Leaflet.js map with clustered markers for geolocated events. Requires geocoding infrastructure (Nominatim integration for place entities) and coordinates stored in `canonical_entity.properties`. Valuable but temporal patterns matter more than spatial for court document investigation. COMPLEXITY: MEDIUM-HIGH.
+
+- **T5: Participant-Based Event Listing** — Person-centric event browser (select person → see all their events sorted by time, with cross-references to co-occurring people and places). Depends on T1's `event_participant` junction table. COMPLEXITY: MEDIUM.
+
+- **D2: Audit Trail (Chain of Evidence)** — Cross-tab navigation: Entity → click reference count → filtered References tab → click verbatim → jump to highlighted text in source document. Data model already supports this — only UI wiring needed. COMPLEXITY: MEDIUM.
+
+**Defer to v6.2+:**
+
+- **D3: Co-occurrence Network** — Analytics showing who appears with whom, where, and how often. SurrealDB aggregation query. Requires large corpus to be valuable. COMPLEXITY: MEDIUM (query) but low user value at current corpus size.
+
+**Anti-features (explicitly NOT building):** Full GIS/spatial queries (SurrealDB GEOMETRY type not well-documented for complex queries), calendar recurrence/RRULE (legal events are discrete, not recurring), real-time collaboration (single-user tool), complex permissions (single-user), timeline animation/playback (marginal investigative value), map heatmaps (marker clustering is sufficient), client-side Spanish date parser (LLM parses dates server-side).
 
 ### Architecture Approach
 
-The architecture is a clean extension of the existing pipeline: the `OpenRouterProvider` returns usage metadata alongside parsed content, the Temporal activity writes it to a dedicated `llm_usage` table via deterministic-ID UPSERT, and the API aggregates it at query time for the SPA.
-
-**NOTE: Conflict resolved.** The architecture researcher (ARCHITECTURE.md) and features researcher (FEATURES.md) recommended storing token data in the existing `document_event_log.details` field. The pitfalls researcher discovered the 100-entry cap on this table (Pitfall #4), which would silently drop token data for documents with many chunks. **The separate `llm_usage` table is mandatory**, not an anti-pattern.
+Vertical extension of every existing layer — schema, activity, API, and UI — with backward compatibility as the highest priority. All schema changes are additive (nullable fields with `DEFAULT null`, no `OVERWRITE` on existing fields). A single new junction table (`event_participant`) provides graph-edge person→event traversal. New API route module (`events.py`) follows the established router-per-resource pattern. Three new SPA tabs extend the existing tab system using CDN-loaded libraries with lazy loading for Leaflet.
 
 **Major components:**
-1. **OpenRouterProvider** (in `llm.py`) — Extract `usage` dict from response, return alongside parsed content. No DB writes from this layer.
-2. **Temporal activities** (`extract_events_activity`, etc.) — Call provider, unpack usage, call `record_llm_usage()`. Include token records in nullify-then-recreate cycle.
-3. **`llm_usage` table** (SurrealDB) — Schemaful, append-only via PERMISSIONS. Deterministic IDs (SHA256 of `document_id:step_name:chunk_index`) + UPSERT for replay safety.
-4. **API endpoints** — `GET /documents/{id}/tokens` (per-doc aggregation), batched token data in `GET /documents` list to avoid N+1
-5. **Web UI** (vanilla JS SPA) — Token summary in logs panel/detail view, single aggregated column in document table
-
-**Data flow:**
-```
-LLM Response → OpenRouterProvider._parse_choice()
-  ├── parsed_content → activity (existing flow)
-  └── usage_metadata → ProcessingLogger.log() or record_llm_usage()
-                                              ↓
-                                       llm_usage table
-                                              ↓
-                              API: GET /documents/{id}/tokens
-                              API: GET /documents (batch query)
-```
-
-**Key patterns:**
-- **Deterministic replay-safe logging** (existing SHA256 + UPSERT pattern)
-- **Graceful degradation** for missing API fields (`.get()` with defaults)
-- **Context-manager timing** to handle `asyncio.CancelledError` cleanly
-
-**See:** [ARCHITECTURE.md](./ARCHITECTURE.md) for data flow diagrams, component boundaries, and scalability considerations.
+1. **Event Schema (SurrealDB)** — New `time_window`, `location_point`, `location_place_id` fields on `event` table (all FLEXIBLE, nullable). New `event_participant` TYPE RELATION table. New `event_element` + `reference_index` fields on `reference` table. New indexes: MTREE spatial, event_participant graph traversal, composite time_window.
+2. **LLM Extraction Pipeline (Temporal)** — Expanded `EVENT_EXTRACTION_SCHEMA` with optional structured fields. Updated `extract_events_activity` and `store_extraction_results_activity` handle new fields. Extended nullify-then-recreate cascade includes `event_participant` edges. Entity resolution also sets `location_place_id` for place entities.
+3. **Events API Routes (FastAPI)** — New `events.py` module with `GET /events` (paginated + filters), `GET /events/timeline` (date-sorted range query), `GET /persons/{id}/events` (graph traversal). Enhanced `GET /references` with `document` and `event_element` filter params. Pydantic models for all new responses.
+4. **SPA Tabs (vanilla JS)** — Timeline tab (vis-timeline, date picker, chronological table), Map tab (Leaflet CDN lazy-load, clustered markers, popups), Participants tab (two-column layout: person list + event panel). Enhanced References tab (element_field badges, document links). Nav extended from 5 to 8 tabs.
 
 ### Critical Pitfalls
 
-**Top 5 by severity:**
+1. **Schema Bloat — Normalizing What Should Be JSON Properties.** Creating 4–6 new SCHEMAFULL tables instead of using `canonical_entity.properties` FLEXIBLE JSON explodes cascade delete, nullify-then-recreate, merge/split, and GraphQL surface area. Prevention: use `properties.date_start`, `properties.coordinates.lat`, `properties.participants[]` — one new table maximum (`event_participant` for graph edges only). Rule of thumb: if data only exists as part of an event, it belongs in `properties`.
 
-1. **CRITICAL: Temporal replay double-counts tokens (Pitfall #1)** — Activity retries and workflow replays can inflate token totals unless deterministic ID + UPSERT is used and token records are included in the nullify-then-recreate delete cycle. **Mitigation:** Record inside provider, persist via deterministic-ID UPSERT in activity.
+2. **LLM Prompt Regression — New Structured Output Breaking Old Extraction.** Adding `date_start`/`date_end` to the strict JSON Schema (`additionalProperties: false`) risks the LLM hallucinating values or degrading quality on existing fields. Prevention: all new fields optional (not in `required`), benchmark on 5+ documents before merging, version the schema (`properties.schema_version = "v6.0"`), reject PRs where event count drops >10%.
 
-2. **HIGH: ProcessingLogger 100-entry cap swallows token data (Pitfall #4)** — The existing `document_event_log` has a hard cap of 100 entries per document. Token data pushed into `details` would be silently dropped for documents with many chunks. **Mitigation:** Use a separate `llm_usage` table with no cap and its own write path.
+3. **Temporal Replay Safety — New Record Types Not Included in Nullify-Then-Recreate.** Adding `event_participant` edges without a corresponding DELETE step before RELATE causes duplicate edges on replay. Prevention: for EVERY new record type, identify ALL code paths that create it and add a nullify step. Checklist: `store_extraction_results_activity`, `create_event_canonical_entities_activity`, `resolve_entities_with_search_activity`, cascade delete, clear events endpoint.
 
-3. **HIGH: OpenRouter cache hits report 0 tokens (Pitfall #2)** — Cache HIT responses can zero out `prompt_tokens` or omit `usage` entirely. Crash on missing `usage` = pipeline failure. **Mitigation:** Null-safe parsing, store raw usage JSON for future recalculation.
+4. **Timeline Queries — Unbounded Date Ranges and Missing Indexes.** Full table scan of `canonical_entity` with free-form Spanish date parsing at 10K documents is catastrophic. Prevention: structured dates in LLM extraction schema, JSON path index on `properties.date_start` + `properties.date_end`, paginate timeline queries (default 50), verify with `EXPLAIN SELECT`.
 
-4. **HIGH: Chunked extraction produces multiple records requiring aggregation (Pitfall #3)** — 5-20+ LLM calls per document across extraction chunks + entity resolution types. Missing a record type in aggregation = incomplete totals. **Mitigation:** `step_name` discriminator + `chunk_index` on each record; aggregate at query time with a documented helper function.
-
-5. **MEDIUM: UI token columns overwhelm document table layout (Pitfall #5)** — Adding 3-4 token columns to an already-wide table ruins mobile UX. **Mitigation:** Show token data in logs panel/detail view, not as new columns. Single aggregated column if table-adjacent is unavoidable.
-
-**See:** [PITFALLS.md](./PITFALLS.md) for all 15 pitfalls with warning signs, phase mappings, and the "Looks Done But Isn't" checklist.
+5. **Geocoding via External API in Pipeline.** Nominatim geocoding at 1 req/sec for 2,000 locations = 33 minutes per batch; rate-limited APIs cause Temporal retry amplification. Spanish anonymized locations ("DIRECCION000") are un-geocodable. Prevention: curate coordinates manually in `canonical_entity.properties`, never run geocoding in the Temporal pipeline, preserve curated coordinates through entity resolution (never overwrite), map view gracefully handles entities without coordinates.
 
 ## Implications for Roadmap
 
-Based on the combined research, I recommend **5 phases** with the following structure:
+Based on research, the architecture dependency graph dictates a linear 5-phase build order. Features T1 (Structured Event Model) + D1 (LLM Structured Time) + T2 (References Tab) + T3 (Timeline View) constitute the v6.0 MVP. T4 (Map View) + T5 (Participant Listing) defer to v6.1. D2 (Audit Trail) + D3 (Co-occurrence) defer to v6.2.
 
-### Phase 1: Token Recording & Schema (Foundation)
-**Rationale:** Everything depends on capturing token data from OpenRouter responses and storing it safely. The `llm_usage` table must exist before anything else works.
-**Delivers:** Token/cost data captured for every LLM call and persisted to SurrealDB with replay safety.
-**Features addressed:** T1 (per-LLM-call accounting), T3 (processing time)
-**Pitfalls avoided:** #1 (replay double-count via deterministic ID + UPSERT), #2 (cache hit via null-safe parsing), #3 (chunked records via step_name + chunk_index), #4 (log cap via separate table), #9 (async cancellation via context manager), #12 (schema perms), #14 (model storage)
-**Key deliverables:**
-- `llm_usage` table definition in `schema.surql` (SCHEMAFULL, PERMISSIONS FOR update/delete NONE)
-- `_usage` extraction in `OpenRouterProvider._parse_choice()` return dict
-- `record_llm_usage()` helper with deterministic ID (SHA256 of `document_id:step_name:chunk_index`) + UPSERT
-- Context manager for `time.monotonic()` timing
-- Token record deletion in nullify-then-recreate cycle
-- Include `llm_usage` in `DELETE /documents/{id}` and `DELETE /documents/{id}/events` cascade
-- **Research flag:** Needs `/gsd-plan-phase --research-phase 1` — the Temporal replay safety design requires careful verification of deterministic ID collision boundaries and UPSERT semantics in the existing activity patterns.
+### Phase 1: Schema + LLM Prompt Design (Foundation)
 
-### Phase 2: API Aggregation Endpoints
-**Rationale:** Once token data is in the database, it needs to be queryable. This phase adds the REST endpoints for per-document token aggregation and list-level batch queries.
-**Delivers:** Token totals usable by the frontend and API consumers.
-**Features addressed:** T2 (per-document aggregation), D4 (retry tracking — attempt_number, retry_of)
-**Pitfalls avoided:** #3 (multi-record aggregation via query-time SUM), #8 (legacy document handling via coalesce + has_data), #13 (N+1 via batch query or document-record storage)
-**Key deliverables:**
-- `GET /documents/{id}/tokens` endpoint (per-doc aggregation, null-coalesced)
-- Batch token query in `GET /documents` list endpoint (`WHERE document INSIDE $docs GROUP ALL`) to avoid N+1
-- `has_data: bool` flag for legacy pre-v5.0 documents
-- 404 handling for documents with no token records
-- Attempt number recording in token records
-- **Research flag:** Standard patterns — no deeper research needed.
+**Rationale:** Every subsequent phase depends on the schema and extraction prompt existing. The event table must have `time_window`, `location_point`, and `event_participant` before any API or UI can integrate. This phase also includes the LLM prompt benchmark testing (Pitfall 5 prevention).
 
-### Phase 3: UI Token Display
-**Rationale:** Token data must be visible to users. This phase adds it to the existing vanilla-JS SPA without over-crowding the layout.
-**Delivers:** Token/cost visibility in the document detail view and LLM-call filter in the Logs tab.
-**Features addressed:** D1 (token/cost in document list), D2 (cache-hit indicator), D3 (LLM-call filter)
-**Pitfalls avoided:** #5 (table overcrowding via logs panel display), #8 (legacy display via graceful fallback), #15 (meaningless numbers via tooltips + step grouping)
-**Key deliverables:**
-- Token summary section in `logs-doc-info` panel (not new columns)
-- Single aggregated token column in document table (e.g., "1,234 / 567 | $0.02")
-- `formatTokenCount()` and `formatCost()` JS helpers
-- Step-grouped token breakdown in logs detail view (extraction chunks vs. entity resolution)
-- Tooltips on all token numbers
-- Cache-hit visual indicator (e.g., "500/1,234/567" format)
-- `?llm_only=true` filter on Logs tab with "Ver LLM" button
-- Green/yellow/red cost badges
-- "Sin datos de tokens (documento anterior a v5.0)" for legacy docs
-- **Research flag:** Standard UI patterns — no deeper research needed if following the existing SPA patterns.
+**Delivers:** Additive SurrealDB DDL (new fields on `event`, `reference`; new `event_participant` table; new indexes). Expanded `EVENT_EXTRACTION_SCHEMA` with optional structured fields (date_start, date_end, date_precision, location, participants). LLM prompt benchmark on 5+ documents verifying <10% event count change. Migration file for existing databases.
 
-### Phase 4: Cost Estimation & Retry Accounting
-**Rationale:** Cost data from OpenRouter's `usage.cost` field is optional and not always present. This phase adds fallback cost estimation from model pricing and comprehensive retry tracking.
-**Delivers:** Estimated cost for calls where `usage.cost` is absent; visibility into retry overhead.
-**Features addressed:** D4 (retry tracking — full), Pitfall #10 (cost estimation), Pitfall #11 (test brittleness)
-**Pitfalls avoided:** #7 (retry ambiguity via attempt_number + retry_of), #10 (cost via configurable pricing), #11 (brittle tests via structural assertions)
-**Key deliverables:**
-- Configurable model pricing dict (input/output/cached per-1M rates)
-- `estimate_cost()` function for fallback when `usage.cost` is absent
-- `cost_usd_estimated` and `cost_source` fields on `llm_usage` records
-- "Coste estimado" labels in UI when cost is estimated
-- `retry_of` field on token records linking retries to original attempts
-- Documented accounting policy: "totals include retry overhead"
-- Structural test assertions in Python verification scripts (not hardcoded numerical values)
-- Replay-safety e2e test (process twice without DELETE, verify identical totals)
-- **Research flag:** Needs `/gsd-plan-phase --research-phase 4` — OpenRouter pricing is model-dependent and changes over time; the estimation strategy needs validation against the user's actual OpenRouter billing data.
+**Addresses:** T1 (schema half), D1 (LLM structured time schema)
 
-### Phase 5: Pricing Sync (Optional)
-**Rationale:** Keeping model pricing up to date is a maintenance task, not a launch requirement. Phase 4's configurable pricing dict works immediately.
-**Delivers:** Automated pricing updates from OpenRouter's model list API.
-**Features addressed:** Pricing freshness
-**Pitfalls avoided:** #10 (stale cost estimates via periodic sync)
-**Key deliverables:**
-- `scripts/sync_pricing.py` — optional script fetching pricing from `https://openrouter.ai/api/v1/models`
-- Pricing cache update mechanism
-- **Research flag:** Can skip research entirely if the sync script is deferred to a future milestone.
+**Avoids:** Pitfalls 1 (schema bloat — ≤1 new table), 5 (LLM prompt regression — benchmark before merge), 10 (data migration — nullable with DEFAULT null)
+
+**Research flag:** Phase 1 needs research-phase during planning — LLM prompt engineering is empirical, benchmark results may require multiple iterations before quality stabilizes.
+
+### Phase 2: Pipeline Extension (LLM + Temporal Activities)
+
+**Rationale:** Structured event data must be extracted and stored before APIs can serve it. The LLM prompt and extraction schema expand, the storage activity handles new fields, the nullify-then-recreate cascade extends to include `event_participant` edges, and reference deduplication is added.
+
+**Delivers:** Updated `extract_events_activity` (expanded schema → LLM call). Updated `store_extraction_results_activity` (writes `time_window`, `location_point`, `location_place_id`, `event_element`, `reference_index`; RELATE `event_participant`; deduplicates references). Updated `resolve_entities_activity` (sets `location_place_id` for place entities). Extended cascade delete in `DELETE /documents/{id}` (includes `event_participant`). Reference cap in LLM prompt (max 5 per field) + deduplication before INSERT.
+
+**Uses:** dateparser (parse Spanish dates from LLM output into ISO 8601), python-dateutil (relativedelta for time window computation)
+
+**Implements:** Temporal activities component (extraction + storage + resolution)
+
+**Avoids:** Pitfalls 2 (entity resolution breakage — audit all resolution code paths), 6 (reference explosion — cap + dedup), 7 (Temporal replay — nullify extended to new record types), 9 (test coverage — write integration tests concurrently)
+
+**Research flag:** Phase 2 needs research-phase during planning — Temporal activity changes are the highest-risk code modifications; prompt engineering iteration may require multiple rounds; SurrealDB RELATE parameterization requires testing.
+
+### Phase 3: API Endpoints (Backend)
+
+**Rationale:** APIs are the data source for the frontend tabs. All new endpoints and enhanced existing endpoints must be built before the UI touches them. Follows the established router-per-resource pattern.
+
+**Delivers:** New `events.py` route module: `GET /events` (paginated + filters), `GET /events/timeline` (date range + time-ordered), `GET /persons/{id}/events` (graph traversal). Enhanced `GET /references` (new `document` + `event_element` filter params). Extended merge/split for `location_place_id`. New Pydantic models: `EventListItem`, `EventListResponse`, `TimelineEventItem`, `MapEventItem`, `PersonEventResponse`, `ReferenceListItem` (enhanced). Router registration in `api/__init__.py`.
+
+**Uses:** Existing pagination envelope pattern (`{ items, total, page, per_page, pages }`), parameterized SurrealDB queries with RecordID objects
+
+**Implements:** Events API component, References API enhancement
+
+**Avoids:** Pitfall 3 (timeline performance — JSON path index + pagination + date range filtering). Scale: timeline query <200ms at 500 events.
+
+**Research flag:** Standard patterns — skip research-phase. FastAPI route pattern is well-established in the codebase (`references.py`, `entities.py`, `documents.py` provide exact templates).
+
+### Phase 4: Frontend Tabs (UI)
+
+**Rationale:** The UI is the consumer of Phase 3 APIs. Build Timeline, Map (deferred to v6.1), and enhanced References tabs. The Map tab is listed here for architecture completeness but deferred per MVP recommendation — v6.0 UI phase delivers References + Timeline only.
+
+**Delivers:** References tab enhancement (element_field badges, grouped-by-entity view, document link navigation). Timeline tab (vis-timeline CDN load, date picker filters, chronological table with expandable rows, "N eventos sin fecha" banner). Nav bar extended with new buttons. Shared UI utilities extracted into module (deferredLoading, fetchPage, renderPagination — Pitfall 8 prevention). CSS additions for timeline.
+
+**Uses:** vis-timeline 8.5.1 standalone UMD (CDN), ISO 8601 date strings from `/events/timeline` endpoint
+
+**Implements:** SPA References tab (enhanced), SPA Timeline tab (new)
+
+**Avoids:** Pitfall 8 (UI pattern inconsistency — use `deferredLoading`, `placeholder-card`, existing tab registration pattern). "Looks Done But Isn't" checklist: verify empty states, "Sin fecha" badge, date precision rendering.
+
+**Research flag:** Phase 4 needs research-phase during planning — vis-timeline CDN integration into vanilla JS SPA has implementation details (lazy loading, date formatting, responsive layout) that benefit from spike research.
+
+### Phase 5: Integration Tests + Verification (Quality Gate)
+
+**Rationale:** Comprehensive e2e tests verify all new data structures, API endpoints, backward compatibility, and cascade delete correctness. This phase gates the v6.0 release.
+
+**Delivers:** `events-data.test.ts` (structured extraction produces correct fields), `events-api.test.ts` (endpoint shape + pagination), `timeline-api.test.ts` (date ordering + range filters), `references-enhanced.test.ts` (new filter params), `cascade-delete.test.ts` (event_participant cleanup), `backward-compat.test.ts` (old events work with new schema), `llm-schema.test.ts` (old + new responses validate), `ui-tabs.test.ts` (tabs render without JS errors). Test fixture: golden Spanish legal document (5–10 paragraphs, 2–3 events with clear dates/locations).
+
+**Uses:** Existing integration test patterns (`httpGet`, `httpPost`, `surrealQuery`, `ensureApiReady` from `tests/integration/helpers.ts`), Docker Compose services (SurrealDB, Temporal, API)
+
+**Implements:** Test infrastructure component (new test files)
+
+**Avoids:** Pitfall 9 (test coverage gaps — at minimum 1 integration test per critical path). Verify: full pipeline cycle, entity resolution with new fields, cascade delete completeness, replay safety (no duplicates).
+
+**Research flag:** Standard patterns — skip research-phase. Test patterns are identical to existing `tests/integration/` suite. Follow established TypeScript/Vitest patterns.
 
 ### Phase Ordering Rationale
 
-- **Phase 1 first** because everything depends on capturing and storing token data safely. The schema must exist, the extraction must work, and the replay-safety mechanism must be correct before any other phase has meaning.
-- **Phase 2 second** because the API layer is the bridge between storage and UI. Without aggregation endpoints, the UI has nothing to display.
-- **Phase 3 third** because the UI is the consumer of the API endpoints from Phase 2. These two phases could partially overlap (build the UI alongside the API contract).
-- **Phase 4 fourth** because cost estimation and retry tracking are enhancements on top of the core token tracking. The basic token data pipeline works without cost estimation — it just shows null-cost where `usage.cost` is absent.
-- **Phase 5 deferred** because pricing sync is a maintenance automation task. The configurable pricing dict from Phase 4 works immediately with manual updates.
+- **Linear dependency chain:** Schema → Pipeline → API → UI → Tests. Each phase consumes the previous phase's output. No phase can be parallelized because each produces data/functions the next phase reads.
+- **Pitfall prevention by phase:** Schema bloat (Phase 1), LLM regression + Temporal replay (Phase 2), timeline performance (Phase 3), UI inconsistency (Phase 4), test coverage (Phase 5). The phase ordering is dictated by dependency, but each phase includes explicit pitfall-prevention checkpoints from PITFALLS.md.
+- **MVP cut line after Phase 4:** Phases 1–4 deliver T1 + T2 + T3 + D1 = the v6.0 launch feature set. Phases 5 is the quality gate. T4 (Map) + T5 (Participant) are independent of T2/T3 and can be added in v6.1 without touching the foundation.
+- **Zero new infrastructure throughout:** All 5 phases extend existing Docker Compose services — no new containers, no new databases, no external API integrations. The stack research confirmed SurrealDB geospatial is built-in, Leaflet/vis-timeline are CDN-loadable, and date parsing is pure Python.
 
 ### Research Flags
 
-| Phase | Needs Research? | Reason |
-|-------|----------------|--------|
-| Phase 1: Token Recording | **YES** | Temporal replay safety design requires verification of: deterministic ID collision boundaries with existing SHA256 pattern, UPSERT semantics in SurrealDB Temporal context, integration with existing nullify-then-recreate cycle |
-| Phase 2: API Aggregation | No | Standard REST endpoint patterns, existing codebase patterns to follow |
-| Phase 3: UI Display | No | Standard vanilla JS SPA patterns, existing table/logs patterns to follow |
-| Phase 4: Cost & Retry | **YES** | OpenRouter pricing model validation needed — `usage.cost` field availability, model pricing change frequency, retry behavior with actual OpenRouter responses |
-| Phase 5: Pricing Sync | No | Optional maintenance script; standard HTTP + file write pattern |
+**Phases needing deeper research during planning (`/gsd-plan-phase --research-phase`):**
+- **Phase 1:** LLM prompt engineering is empirical — benchmark results on Spanish legal documents may require multiple prompt iterations before quality stabilizes. Schema design tradeoffs (properties vs. tables) need concrete query pattern validation against the existing corpus.
+- **Phase 2:** Temporal activity changes are the highest-risk code modifications — SurrealDB RELATE parameterization, nullify-then-recreate extension, and cascade delete enumeration must be verified against the specific schema changes decided in Phase 1.
+- **Phase 4:** vis-timeline CDN integration into the existing vanilla JS SPA has implementation details (lazy loading pattern, date formatting for `es` locale, responsive layout for timeline on narrow screens) that benefit from dedicated spike research.
+
+**Phases with standard patterns (skip research-phase):**
+- **Phase 3:** FastAPI route pattern is well-established in the codebase — `references.py`, `entities.py`, and `documents.py` provide exact templates. SurrealDB query patterns (FETCH, parameterized RecordID, pagination envelope) are identical to existing endpoints.
+- **Phase 5:** Integration test patterns are identical to the existing `tests/integration/` suite. TypeScript/Vitest test structure, helper functions, and Docker Compose setup are well-documented.
 
 ## Confidence Assessment
 
 | Area | Confidence | Notes |
 |------|------------|-------|
-| Stack | **HIGH** | OpenRouter `response.usage` shape confirmed via TypeScript types in `llms-full.txt`. SurrealDB schema patterns verified against existing codebase. Zero new dependencies. |
-| Features | **HIGH** | Feature taxonomy directly from OpenRouter API capabilities and existing pipeline architecture. MVP recommendation follows standard observability patterns. |
-| Architecture | **MEDIUM** | The architecture researcher recommended using `document_event_log.details` for storage, which the pitfalls researcher showed is broken (100-entry cap). The recommended architecture (separate `llm_usage` table) resolves this but needs implementation verification during Phase 1. |
-| Pitfalls | **HIGH** | 15 pitfalls identified with severity ratings, mitigations, and phase mappings. All derived from codebase analysis and Temporal/OpenRouter domain knowledge. Primary source: actual codebase behavior. |
+| Stack | HIGH | All 6 additions (dateparser, dateutil, Leaflet, vis-timeline, SurrealDB geospatial, CDN pattern) verified via official Context7 docs and version checks. No speculation — every version and CDN URL confirmed against upstream sources. Existing codebase confirmed vanilla JS SPA pattern and CDN compatibility. |
+| Features | HIGH | Feature research verified against existing codebase (schema, llm.py, activities.py, index.html), competitors (Aleph, TimelineJS, Graph Commons), and official library docs (Leaflet API ref, vis-timeline docs, Leaflet.markercluster README). Feature dependency graph derived from codebase architecture, not speculation. Anti-features justified against project constraints (no build step, no external services) documented in PROJECT.md. |
+| Architecture | HIGH | Component boundaries, data flows, schema changes, API designs, and build order derived from direct code inspection of all existing source files (schema.surql 435 lines, activities.py 2341 lines, index.html 2277 lines, routes/*.py). Backward compatibility strategy verified against existing data patterns. Integration patterns (router-per-resource, SPA tab extension, additive schema evolution) verified by reading the code that implements them. |
+| Pitfalls | HIGH | All 10 pitfalls derived from direct code inspection of the complete existing system (not speculation about what might exist). Each pitfall includes the exact file:line reference for the code path it concerns, the prevention checklist, warning signs, and phase-to-address mapping. Temporal replay safety and cascade delete enumeration verified by reading the actual nullify-then-recreate code in activities.py and the 9-step cascade in documents.py. |
 
-**Overall confidence:** HIGH — the core approach is well-understood, the conflicts have been resolved with clear rationale, and the pitfalls research provides robust guardrails. The only uncertainty is around OpenRouter's `usage.cost` field availability (captured as a gap below).
+**Overall confidence:** HIGH — research was comprehensive and grounded in actual codebase inspection, not external speculation. All stack technologies verified against official sources. Architecture decisions validated against existing patterns in the codebase.
 
 ### Gaps to Address
 
-- **OpenRouter `usage.cost` field availability:** STACK.md says `cost?: number` is optional in the response type. PITFALLS.md says OpenRouter does not return per-call cost at all. These may reflect different versions of the API. **Resolution:** Capture `usage.cost` when present; fall back to model-pricing estimation when absent. Phase 1 stores `cost_source` to distinguish. Phase 4 validates against actual billing data.
-
-- **Deterministic ID collision with existing SHA256 pattern:** The `ProcessingLogger` already uses SHA256 for log entry IDs. The `llm_usage` table needs its own ID namespace. **Resolution:** Prefix the hash with `"llm:"` or use a separate hash domain (`document_id:step_name:chunk_index` is naturally distinct from the log entry hash composition).
-
-- **`time.monotonic()` precision sufficiency:** The round-trip time for a typical LLM call is 5-30 seconds, so `time.monotonic()` at millisecond precision is more than adequate. This is not a real gap — just noting that sub-millisecond precision is neither needed nor achievable over HTTP.
-
-- **Model pricing change frequency:** Phase 4's configurable pricing dict works for initial launch. The frequency of OpenRouter pricing changes determines whether Phase 5 (sync script) becomes valuable. **Resolution:** Start with manual config; add sync script if pricing changes more than quarterly.
+- **Nominatim geocoding reliability for Spanish court locations:** FEATURES.md notes that Nominatim may not know rural/small Spanish locations. While geocoding is deferred to v6.1, a spike to test Nominatim against 20 real Spanish court location names from the test corpus would validate (or invalidate) the map feature feasibility before committing to it.
+- **vis-timeline performance with large datasets:** ARCHITECTURE.md scalability table covers 100→10K→100K events at the database/API level, but vis-timeline's rendering performance with 500+ items in a single timeline view is untested. A spike with synthetic event data (500 events spanning 5 years) would confirm UI responsiveness.
+- **LLM prompt benchmark dataset:** PITFALLS.md recommends benchmarking the expanded extraction schema against 5+ documents. The existing test corpus should be augmented with documents that have explicit dates, multiple locations, and clear participant roles to serve as a regression benchmark for Phase 1 prompt engineering.
+- **SurrealDB MTREE index behavior with FLEXIBLE objects:** ARCHITECTURE.md recommends MTREE DIMENSION 2 index on `location_point`, but SurrealDB documentation on MTREE indexing of FLEXIBLE object fields where 90% of records have `location_point = null` is sparse. Verify that null-heavy indexes don't cause performance degradation.
 
 ## Sources
 
 ### Primary (HIGH confidence)
-- **STACK.md research**: OpenRouter TypeScript `ResponseUsage` type (llms-full.txt lines 18870-18920), current `llm.py`, current `schema.surql`, current `static/index.html`
-- **FEATURES.md research**: OpenRouter Usage Accounting docs, OpenRouter Prompt Caching guide, existing codebase
-- **ARCHITECTURE.md research**: Existing codebase (`llm.py`, `processing_log.py`, `schema.surql`), OpenRouter usage docs
-- **PITFALLS.md research**: Codebase analysis (`llm.py`, `activities.py`, `processing_log.py`, `schema.surql`, `api/models.py`, `api/routes/documents.py`, `static/index.html`), OpenRouter chat completions format
+- **Leaflet.js:** Context7 `/websites/leafletjs`, official download page — v1.9.4 (May 2023), latest stable, 42KB gzipped
+- **vis-timeline:** Context7 `/visjs/vis-timeline`, GitHub releases — v8.5.1 (May 2026), standalone UMD confirmed, Spanish locale fix in v8.4.1
+- **dateparser:** Context7 `/scrapinghub/dateparser` — Spanish date parsing, `search_dates()` with `languages=['es']`
+- **python-dateutil:** Context7 `/dateutil/dateutil` — `parser.parse()`, `relativedelta`
+- **SurrealDB geospatial:** Context7 `/websites/surrealdb` — `type::point()`, `geo::distance()`, MTREE spatial index, geometry types
+- **Existing codebase:** `schema.surql` (435 lines), `activities.py` (2341 lines), `workflows.py` (246 lines), `index.html` (2277 lines), `api/routes/` (documents.py 1235 lines, entities.py 813 lines, references.py 171 lines), `llm.py`, `PROJECT.md`, `ROADMAP.md`, `pyproject.toml` — all verified by direct file inspection
 
 ### Secondary (MEDIUM confidence)
-- OpenRouter model list API at `/api/v1/models` — referenced for pricing sync (Phase 5) but not verified at time of research
-- `httpx` event hooks — alternative timing approach (Pitfall #6) — available but not currently imported
+- **OpenStreetMap Nominatim:** `https://nominatim.openstreetmap.org` — geocoding service known from training data, not verified with live API call. Free, rate-limited to 1 req/sec.
+- **Leaflet.markercluster:** GitHub README — v1.4.1, 4K+ stars, spiderfy on click. Not verified with live CDN fetch.
+- **Citation analysis for legal documents:** Wikipedia article — used for competitive analysis context, not technical implementation.
 
 ### Tertiary (LOW confidence)
-- None — all research findings were cross-referenced against actual codebase behavior or official OpenRouter documentation
+- **Competitor analysis (Aleph, TimelineJS, Graph Commons):** Based on public documentation and product descriptions, not hands-on evaluation. Used only for feature differentiation analysis, not technical decisions.
 
 ---
-
 *Research completed: 2026-06-04*
 *Ready for roadmap: yes*

@@ -1,396 +1,426 @@
-# Feature Landscape: LLM Cost & Usage Tracking
+# Feature Landscape: Event-Centric Data Quality & Investigative UI
 
-**Domain:** Per-LLM-call token/cost tracking for document extraction pipelines
+**Domain:** Structured event data extraction from Spanish legal documents with timeline, map, and participant-based investigative browsing
 **Researched:** 2026-06-04
-**Mode:** Ecosystem Research
+**Confidence:** HIGH (schema/patterns verified against existing codebase + leaflet/vis-timeline domain docs)
 
 ## Table Stakes
 
-Features users expect in any production LLM pipeline. Missing = pipeline feels unobservable.
+Features users expect for an event investigation tool. Missing = product feels like a flat list, not an investigative analysis environment.
 
-### T1: Per-LLM-Call Token Accounting
+### T1: Structured Event Data Model — Time Window + N References per Field
 
-**Why Expected:** Without per-call token counts, you cannot attribute costs, detect regressions (e.g., prompt bloat), or optimize chunk sizes. Every LLM response from OpenRouter returns usage data — not capturing it wastes free observability.
+**Why Expected:** The current schema (`espacio`, `tiempo`, `humanos`, `objetos` as flat strings) can't answer basic investigative questions: "What events occurred between March and June 1942?" or "Show me the document text that proves this location." Every event analysis tool needs structured time, linked entities, and traceable evidence.
 
-**Complexity:** Low
+**Complexity:** HIGH (touches LLM prompts, schema, extraction pipeline, entity resolution, API, UI)
 
-**Token types to capture from OpenRouter response:**
+**What changes:**
 
-| Field | Source | Type | Meaning |
-|-------|--------|------|---------|
-| `prompt_tokens` | `response.usage.prompt_tokens` | integer | Input tokens billed (prompt text + system message + schema) |
-| `completion_tokens` | `response.usage.completion_tokens` | integer | Output tokens generated (model response) |
-| `total_tokens` | `response.usage.total_tokens` | integer | prompt + completion (the billing total) |
-| `cached_tokens` | `response.usage.prompt_tokens_details.cached_tokens` | integer | Tokens read from prompt cache (cache hit; zero on cache miss) |
-| `cost` | `response.usage.cost` | float | Total cost charged to account in USD (or credits) |
-| `reasoning_tokens` | `response.usage.completion_tokens_details.reasoning_tokens` | integer | Thinking/reasoning tokens (model-dependent) |
+| Current (v5.x) | v6.0 Target |
+|---|---|
+| `event.tiempo` = free-text string (e.g. "el 15 de marzo de 1942") | `event.time_start` = structured datetime (nullable ISO 8601), `event.time_end` = nullable ISO 8601, `event.tiempo_text` = original free-text |
+| `event.espacio` = free-text string | `event.location_entity` = `record<canonical_entity>` (links to place-type canonical entity). `event.espacio_text` = original free-text preserved |
+| `event.humanos` = free-text string | `event.participants` = array of `record<canonical_entity>` (links to person-type entities via junction table). `event.humanos_text` = original free-text preserved |
+| `event.objetos` = free-text string | `event.objects` = array of `record<canonical_entity>` (links to object-type entities via junction table). `event.objetos_text` = original free-text preserved |
+| References linked only to event (flat array) | References linked to specific event elements: each reference carries an `element_target` indicating which event field it substantiates (`que_paso`, `tiempo`, `espacio`, `humanos`, `objetos`) — already partially in schema via `reference_type`, needs strengthening with `element_field` + `element_value` to connect reference to the specific extracted value it verifies |
+| No minimum references | **N-references minimum:** `que_paso` requires at least 1 reference; `tiempo` requires at least 1 if non-null; `espacio` requires at least 1 if non-null; `humanos` requires at least 1 if non-null; `objetos` requires at least 1 if non-null |
 
-**What to track, minimally:** `prompt_tokens`, `completion_tokens`, `total_tokens`, `cached_tokens`, `cost`
+**Schema additions needed:**
 
-**When to capture:** In `OpenRouterProvider._parse_choice()` or alongside it — extract usage from `data["usage"]` before returning the parsed content. Return both `parsed_content` and `usage_metadata`.
+```surql
+-- Event table: new structured fields
+DEFINE FIELD OVERWRITE tiempo ON TABLE event TYPE string | null
+    COMMENT 'Original free-form time text from extraction (human-readable). Structured time in time_start/time_end.';
+DEFINE FIELD time_start ON TABLE event TYPE datetime | null
+    COMMENT 'Earliest time boundary of the event (ISO 8601 datetime; null when time cannot be parsed)';
+DEFINE FIELD time_end ON TABLE event TYPE datetime | null
+    COMMENT 'Latest time boundary of the event (null for point-in-time events without duration)';
 
-**Confidence:** HIGH — Verified from [OpenRouter Usage Accounting docs](https://openrouter.ai/docs/cookbook/administration/usage-accounting)
+DEFINE FIELD OVERWRITE espacio ON TABLE event TYPE string | null
+    COMMENT 'Original free-form location text from extraction. Canonical linking via event_entity_link.';
+DEFINE FIELD OVERWRITE humanos ON TABLE event TYPE string | null
+    COMMENT 'Original free-form participant text from extraction. Canonical linking via event_entity_link.';
+DEFINE FIELD OVERWRITE objetos ON TABLE event TYPE string | null
+    COMMENT 'Original free-form object text from extraction. Canonical linking via event_entity_link.';
 
-### T2: Per-Document Token Aggregation
+-- Reference table: element-level targeting
+DEFINE FIELD element_field ON TABLE reference TYPE string | null
+    COMMENT 'Which event field this reference substantiates: que_paso, tiempo, espacio, humanos, objetos';
+DEFINE FIELD element_value ON TABLE reference TYPE string | null
+    COMMENT 'The extracted value this reference asserts (for audit: "reference says X, therefore field is X")';
+DEFINE FIELD time_parsed_start ON TABLE reference TYPE datetime | null
+    COMMENT 'When reference_type=tiempo, the machine-parsed datetime from verbatim_text (null when unparseable)';
+DEFINE FIELD time_parsed_end ON TABLE reference TYPE datetime | null
+    COMMENT 'When reference_type=tiempo, the machine-parsed end datetime (null for point-in-time)';
 
-**Why Expected:** A document may trigger multiple LLM calls (N extraction chunks + 1 entity resolution batch). Per-document totals answer "how much did this document cost to process?"
-
-**Complexity:** Medium
-
-**Expected behavior:**
-- Sum `prompt_tokens` across all LLM calls for a document → `input_tokens_total`
-- Sum `completion_tokens` across all LLM calls → `output_tokens_total`
-- Sum `total_tokens` across all LLM calls → `tokens_total`
-- Sum `cost` across all LLM calls → `cost_total`
-- Sum `cached_tokens` (non-cache-hit calls contribute 0) → `cached_tokens_total`
-- Track call count → `llm_call_count`
-
-**Aggregation strategies:**
-
-| Strategy | How | When Appropriate |
-|----------|-----|------------------|
-| **Post-hoc query** | Aggregate via SurrealDB `GROUP BY document` on `document_event_log.details` | During READ (GET /documents/{id}) — no extra write cost |
-| **Write-time computation** | Compute per-call totals in Temporal activity and store on document record | When document-level totals need to be fast-filterable. Watch for Temporal replay idempotency |
-| **Materialized view** | Periodic aggregation query, cache result | At scale (>10K documents) — unnecessary for current project |
-
-**Recommendation:** Use post-hoc query aggregation via SurrealDB JSON path extraction from `document_event_log.details`. The existing `details` field is FLEXIBLE and already suitable. No schema changes needed.
-
-**Confidence:** HIGH — matches standard observability patterns
-
-### T3: Processing Time per LLM Call
-
-**Why Expected:** Token counts alone don't tell you about latency. Processing time is essential for monitoring model performance and detecting slowdowns.
-
-**Complexity:** Low
-
-**Expected capture:**
-```python
-import time
-start = time.monotonic()
-# ... LLM call ...
-elapsed_ms = (time.monotonic() - start) * 1000
+-- Junction table: event_participant (links event -> canonical_entity person)
+DEFINE TABLE event_participant SCHEMAFULL
+    COMMENT 'Junction linking an event to a person-type canonical entity (participant relationship)';
+DEFINE FIELD event ON TABLE event_participant TYPE record<event>;
+DEFINE FIELD entity ON TABLE event_participant TYPE record<canonical_entity>;
+DEFINE FIELD role ON TABLE event_participant TYPE string | null
+    COMMENT 'Role in event: subject, object, witness, organization, etc.';
+DEFINE FIELD created_at ON TABLE event_participant TYPE datetime DEFAULT time::now() READONLY;
 ```
 
-**Where to capture:** Wrap the LLM call in `OpenRouterProvider.extract_events()` and `resolve_references()` — timer around `await client.post()`. Include `duration_ms` in the usage metadata returned alongside parsed content.
+**LLM prompt changes needed:**
+- Ask for structured time (`dd/mm/yyyy` or ISO 8601 format) in addition to free-form text
+- Require N references per non-null field (at minimum: 1 per field; ideally 1+ for each discrete entity mentioned in humanos/objetos)
+- Use `element_field` to tag each reference with which event field it substantiates
+- Return structured time as `time_start`/`time_end` strings in extraction JSON
 
-**Confidence:** HIGH — standard practice
+**Dependencies:** Schema evolution (DDL), LLM prompt rewrite, extraction pipeline update, entity resolution to link references to canonical entities
 
-### T4: Storage in Existing document_event_log Infrastructure
+**Confidence:** HIGH — the existing `event_entity_link` table and `reference_type` enum already provide the architectural foundation. The gap is data quality (structured time, element-level reference targeting, minimum references).
 
-**Why Expected:** The project already has a scalable, replay-safe per-document log table with a flexible `details` field. Storing LLM call data here avoids adding a new table or schema migration.
+### T2: References as First-Class UI Objects
 
-**Complexity:** Low
+**Why Expected:** The existing system stores references with full provenance (verbatim text, character offsets, page numbers, canonical entity links, document links) but the UI only shows them indirectly through entity counts. A researcher investigating "what evidence supports this event?" needs to browse references directly.
 
-**How it fits:**
+**Complexity:** MEDIUM (mostly new UI tab + API endpoint; data already exists)
 
-The `ProcessingLogger.log()` method already accepts:
-- `document_id` — links to the document
-- `step_name` — e.g. "extract_events" or "resolve_references"
-- `severity` — "info" for normal LLM calls, "warning" for high-retry or slow calls
-- `message` — human-readable description
-- `details: dict | None` — FLEXIBLE object — **perfect for LLM usage data**
+**What a reference tab must show:**
 
-**Suggested event schema per LLM call:**
+| Data | Source Field | Why |
+|------|-------------|-----|
+| Verbatim text (highlighted excerpt) | `reference.verbatim_text` | Core evidence — the actual words from the document |
+| Surrounding context (~50 chars before/after) | Computed from `document.text_content` + `span_start`/`span_end` | Shows the reference in its document context |
+| Source document link (clickable) | `reference.event → event.document` | Navigate to parent document |
+| Page number (if PDF) | `reference.page_number` | Physical location in source |
+| Reference type badge | `reference.reference_type` | Color-coded: espacio=green, tiempo=blue, humanos=orange, objetos=purple |
+| Linked canonical entity (clickable) | `reference.canonical_entity` | Navigate to resolved entity |
+| Resolution confidence | `reference.resolution_confidence` | Score badge (0.0–1.0) |
+| Parent event link | `reference.event` | Navigate to parent event |
+| Element field tag (v6.0) | `reference.element_field` | Show whether this reference asserts the location, time, participants, or description |
 
-```python
-details = {
-    "llm_call": {
-        "model": "deepseek/deepseek-v4-flash",
-        "prompt_tokens": 1234,
-        "completion_tokens": 567,
-        "total_tokens": 1801,
-        "cached_tokens": 0,
-        "cost": 0.0085,
-        "duration_ms": 4230,
-        "chunk_index": 0,          # for extract_events with chunking
-        "total_chunks": 5,         # for extract_events with chunking
-    }
-}
+**Navigation flows from References tab:**
+- Click reference → jump to parent event detail
+- Click document → open document in Documents tab
+- Click canonical entity → open entity in Entities tab
+- Hover verbatim → show full context tooltip
+
+**API endpoint needed:** `GET /references?document_id=X&entity_id=Y&reference_type=Z&page=N&per_page=20` — paginated, filterable list of references.
+
+**Dependencies:** New REST API endpoint, new UI tab in vanilla JS SPA, cross-tab navigation wiring. Data ALREADY EXISTS in the `reference` table.
+
+**Confidence:** HIGH — existing reference table has all necessary fields. The UI tab is a new view over existing data plus one API endpoint.
+
+### T3: Timeline Visualization
+
+**Why Expected:** A document collection with hundreds of events spanning years is illegible as a flat list. A timeline lets the researcher see temporal patterns at a glance: clusters of activity, gaps, temporal relationships between events.
+
+**Complexity:** MEDIUM (CDN-loaded vis-timeline library, new API endpoint, new UI tab)
+
+**Recommended library: vis-timeline (vis.js)**
+- Mature, MIT-licensed, 4K+ GitHub stars
+- Loadable from CDN — no npm, no build step (consistent with project constraint)
+- Supports: item ranges (start+end dates), clustering for dense periods, zoom (pinch/scroll), click-for-detail, groups (by document or event type)
+- CSS-customizable items (colors, badges, tooltips)
+- Handles fuzzy dates gracefully (items without `end` date render as point-in-time boxes)
+
+**What the timeline must show:**
+
+| Feature | Implementation | Rationale |
+|---------|---------------|-----------|
+| Event items as clickable bars | Each event = one vis-timeline item with `start` = `event.time_start`, `end` = `event.time_end`, `content` = first 80 chars of `que_paso` | Scan events chronologically |
+| Date range filtering | `min`/`max` options passed to vis-timeline; filter controls above timeline (start date, end date) | Narrow investigation to specific time window |
+| Zoom levels | Built-in vis-timeline zoom via scroll wheel — auto-adjusts time scale from years → months → days | Navigate from decade overview to daily detail |
+| Color-coded by document/type | `className` per item based on source document or event type | Visual grouping |
+| Event detail on click | `timeline.on('click', ...)` → open event detail panel or modal showing full event data | Drill into specific event |
+| Cluster dense periods | vis-timeline `cluster: true` option — groups overlapping items, click to expand | Handle years with 100+ events |
+| Groups by document | vis-timeline groups feature — one row per source document, events stacked within | Compare documents temporally |
+
+**API endpoint needed:** `GET /events/timeline?document_id=X&time_start=YYYY-MM-DD&time_end=YYYY-MM-DD&per_page=1000` — returns events with time_start, time_end, first 80 chars of que_paso, document filename, and event ID. Large `per_page` because timeline needs all events in the visible range — no pagination, just time filtering.
+
+**Fallback for events without structured time:** Events where `time_start` is null (LLM couldn't parse a date) are excluded from the timeline. A banner shows: "N eventos sin fecha determinada (no se muestran)" with a count.
+
+**Dependencies:** T1 (structured time fields on events); T1 must complete first, or timeline shows only events that have `time_start` set.
+
+**Confidence:** HIGH — vis-timeline is mature, CDN-loadable, and has extensive documentation verified via official docs fetch. The only risk is that Spanish legal documents may have ambiguous/imprecise dates (e.g., "a mediados de marzo" → parsed to "1942-03-15" with low confidence). Mitigation: store `time_confidence` (0.0–1.0) on each time reference, show confidence indicator on timeline items.
+
+### T4: Map View for Geolocated Events
+
+**Why Expected:** Legal events occur in physical locations — courthouses, crime scenes, jurisdictions. A map view reveals spatial patterns: which areas have the most activity, where specific persons were active, etc.
+
+**Complexity:** MEDIUM-HIGH (requires geocoding places, CDN-loaded Leaflet, new API endpoint, new UI tab)
+
+**Recommended library: Leaflet.js + Leaflet.markercluster**
+- De facto standard for interactive web maps (43K+ GitHub stars)
+- CDN-loadable (unpkg) — no npm, no build step
+- Leaflet.markercluster plugin (4K+ stars): groups nearby markers into numbered clusters, click to expand, spiderfy on click (shows all overlapping markers with connecting lines)
+- Tile layer: OpenStreetMap (free, no API key) or any WMTS provider
+- Vanilla JS API (L.map(), L.marker(), L.popup())
+
+**What the map must show:**
+
+| Feature | Implementation | Rationale |
+|---------|---------------|-----------|
+| Event markers on map | Each event with a geocoded place → one `L.marker([lat, lng])` with popup showing event summary | Spatial browsing |
+| Marker clustering | `L.markerClusterGroup()` — near markers collapse into numbered circles; click to expand; spiderfy at max zoom | Handle dense areas (courthouses with 50+ events) |
+| Click-for-detail popup | `marker.bindPopup('<div>que_paso, fecha, lugar, participantes</div>')` with links to event | Quick event preview |
+| Filter by entity | API parameter `?entity_id=X` to show only events involving a specific person or place | Investigation workflow |
+| Color-coded by event type/document | Custom `L.divIcon` with colored CSS classes | Visual grouping |
+| Fit bounds on load | `map.fitBounds(L.latLngBounds(all_markers))` — center and zoom to show all events | Immediate spatial overview |
+
+**Geocoding strategy:**
+
+| Approach | When Used | Confidence |
+|----------|----------|------------|
+| Canonical entity `properties.coordinates` | If a place-type canonical entity has `{lat: 40.4168, lng: -3.7038}` in its properties | HIGH — human-curated |
+| Nominatim geocoding at entity creation | When a new place entity is created, batch-geocode the `name` via Nominatim API (rate-limited: 1 req/sec, free, OpenStreetMap) | MEDIUM — Nominatim returns results for known places |
+| Manual override via properties | User can edit canonical entity properties to set coordinates | HIGH — user-corrected |
+| Unknown/unlocated | Event omitted from map with count in banner: "N eventos sin ubicación" | N/A |
+
+**API endpoint needed:** `GET /events/map?document_id=X&entity_id=Y&time_start=...&time_end=...&per_page=2000` — returns events with geocoded coordinates (joined from place-type canonical entity `properties.coordinates`), event summary, and entity links.
+
+**Dependencies:** T1 (canonical entity links for places). Also needs: batch geocoding script for existing place entities (one-time migration). The `canonical_entity.properties` FLEXIBLE field already supports storing coordinates — no schema change needed for the data, only for writing coordinates to it.
+
+**Confidence:** HIGH — Leaflet is battle-tested. The geocoding is the riskiest part: Nominatim may not know rural/small Spanish locations. Mitigation: store geocoding source and confidence in `properties`, allow manual correction.
+
+### T5: Participant-Based Event Listing
+
+**Why Expected:** An investigator asks "what events involve Person X?" The current system can't answer this because `humanos` is a free-text string, not linked to canonical entities. Once T1 links participants to canonical entities, a participant view becomes a core investigative workflow.
+
+**Complexity:** MEDIUM (new API endpoint + new UI tab; depends on T1 for entity linking)
+
+**What the participant listing must show:**
+
+| Feature | Implementation |
+|---------|---------------|
+| Filter by person entity | Dropdown or search to select a person-type canonical entity → show all events where they appear |
+| Event list for selected person | Table of events sorted by time, showing: date, location, first 120 chars of description, source document |
+| Cross-reference with places | "Also present at: Place A (3 events), Place B (2 events)" — shows the places this person appears at |
+| Cross-reference with other people | "Also involved with: Person B (5 shared events), Person C (2 shared events)" — shows co-occurrence |
+| Document provenance | Each event row links to source document |
+| Export/print | Copy event list as CSV or Markdown (simple `textContent` export, no library needed) |
+
+**API endpoints needed:**
+- `GET /events?participant_id=X&per_page=50` — paginated events involving a person entity
+- `GET /entities/{id}/cooccurrences` — entities that appear together with the given entity in events (sorted by frequency)
+
+**Query pattern (SurrealDB):**
+```surql
+SELECT * FROM event_participant WHERE entity = $person_id 
+  FETCH event, event.document;
 ```
 
-**LLM call types to log:**
-- `step_name: "extract_events"` — one entry per chunk (multiple per document)
-- `step_name: "resolve_references"` — one entry per resolution batch (typically 1 per document)
-- `step_name: "resolve_entities_with_search"` — one entry per search-first resolution batch
+**Dependencies:** T1 (event_participant junction table populated during extraction and entity resolution)
 
-**What NOT to store in details:** The full prompt/response text (too large, not useful for cost tracking). Log that separately if needed later.
-
-**Confidence:** HIGH — directly leverages existing Phase 15 infrastructure
+**Confidence:** HIGH — the junction pattern (`event_participant`) is identical to the existing `event_entity_link` pattern. The query is a simple join-fetch.
 
 ## Differentiators
 
-Features that distinguish this implementation. Not expected but valuable.
+Features that distinguish this tool from generic document search. Not required for functional completeness, but transform it from "document processor" to "investigative analysis platform."
 
-### D1: Cost Column in Document List Table
+### D1: LLM-Extracted Structured Time with Confidence
 
-**Value Proposition:** At-a-glance "which documents cost the most to process" without clicking into logs.
+**Value Proposition:** Unlike tools that rely on regex date parsing (brittle with Spanish free-form dates like "el día de San Juan del año 1942" or "a principios de la primavera"), the LLM itself parses the date during extraction and provides a structured datetime PLUS a confidence score and the original text.
 
-**Complexity:** Medium
+**Complexity:** LOW (incremental change to existing LLM extraction prompt — add fields to the JSON Schema)
 
-**Implementation options:**
-
-| Option | Complexity | Cost | Notes |
-|--------|------------|------|-------|
-| **Query-time aggregation** in GET /documents endpoint | Medium | 1 extra DB query per page | JOIN/SUBQUERY to sum `details.llm_call.cost` from `document_event_log` |
-| **Storage on document record** | High | Schema change | Add `total_cost`, `total_prompt_tokens`, `total_completion_tokens` fields to document table. Must recompute on reprocess |
-| **Hidden log details column** with expandable row | Low | No schema change | Next to existing `Acciones` column, reuse log-details expand pattern |
-
-**Recommendation:** Start with hidden expandable row (lowest risk, zero schema change). Add cost column to table headers only if users request it.
-
-### D2: Cache-Hit Indicator in Token Display
-
-**Value Proposition:** Shows users they're getting "free" tokens from caching, making the system feel optimized rather than wasteful.
-
-**Complexity:** Low
-
-**Display format:** `[cached]/input/output` — e.g., `500/1,234/567` means 500 cached + 1,234 input + 567 output tokens.
-
-**When `cached_tokens > 0`:** The `prompt_tokens` field still reports the full input count (for billing tracking), but the cache saved the cost. Display `cached_tokens` separately to surface savings.
-
-**Semantics clarification:**
-- `cached_tokens` = prompt tokens that were read from an existing cache entry (saved cost)
-- These are NOT deducted from `prompt_tokens` — `prompt_tokens` is the full input size
-- On a cache HIT, `prompt_tokens` = `completion_tokens` = `total_tokens` = `cost` = 0 (OpenRouter response caching). In this case, the document was previously processed identically and the entire response is free.
-- On a cache MISS with prompt caching, `prompt_tokens` is the full count, `cached_tokens` = 0, and the provider may create a cache entry for future calls.
-
-**Confidence:** HIGH — Verified from OpenRouter docs: "Cache hits are free. No tokens are consumed and all billable usage counters are reported as 0." and usage object shows cached_tokens separately.
-
-### D3: Hidden Logs Tab Integration
-
-**Value Proposition:** All LLM cost/usage data is already in the processing logs. Adding a dedicated "Cost" tab or LLM-call filter to the hidden Logs tab makes data discoverable.
-
-**Complexity:** Low
-
-**Approach:** Add `?llm_only=true` filter to GET /documents/{id}/logs that filters `step_name IN ['extract_events', 'resolve_references']`. Wire to a "Ver LLM" button in the document row.
-
-### D4: Retry/Error Tracking in LLM Call Metadata
-
-**Value Proposition:** The Temporal workflow already retries on failure (max_attempts=3). Tracking which calls retried and why provides visibility into model reliability.
-
-**Complexity:** Low
-
-**Add to details:**
-```python
-details = {
-    "llm_call": {
-        ...
-        "attempt": 1,       # current attempt number
-        "max_attempts": 3,  # max retries configured
-        "retry_of": None,   # previous attempt's log entry ID if this is a retry
-    }
+**Implementation:** Add to the extraction schema:
+```json
+{
+  "tiempo": "a principios de marzo de 1942",
+  "tiempo_parsed": {
+    "start": "1942-03-01",
+    "end": "1942-03-10",
+    "precision": "month",
+    "confidence": 0.7
+  }
 }
 ```
 
-**Confidence:** MEDIUM — standard retry tracking pattern
+The LLM outputs its best guess for structured time alongside verbatim text. The `precision` field indicates whether the LLM parsed to `day`, `month`, or `year` granularity. The `confidence` field tells the user and the timeline how reliable this date is.
+
+**Storage:** `event.time_start` (datetime), `event.time_end` (datetime), `event.time_precision` (string: "day"/"month"/"year"), `event.time_confidence` (float 0.0–1.0). The original `tiempo` text is preserved.
+
+**Confidence:** HIGH — uses existing LLM extraction infrastructure with a schema expansion. The LLM is already reading Spanish legal text; asking it to also output an ISO 8601 date is a natural extension.
+
+### D2: Audit Trail — Reference → Entity → Event → Document (Chain of Evidence)
+
+**Value Proposition:** Every piece of data is traceable. Click any entity → see all references that support that entity → click a reference → jump to the exact character offset in the source document. This "chain of evidence" navigation is what users expect from legal research tools (see Wikipedia article on citation analysis for legal documents). No other open-source Spanish legal document tool provides this.
+
+**Complexity:** MEDIUM (cross-tab navigation in vanilla JS SPA + enriched entity detail view)
+
+**Navigation chain:**
+```
+Entity (Entities tab) 
+  → click "Referencias" count 
+  → filtered References tab showing all references linked to this entity
+    → click reference verbatim text
+    → jump to parent document with the reference highlighted (scroll to page + offset)
+      OR jump to parent event to see full context
+```
+
+**Implementation:** 
+- Each entity row in Entities tab gains a clickable reference count
+- References tab supports entity filter (`?entity_id=X`)
+- Document view supports scroll-to-offset with text highlighting (simple `window.find()` or `scrollIntoView` on a highlighted span)
+- Breadcrumb navigation: "Documento X > Evento Y > Referencia Z"
+
+**Dependencies:** T2 (References tab), existing entity tab, existing document detail view
+
+**Confidence:** HIGH — existing data model already supports this navigation via foreign keys; only UI wiring needed.
+
+### D3: Co-occurrence Network in Participant View
+
+**Value Proposition:** Beyond listing events for a person, show WHO else appears with them, WHERE, and how often. This reveals relationships that aren't explicit in any single document but emerge across the corpus.
+
+**Complexity:** MEDIUM (analytics query + UI panel)
+
+**What it shows:**
+- "Persona X aparece con:" → ranked list of other persons, with event count
+- "Persona X aparece en:" → ranked list of places, with event count
+- "Persona X aparece en fechas:" → time range (earliest–latest event)
+
+**Query:**
+```surql
+SELECT entity.name, count() AS event_count 
+FROM event_participant 
+WHERE event IN (
+  SELECT VALUE event FROM event_participant WHERE entity = $person_id
+) AND entity != $person_id
+GROUP BY entity 
+ORDER BY event_count DESC 
+LIMIT 20;
+```
+
+**Dependencies:** T1 (event_participant table), T5 (participant view)
+
+**Confidence:** MEDIUM — query pattern is straightforward SurrealDB aggregation. Risk: performance with 10K+ events. Mitigation: LIMIT 20, index on event_participant columns.
 
 ## Anti-Features
 
-Features to explicitly NOT build.
+Features to explicitly NOT build. Each has a surface-appealing rationale but creates disproportionate complexity or conflicts with project constraints.
 
-### A1: Real-Time Token Streaming Display
+### A1: Full GIS / Geospatial Queries
 
-| Why Avoid | What to Do Instead |
-|-----------|-------------------|
-| Non-streaming LLM calls (current pipeline calls are batch). Streaming adds complexity for zero UX benefit since the pipeline is async/workflow-based. | Post-hoc aggregation in document list is sufficient. |
+| Why Requested | Why Problematic | Alternative |
+|--------------|----------------|-------------|
+| "Show me events within 50km of point X" or "draw a polygon and find events inside" | Requires spatial indexes (SurrealDB supports `GEOMETRY` type but not yet well-documented for complex queries), adds tile server dependency, and dramatically increases complexity. The project is a single-user investigative tool, not a GIS platform. | Marker clustering on Leaflet provides spatial grouping at the UI level. The `canonical_entity.properties.coordinates` store lat/lng as JSON floats — simple, queryable for "same place" lookups. Use OpenStreetMap tiles (free, no key). |
 
-### A2: Per-Request Cost Charts / Graphs
+### A2: Calendar Recurrence / RRULE
 
-| Why Avoid | What to Do Instead |
-|-----------|-------------------|
-| Vanilla JS SPA with no charting library. Adding Chart.js or similar increases page weight and complexity. The user needs table-level numbers, not trends. | Tabular display with sort-by-cost is sufficient for current needs. |
+| Why Requested | Why Problematic | Alternative |
+|--------------|----------------|-------------|
+| "This event happens every Tuesday" or "this is an annual court session" → add recurrence rules | Spanish legal events are discrete (case hearings, rulings, filings) — not recurring events. Adding iCalendar/RRULE parsing would require: RRULE implementation, recurrence expansion for timeline view, handling edge cases (exceptions, end dates). Over-engineered for the domain. | Each event is a standalone record. If the LLM extracts a repeating event, it should create separate event records (one per occurrence) or note the pattern in `que_paso` text. The timeline can visually suggest patterns without recurrence logic. |
 
-### A3: Token Usage Budget / Threshold Alerts
+### A3: Real-Time Collaboration
 
-| Why Avoid | What to Do Instead |
-|-----------|-------------------|
-| Single-user research tool. Budgeting only makes sense in multi-user or production billing scenarios. | Defer indefinitely per project scope. |
+| Why Requested | Why Problematic | Alternative |
+|--------------|----------------|-------------|
+| "Multiple investigators should co-browse events" | Requires WebSocket infrastructure, authentication (project has none), conflict resolution, presence indicators. This is a single-user research tool; the data is processed offline via Temporal workflows. | Already documented in Out of Scope in PROJECT.md. No change. |
 
-### A4: Prompt / Response Content Storage
+### A4: Complex Permissions / Multi-Tenant
 
-| Why Avoid | What to Do Instead |
-|-----------|-------------------|
-| Prompts can be 400K chars; storing them in processing_log for cost tracking is wasteful. The document text is already stored separately. | Store only token counts, cost, duration, and model name. Prompt/response content can be debug-logged separately if needed. |
+| Why Requested | Why Problematic | Alternative |
+|--------------|----------------|-------------|
+| "Document sets should be visible only to authorized users" | Requires auth system (none exists), role-based access, document-level ACLs. The project is a single-user tool. | Already documented in Out of Scope. |
+
+### A5: Timeline Animation / Playback
+
+| Why Requested | Why Problematic | Alternative |
+|--------------|----------------|-------------|
+| "Play back events chronologically like a video" | vis-timeline doesn't support animation/playback. Building custom animation requires: controlling the timeline's visible window programmatically at fixed intervals, managing animation state, pause/resume controls. Adds significant JS complexity for marginal investigative value (a static timeline with zoom is sufficient for pattern discovery). | Static vis-timeline with zoom and clustering. The user drags/scans the timeline at their own pace. |
+
+### A6: Map Heatmap / Choropleth Layers
+
+| Why Requested | Why Problematic | Alternative |
+|--------------|----------------|-------------|
+| "Show density heatmap of events" | Requires Leaflet.heat plugin (adds 15KB JS, needs density calculation) or custom canvas overlay. Each plugin adds CDN dependency and integration testing burden. | Marker clustering already shows density — clusters with larger numbers are visually distinct (larger circles, different colors). Sufficient for investigative browsing. |
+
+### A7: Client-Side Date Parser for Spanish Dates
+
+| Why Requested | Why Problematic | Alternative |
+|--------------|----------------|-------------|
+| "Parse dates in the frontend for speed" | Spanish date parsing is notoriously hard — "el día de San Juan de 1942" is not parseable by regex. Writing a JS date parser for Spanish legal text would be a separate project, and worse, it would diverge from the LLM's understanding (which can use context to disambiguate). | The LLM parses dates during extraction (D1). The frontend receives already-parsed `time_start`/`time_end` datetime values. Falls back to showing `tiempo` text when parsing failed. |
 
 ## Feature Dependencies
 
 ```
-document_event_log schema (EXISTING — flexible details field)
-  └── ProcessingLogger (EXISTING — fire-and-forget per-document log writer)
-       └── LLM usage capture in OpenRouterProvider
-            ├── T1: Per-LLM-call token accounting
-            ├── T3: Processing time per LLM call
-            ├── T4: Storage in document_event_log
-            │     └── T2: Per-document token aggregation (post-hoc query)
-            │           └── D3: Hidden Logs tab integration (new filter)
-            └── D4: Retry/error tracking
+T1 (Structured Event Model + N References)
+  ├──required_by──> T2 (References Tab) — references need element_field from T1
+  ├──required_by──> T3 (Timeline View) — timeline needs time_start from T1
+  ├──required_by──> T4 (Map View) — map needs location canonical entity links from T1
+  ├──required_by──> T5 (Participant Listing) — needs event_participant junction from T1
+  └──required_by──> D3 (Co-occurrence Network) — needs event_participant from T1
+
+T2 (References Tab)
+  └──required_by──> D2 (Audit Trail) — audit trail navigates through references
+
+D1 (LLM Structured Time)
+  └──enhances──> T3 (Timeline) — provides time_confidence + precision for display
+
+T3 (Timeline), T4 (Map), T5 (Participants)
+  └──all_independent──> Can be built in any order after T1
 ```
+
+### Dependency Notes
+
+- **T1 is the keystone.** Every other feature depends on the structured event model. T1 must be Phase 1 of v6.0. The schema changes, LLM prompt rewrite, and extraction pipeline update must ship before any UI feature.
+- **T3–T5 are independent.** Once T1 ships, the timeline, map, and participant views can be built in parallel or in any order.
+- **D1 enhances T3.** Structured time with confidence doesn't block the timeline — the timeline can work with simple `time_start`/`time_end`. D1 adds quality (confidence badges, precision indicators).
+- **D2 connects T2 to existing tabs.** The audit trail navigation wires the References tab into Documents and Entities tabs using existing data.
 
 ## MVP Recommendation
 
-**Prioritize (Phase 1 — core tracking):**
-1. **T1 + T3 + T4** — Extract usage data from OpenRouter responses, add processing time, log via ProcessingLogger. This is the foundation; everything else depends on it.
-2. **T2** — Aggregate per-document totals via GET /documents/{id}/logs query. No new storage needed.
+**v6.0 MVP (Launch With):**
 
-**Prioritize (Phase 2 — UI):**
-3. **D1** — Add token/cost columns to document list (initially as hidden columns, then visible). Needs document-level aggregation in the GET /documents endpoint.
-4. **D3** — LLM-call filter in Logs tab.
+1. **T1: Structured Event Data Model** — Schema changes, LLM prompt rewrite, extraction pipeline updated, existing events migrated (reprocess). This is the foundation.
+2. **T2: References UI Tab** — New API endpoint + new SPA tab. References are already in the database — this is a view.
+3. **T3: Timeline View** — Requires T1 time fields. Biggest investigative value-add (temporal pattern discovery).
+4. **D1: LLM Structured Time** — Included in the T1 prompt rewrite; marginal cost to add to extraction schema.
 
-**Defer:**
-- **D4** — Retry tracking: nice-to-have, adds complexity to the first version
-- Cost charts/graphs: not appropriate for vanilla JS SPA
+**Defer to v6.1:**
 
-## UI Layout Patterns
+- **T4: Map View** — Requires geocoding infrastructure (Nominatim integration, coordinates in canonical_entity properties). Valuable but lower priority than timeline for legal document investigation (temporal patterns matter more than spatial in court documents).
+- **T5: Participant Listing** — Requires T1's event_participant junction table. Valuable but depends on entity resolution quality.
+- **D2: Audit Trail** — Cross-tab navigation wiring; nice-to-have but not essential for investigation workflow.
+- **D3: Co-occurrence Network** — Analytics feature; valuable once corpus is large enough.
 
-### Document Table Column Order (proposed)
+## Feature Prioritization Matrix
 
-| Existing | After v5.0 | Notes |
-|----------|-----------|-------|
-| ID | ID | Unchanged |
-| Archivo | Archivo | Unchanged |
-| Fecha | Fecha | Unchanged |
-| Estado | Estado | Unchanged |
-| Refs | Refs | Unchanged |
-| Ents | Ents | Unchanged |
-| Fragmentos | Fragmentos | Unchanged |
-| Palabras | Palabras | Unchanged |
-| _ | Tokens | NEW — e.g. "1.2K/567" (input/output) |
-| _ | Coste | NEW — e.g. "$0.0085" |
-| Acciones | Acciones | Unchanged, add "Ver LLM" icon |
+| Feature | User Value | Implementation Cost | Priority |
+|---------|------------|---------------------|----------|
+| T1: Structured Event Model | HIGH — unlocks everything else | HIGH — touches all layers | P1 |
+| T2: References UI Tab | HIGH — data already exists, just needs view | MEDIUM — new API endpoint + UI tab | P1 |
+| T3: Timeline View | HIGH — temporal pattern discovery is core workflow | MEDIUM — vis-timeline is CDN, mostly plumbing | P1 |
+| D1: LLM Structured Time | MEDIUM — enhances timeline quality | LOW — incremental prompt change | P1 (bundled with T1) |
+| T4: Map View | MEDIUM — spatial patterns secondary to temporal | MEDIUM-HIGH — geocoding integration | P2 |
+| T5: Participant Listing | MEDIUM — person-centric investigation | MEDIUM — new API endpoint + UI tab | P2 |
+| D2: Audit Trail | MEDIUM — legal research value | MEDIUM — cross-tab navigation | P2 |
+| D3: Co-occurrence Network | LOW — analytics feature | MEDIUM — aggregation query + UI | P3 |
 
-### Token Display Format
+**Priority key:**
+- P1: Must have for v6.0 launch
+- P2: Should have for v6.0, defer to v6.1 if risk
+- P3: Nice to have, v6.x+
 
-```
-[cached]/input/output
-Example: 500/1,234/567
+## Competitor Feature Analysis
 
-When cached=0:  "1,234/567" (no cached prefix)
-When all zero (cache HIT): "✓ CACHED"
-```
+| Feature | Aleph (OCCRP) | TimelineJS (Knight Lab) | Graph Commons | Our Approach |
+|---------|---------------|------------------------|---------------|-------------|
+| Structured event extraction from documents | Manual entity tagging | Not applicable (timeline tool) | Manual graph building | LLM auto-extraction with N references — unique differentiator |
+| References as UI objects | Partial (document mentions) | Not applicable | Not applicable | First-class references tab with full provenance — unique |
+| Timeline | No built-in | Yes (spreadsheet-based) | No | Embedded vis-timeline with clustering — comparable to TimelineJS |
+| Map | Partial (geocoded entities) | Optional via Google Sheets | No | Leaflet + marker clustering with geocoding — standard pattern |
+| Participant listing | Entity profiles with document links | No | Entity-centric graph | Junction-table-based participant view with co-occurrence — unique |
+| Spanish language support | Limited | Yes (configurable) | N/A | Native Spanish (prompts, UI) |
+| No build step / npm | N/A (React) | Yes (CDN) | N/A (React) | Vanilla JS + CDN libraries — lighter than all competitors |
 
-### Token Abbreviation
-
-Display human-readable abbreviations in table cells:
-
-| Value | Display |
-|-------|---------|
-| 0-999 | Exact number: "567" |
-| 1,000-999,999 | "1.2K", "123.4K" |
-| 1,000,000+ | "1.2M", "12.3M" |
-
-### Cost Display Format
-
-```
-$0.0085
-$1.2340
-```
-
-- Always 4 decimal places minimum
-- Use `item.cost.toFixed(4)` prefix with "$"
-- Values < $0.0001 → "< $0.0001"
-
-### Processing Log Entry Format for LLM Calls
-
-```
-[info] LLM extract_events chunk 2/5 — 1,234 input / 567 output / 50 cached / $0.0085 / 4.2s
-```
-
-This is the `message` in `ProcessingLogger.log()`. Includes key data at a glance.
-
-## Test Patterns for Token Count Verification
-
-### Unit Test Patterns
-
-```python
-# Verify usage data is extracted from OpenRouter response
-def test_parse_choice_extracts_usage():
-    provider = OpenRouterProvider(api_key="test")
-    mock_response = {
-        "choices": [{"message": {"content": '{"events": []}'}}],
-        "usage": {
-            "prompt_tokens": 100,
-            "completion_tokens": 50,
-            "total_tokens": 150,
-            "cost": 0.0025,
-            "prompt_tokens_details": {"cached_tokens": 20},
-        },
-    }
-    result, usage = provider._parse_choice(mock_response)
-    assert usage["prompt_tokens"] == 100
-    assert usage["completion_tokens"] == 50
-    assert usage["cached_tokens"] == 20
-    assert usage["cost"] == 0.0025
-```
-
-### E2E Test Patterns
-
-```python
-# Verify that after processing a document, the processing log
-# contains LLM call entries with expected token counts
-
-async def test_token_counts_in_processing_log(test_doc_id):
-    # Process document through workflow
-    await process_document(test_doc_id)
-
-    # Fetch log entries
-    logs = await fetch_logs(test_doc_id)
-    llm_calls = [l for l in logs
-                 if l.step_name in ("extract_events", "resolve_references")]
-    assert len(llm_calls) >= 1
-
-    # Verify each LLM call has token data
-    for call in llm_calls:
-        llm = call.details["llm_call"]
-        assert llm["prompt_tokens"] > 0
-        assert llm["completion_tokens"] > 0
-        assert llm["total_tokens"] > 0
-        assert llm["duration_ms"] > 0
-        assert "cost" in llm
-
-    # Document-level aggregation
-    total_input = sum(c.details["llm_call"]["prompt_tokens"] for c in llm_calls)
-    total_output = sum(c.details["llm_call"]["completion_tokens"] for c in llm_calls)
-    total_cost = sum(c.details["llm_call"]["cost"] for c in llm_calls)
-    assert total_input > 0
-    assert total_output > 0
-    assert total_cost >= 0
-
-    # Reprocess should produce the same token entries (Temporal replay safety)
-    await process_document(test_doc_id)
-    logs2 = await fetch_logs(test_doc_id)
-    assert len(logs2) == len(logs)  # deterministic replay
-```
-
-### Test for Cache Hit Handling
-
-```python
-async def test_cache_hit_zeroes_tokens():
-    # Process same document twice (identical LLM calls)
-    await process_document(test_doc_id)
-    await process_document(test_doc_id)
-
-    logs = await fetch_logs(test_doc_id)
-
-    # First run: normal token counts
-    # Second run (replay): if OpenRouter returns cached response,
-    # token counts may be zero — but our logger records what the API returns
-    # HAZARD: Temporal replay will recreate log entries from scratch;
-    # the second processing is a NEW workflow run, not a cache hit
-```
-
-## Hazards / Edge Cases
-
-| Hazard | Behavior | Mitigation |
-|--------|----------|------------|
-| **OpenRouter cache HIT** | All usage fields zeroed | Still log the call with `cached_tokens=0` and zero totals. The value 0 is informative. |
-| **Temporal replay** | A new workflow run for the same document triggers new LLM calls | Each run is a real API call (or cache hit separately) — log entries are deterministic via SHA256 IDs |
-| **Cost = 0 on free models** | Some OpenRouter models are free | Still store token counts; cost = 0.0 is valid data. |
-| **Cost = null/absent** | Some model responses may omit cost field | Default to 0.0 if not present. Check `response.usage.get("cost", 0.0)`. |
-| **Streaming** | Not currently used, but usage data appears in last SSE chunk | Not applicable now; document if streaming is added later. |
-| **Model fallback** | OpenRouter may route to a different model | Log the `model` actually used (from `response.get("model", provider._model)`) — different models = different tokenizers = different token counts. |
+**Key insight:** No existing open-source tool does LLM-powered structured event extraction from Spanish legal documents with audit-trail references. This is the core differentiator. The timeline/map/participant views are standard investigative tools that any analyst expects — our value is that the data is auto-extracted and traceable.
 
 ## Sources
 
-- [OpenRouter Usage Accounting (official docs)](https://openrouter.ai/docs/cookbook/administration/usage-accounting) — HIGH confidence
-- [OpenRouter Prompt Caching guide](https://openrouter.ai/docs/guides/best-practices/prompt-caching) — HIGH confidence
-- [OpenRouter Models API pricing object](https://openrouter.ai/docs/api-reference/models/get-models) — HIGH confidence (verifies `cost` field)
-- Existing codebase: `llm.py`, `processing_log.py`, `schema.surql`, `static/index.html` — HIGH confidence
+- **vis-timeline docs** (official): https://visjs.github.io/vis-timeline/docs/timeline/ — HIGH confidence (verified full documentation fetch)
+- **Leaflet.js API reference** (official): https://leafletjs.com/reference.html — HIGH confidence (verified full API fetch, v1.9.4)
+- **Leaflet.markercluster README** (GitHub): https://github.com/Leaflet/Leaflet.markercluster — HIGH confidence (verified full README fetch, v1.4.1)
+- **Citation analysis for legal documents** (Wikipedia): https://en.wikipedia.org/wiki/Citation_analysis — HIGH confidence (verified full article fetch)
+- **Existing codebase**: `llm.py` (extraction schema + prompts), `schema.surql` (event/reference/canonical_entity tables), `static/index.html` (vanilla JS SPA pattern), `activities.py` (extraction pipeline) — HIGH confidence
+- **OpenStreetMap Nominatim**: https://nominatim.openstreetmap.org — MEDIUM confidence (geocoding service known from training data, not verified with live API call — free, rate-limited to 1 req/sec)
+
+---
+
+*Feature research for: v6.0 Event-Centric Data Quality & Investigative UI*
+*Researched: 2026-06-04*

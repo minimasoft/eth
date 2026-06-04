@@ -1,395 +1,253 @@
-# Technology Stack — v5.0 LLM Cost & Usage Tracking
+# Stack Research: v6.0 Event Data Model & UI
 
-**Project:** eth-pipeline (Espacio Tiempo Humanos)
+**Domain:** Event data model quality, timeline/map visualization, references UI — additions to existing Python/FastAPI/Temporal/SurrealDB pipeline
 **Researched:** 2026-06-04
-**Mode:** Ecosystem — OpenRouter token/cost response format, data model for tracking, SurrealDB schema, UI patterns
-**Confidence:** HIGH on OpenRouter token fields; HIGH on cost data; HIGH on data model; MEDIUM on caching details
+**Confidence:** HIGH
 
-## Stack Additions Summary — v5.0
+## Executive Summary
 
-| Area | Recommendation | Version | Rationale |
-|------|---------------|---------|-----------|
-| Token extraction | Capture `usage` dict from OpenRouter response body | — | OpenRouter returns `prompt_tokens`, `completion_tokens`, `total_tokens` on EVERY response. Also `usage.cost`, `prompt_tokens_details.cached_tokens`. |
-| Cost data source | Use `usage.cost` from response if present; null otherwise | — | OpenRouter `ResponseUsage` type includes optional `cost` field. Authoritative billed amount. No computation needed. |
-| Cache hit detection | `prompt_tokens_details.cached_tokens` in response | — | Provider-level prompt caching reported via this field. OpenRouter Response Caching zeroes ALL usage fields. |
-| Token storage | New `llm_usage_log` table in SurrealDB | — | A separate table (not embedded in `document`) supports DELETE+re-insert replay safety. Follows `document_event_log` pattern. |
-| Per-document aggregation | SurrealQL `math::sum()` on `llm_usage_log` | — | Same pattern as reference/entity counts. No new aggregation infra. |
-| UI display | Two new columns in documents table | — | "Tokens" and "Cost" columns using existing `col-count` CSS and `font-variant-numeric: tabular-nums`. |
-| Python dependencies | None new | — | All token/cost data is parsed from `response.json()`. `time.monotonic()` from stdlib. |
-| JS dependencies | None new | — | Vanilla `fetch()`, `Intl.NumberFormat`, `String.prototype.toFixed()`. |
+The v6.0 milestone adds timeline visualization, map view, references UI tab, and participant-based event listing to an existing vanilla JS SPA served by FastAPI. The stack additions are surgical: two CDN-loaded JavaScript libraries (Leaflet for maps, vis-timeline for timeline), two Python libraries for Spanish date parsing (dateparser + python-dateutil), and existing SurrealDB geospatial features that require zero new infrastructure. No build system, no npm, no new services — everything integrates into the existing `/ui` static directory served by FastAPI's `StaticFiles` mount.
 
----
+## Recommended Stack
 
-## 1. OpenRouter API Response — Token & Cost Fields
+### Core Technologies — Additions
 
-### Confirmed Response Shape
+| Technology | Version | Purpose | Why Recommended |
+|------------|---------|---------|-----------------|
+| Leaflet.js | 1.9.4 | Interactive map visualization in the UI | Lightest (42KB gzipped), best-documented, zero-build-step CDN map library. Uses free OpenStreetMap tiles — no API key needed. Industry standard for no-framework map UIs. |
+| vis-timeline | 8.5.1 | Horizontal event timeline visualization | Standalone UMD build has zero dependencies when loaded via CDN. Supports ISO date ranges, click events, zoom, localization. Spanish locale bug fixed in v8.4.1. Actively maintained (latest release May 2026). |
+| dateparser | ~1.2.1 | Parse Spanish-language dates from legal text | Parses dates in 200+ languages natively, including Spanish: `"Martes 21 de Octubre de 2014"`, `"3 de marzo de 2020"`. `search_dates()` extracts dates from running text. Specify `languages=['es']` for performance. |
+| python-dateutil | ~2.9.0 | ISO parsing, date arithmetic | Reliable standard for `dateutil.parser.parse()`, `relativedelta` for computing time windows and date ranges. Complements dateparser for structured date operations. |
 
-The OpenRouter `/api/v1/chat/completions` response includes a `usage` object on every non-streaming response:
+### Existing Stack — Used As-Is (No Changes)
 
-```typescript
-type ResponseUsage = {
-  prompt_tokens: number;              // Always present. Input tokens.
-  completion_tokens: number;          // Always present. Output tokens.
-  total_tokens: number;               // Always present. Sum of above.
-  prompt_tokens_details?: {           // Optional breakdown
-    cached_tokens: number;            // Tokens served from provider prompt cache
-    cache_write_tokens?: number;      // Tokens written to cache
-  };
-  completion_tokens_details?: {       // Optional breakdown
-    reasoning_tokens?: number;        // Internal reasoning tokens
-  };
-  cost?: number;                      // Cost in OpenRouter credits (optional)
-  is_byok?: boolean;
-  cost_details?: {                    // Detailed cost breakdown
-    upstream_inference_prompt_cost: number;
-    upstream_inference_completions_cost: number;
-  };
+| Technology | Role in v6.0 |
+|------------|-------------|
+| SurrealDB | Geospatial queries via `type::point()` and `geo::distance()` — already built-in, no extensions needed |
+| FastAPI | Serves new API endpoints (timeline data, map data, participant-event links) and static files at `/ui` |
+| Temporal | Workflow processes documents — event extraction prompt changes only, no infrastructure changes |
+| Vanilla JS SPA | Extends existing `index.html` with new tabs and CDN-loaded libraries — no build step |
+| OpenRouter LLM | Extraction prompt improvements for structured event data (time window, participants, location) |
+
+### Supporting Libraries — New Python Dependencies
+
+| Library | Version | Purpose | When to Use |
+|---------|---------|---------|-------------|
+| dateparser | ~1.2.1 | Parse human-readable Spanish dates from extracted `tiempo` text | During event processing: normalize LLM-extracted date strings into structured `datetime` objects for storage in the event `time_window` property |
+| python-dateutil | ~2.9.0 | Date arithmetic and ISO parsing | Compute event durations, sort events chronologically for timeline, handle edge cases dateparser misses |
+
+### Supporting Libraries — New Frontend Dependencies (CDN, No Build)
+
+| Library | Version | Purpose | CDN URL |
+|---------|---------|---------|---------|
+| Leaflet.js | 1.9.4 | Map visualization tab | `https://unpkg.com/leaflet@1.9.4/dist/leaflet.css` + `.js` |
+| vis-timeline | 8.5.1 | Timeline visualization tab | `https://unpkg.com/vis-timeline@8.5.1/standalone/umd/vis-timeline-graph2d.min.js` + `/styles/vis-timeline-graph2d.min.css` |
+
+## Installation
+
+### Python Dependencies (add to pyproject.toml)
+
+```bash
+# pyproject.toml dependencies additions:
+#   "dateparser>=1.2.0",
+#   "python-dateutil>=2.9.0",
+```
+
+### Frontend CDN (add to index.html `<head>`)
+
+```html
+<!-- Leaflet Map -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+
+<!-- vis-timeline (standalone, zero dependencies) -->
+<script src="https://unpkg.com/vis-timeline@8.5.1/standalone/umd/vis-timeline-graph2d.min.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/vis-timeline@8.5.1/styles/vis-timeline-graph2d.min.css" />
+```
+
+## SurrealDB Geospatial — Existing Capabilities (No Additions Needed)
+
+SurrealDB has native geospatial support built into the Rust core. The project already uses SurrealDB — no new extensions, plugins, or schema fields are needed beyond storing coordinates.
+
+### Geospatial Primitives Available
+
+| SurrealQL Feature | Usage in v6.0 |
+|-------------------|---------------|
+| `type::point([lng, lat])` | Convert lat/lon arrays into geometry points when storing event locations |
+| `(lng, lat)` tuple syntax | Shorthand for point creation in INSERT/UPDATE statements |
+| `geo::distance(a, b)` | Compute distance in meters between two geometry points — sort map results by proximity |
+| GeoJSON `{ type: "Point", coordinates: [...] }` | Alternative point representation (not needed — tuple syntax is simpler) |
+
+### Schema Pattern for Location Storage
+
+When an event's `espacio` reference resolves to a known location with coordinates, store the point in the canonical entity's `properties` object:
+
+```surql
+-- Store location coordinates on a place entity
+UPDATE canonical_entity:abc123 SET properties = {
+    name: "Tribunal Superior de Madrid",
+    coordinates: type::point([40.4168, -3.7038])
 };
+
+-- Find all event entities linked to places within 50km of Madrid
+SELECT *, geo::distance(
+    (SELECT properties.coordinates FROM canonical_entity WHERE id = $event->event_entity_link->entity).coordinates,
+    type::point([40.4168, -3.7038])
+) AS distance_km
+FROM canonical_entity
+WHERE entity_type = "event"
+  AND geo::distance(
+      type::point([40.4168, -3.7038]),
+      (SELECT properties.coordinates FROM ONLY event_entity_link WHERE event = $parent.id).entity.properties.coordinates
+  ) < 50000;
 ```
 
-### Actual JSON Example
+**Important:** SurrealDB's `geo::distance()` returns meters. The geospatial index uses R-tree internally when `DEFINE INDEX ... ON TABLE ... COLUMNS coordinates` is added, but for v6.0's expected data volume (hundreds to low thousands of events), sequential scan is acceptable. Indexing can be deferred to a future optimization phase.
 
-```json
-{
-  "id": "gen-abc123",
-  "model": "google/gemini-2.5-flash",
-  "choices": [{"message": {"role": "assistant", "content": "..."}}],
-  "usage": {
-    "prompt_tokens": 10339,
-    "completion_tokens": 60,
-    "total_tokens": 10399,
-    "prompt_tokens_details": {
-      "cached_tokens": 10318,
-      "cache_write_tokens": 0
-    }
-  }
-}
-```
+## Date Parsing Strategy — Python Backend
 
-Source: OpenRouter TypeScript API reference in `llms-full.txt` lines 18870-18920 (HIGH confidence).
+### Why Two Libraries
 
-### Cache Behavior
+| Library | Strength | Weakness |
+|---------|----------|----------|
+| **dateparser** | Parses natural language: `"el 15 de marzo de 2024"`, `"Martes 21 de Octubre"`, `"hace 3 días"` | Slower, heavier dependency |
+| **dateutil.parser** | Fast ISO 8601 parsing, `relativedelta` for date math, standard in Python ecosystem | Cannot parse Spanish natural language |
 
-Two caching layers exist:
-1. **Response Caching** (`X-OpenRouter-Cache` header): Cache HIT returns all usage fields zeroed. Free. Not in use by this pipeline.
-2. **Provider Prompt Caching** (automatic via Anthropic/OpenAI/Gemini): Reported via `prompt_tokens_details.cached_tokens`. Billed at reduced rate.
+**Pattern:** Use dateparser for LLM-extracted free-form `tiempo` text; use dateutil for all internal date operations and ISO handling. Dateparser is called once per event during processing (not in hot paths), so its performance cost is negligible.
 
-### What to Capture per LLM Call
-
-| Field | JSON Path | Always? | Notes |
-|-------|-----------|---------|-------|
-| `prompt_tokens` | `usage.prompt_tokens` | Yes | Core metric |
-| `completion_tokens` | `usage.completion_tokens` | Yes | Core metric |
-| `total_tokens` | `usage.total_tokens` | Yes | Sum |
-| `cached_tokens` | `usage.prompt_tokens_details.cached_tokens` | No | Provider caching |
-| `cache_write_tokens` | `usage.prompt_tokens_details.cache_write_tokens` | No | Cache writes |
-| `reasoning_tokens` | `usage.completion_tokens_details.reasoning_tokens` | No | Reasoning models |
-| `cost` | `usage.cost` | No | Authoritative cost |
-| `upstream_prompt_cost` | `usage.cost_details.upstream_inference_prompt_cost` | No | Detailed breakdown |
-
-### No `X-OpenRouter-Usage` Header
-
-No such header exists in OpenRouter documentation. All usage data is in the response body.
-
----
-
-## 2. Data Model — SurrealDB Schema
-
-### New Table: `llm_usage_log`
-
-One row per LLM call. A document with 3 chunks and 3 entity types produces ~6 rows.
-
-```surql
-DEFINE TABLE llm_usage_log SCHEMAFULL
-    COMMENT 'Per-call LLM token usage and cost tracking (v5.0). One row per OpenRouter API call. Replay-safe via deterministic IDs and delete-then-reinsert.';
-
-DEFINE FIELD document ON llm_usage_log TYPE record<document>
-    COMMENT 'Link to the source document being processed';
-
-DEFINE FIELD activity ON llm_usage_log TYPE string
-    COMMENT 'Activity name: extract_events, resolve_references, resolve_entities_with_search';
-
-DEFINE FIELD chunk_index ON llm_usage_log TYPE option<int>
-    DEFAULT null
-    COMMENT 'Chunk index (0-based) when document was split; null for non-chunked calls';
-
-DEFINE FIELD model ON llm_usage_log TYPE string
-    COMMENT 'Model identifier (e.g. deepseek/deepseek-v4-flash)';
-
-DEFINE FIELD prompt_tokens ON llm_usage_log TYPE int
-    ASSERT $value >= 0
-    COMMENT 'Input token count from response.usage.prompt_tokens';
-
-DEFINE FIELD completion_tokens ON llm_usage_log TYPE int
-    ASSERT $value >= 0
-    COMMENT 'Output token count from response.usage.completion_tokens';
-
-DEFINE FIELD total_tokens ON llm_usage_log TYPE int
-    ASSERT $value >= 0
-    COMMENT 'Sum of prompt_tokens + completion_tokens';
-
-DEFINE FIELD cached_tokens ON llm_usage_log TYPE option<int>
-    DEFAULT null
-    COMMENT 'Cached prompt tokens (prompt_tokens_details.cached_tokens); null if not reported';
-
-DEFINE FIELD cache_write_tokens ON llm_usage_log TYPE option<int>
-    DEFAULT null
-    COMMENT 'Tokens written to provider prompt cache; null if not reported';
-
-DEFINE FIELD reasoning_tokens ON llm_usage_log TYPE option<int>
-    DEFAULT null
-    COMMENT 'Internal reasoning tokens (completion_tokens_details.reasoning_tokens)';
-
-DEFINE FIELD cost ON llm_usage_log TYPE option<float>
-    DEFAULT null
-    COMMENT 'Cost in credits from response.usage.cost; null if not provided';
-
-DEFINE FIELD cost_source ON llm_usage_log TYPE option<string>
-    DEFAULT null
-    COMMENT 'Source: response (from API), computed (from pricing), null when unavailable';
-
-DEFINE FIELD upstream_prompt_cost ON llm_usage_log TYPE option<float>
-    DEFAULT null
-    COMMENT 'Upstream provider prompt cost from cost_details';
-
-DEFINE FIELD upstream_completion_cost ON llm_usage_log TYPE option<float>
-    DEFAULT null
-    COMMENT 'Upstream provider completion cost from cost_details';
-
-DEFINE FIELD duration_ms ON llm_usage_log TYPE option<int>
-    DEFAULT null
-    COMMENT 'Request duration in milliseconds (time.monotonic())';
-
-DEFINE FIELD created_at ON llm_usage_log TYPE datetime
-    DEFAULT time::now() READONLY
-    COMMENT 'Timestamp when this usage record was created';
-
-DEFINE INDEX idx_llm_usage_document ON llm_usage_log COLUMNS document;
-DEFINE INDEX idx_llm_usage_created ON llm_usage_log COLUMNS created_at;
-```
-
-### Aggregation Queries
-
-**Per-document totals:**
-```surql
-SELECT
-    math::sum(prompt_tokens) AS total_prompt_tokens,
-    math::sum(completion_tokens) AS total_completion_tokens,
-    math::sum(total_tokens) AS total_tokens,
-    math::sum(cost) AS total_cost,
-    math::sum(duration_ms) AS total_duration_ms
-FROM llm_usage_log WHERE document = $doc GROUP ALL
-```
-
-**Per-document per-activity breakdown:**
-```surql
-SELECT activity, count() AS calls,
-    math::sum(prompt_tokens) AS prompt_tokens,
-    math::sum(completion_tokens) AS completion_tokens,
-    math::sum(cost) AS cost
-FROM llm_usage_log WHERE document = $doc GROUP BY activity
-```
-
-**Why a separate table (not embedded in document):**
-- One document → N LLM calls. Embedding requires array appends, which break Temporal replay safety.
-- DELETE WHERE document = $doc + re-insert is clean and proven.
-- Independent querying ("show all LLM calls across documents") is a simple scan.
-
----
-
-## 3. Python Implementation — Token Extraction
-
-### Where to Add Extraction
-
-In `llm.py`, at the point where `response.json()` is already parsed. The current code returns only `choices[0].message.content`. v5.0 adds `_usage` to the result dict.
-
-### Protocol Change
-
-The `LLMProvider` protocol's return dict gains an optional `_usage` key:
+### Usage in Temporal Activity
 
 ```python
-class LLMProvider(Protocol):
-    async def extract_events(self, text: str, prior_events=None) -> dict:
-        """Returns dict with 'events' key (extracted events) and optional
-        '_usage' key (dict with token/cost metadata from the API response)."""
+import dateparser
+from dateutil.parser import parse as parse_iso
+from dateutil.relativedelta import relativedelta
+
+def normalize_event_time(tiempo_text: str | None) -> dict | None:
+    """Parse LLM-extracted time text into structured time window."""
+    if not tiempo_text:
+        return None
+
+    # Try Spanish natural language first
+    parsed = dateparser.parse(tiempo_text, languages=['es'])
+    if parsed:
+        return {
+            "timestamp": parsed.isoformat(),
+            "precision": "day",  # or month, year based on specificity
+            "original_text": tiempo_text,
+        }
+
+    # Fallback: try ISO parsing
+    try:
+        parsed = parse_iso(tiempo_text)
+        return {
+            "timestamp": parsed.isoformat(),
+            "precision": "exact",
+            "original_text": tiempo_text,
+        }
+    except Exception:
+        return {"original_text": tiempo_text, "precision": "unknown"}
 ```
 
-### Modified `extract_events()` Flow
+## Alternatives Considered
 
-```python
-async def extract_events(self, text, prior_events=None):
-    # ... existing HTTP call ...
-    data = response.json()
-    
-    # Extract usage from response body
-    usage = data.get("usage", {})
-    prompt_details = usage.get("prompt_tokens_details", {})
-    completion_details = usage.get("completion_tokens_details", {})
-    
-    # Parse content (existing method)
-    parsed = self._parse_choice(data)
-    
-    # Attach usage metadata
-    parsed["_usage"] = {
-        "model": data.get("model", self._model),
-        "prompt_tokens": usage.get("prompt_tokens", 0),
-        "completion_tokens": usage.get("completion_tokens", 0),
-        "total_tokens": usage.get("total_tokens", 0),
-        "cached_tokens": prompt_details.get("cached_tokens"),
-        "cache_write_tokens": prompt_details.get("cache_write_tokens"),
-        "reasoning_tokens": completion_details.get("reasoning_tokens"),
-        "cost": usage.get("cost"),
-        "cost_source": "response" if usage.get("cost") is not None else None,
-        "duration_ms": self._last_duration_ms,  # Set before/after HTTP call
-    }
-    
-    return parsed
+| Domain | Recommended | Alternative | Why Not |
+|--------|-------------|-------------|---------|
+| Timeline UI | vis-timeline 8.5.1 (standalone UMD) | D3.js custom timeline | D3 requires ~500+ lines of custom code for a basic timeline with zoom/scroll; vis-timeline gives that out of the box. D3 is powerful but wrong tradeoff for this feature scope. |
+| Timeline UI | vis-timeline 8.5.1 (standalone UMD) | Pure CSS Grid timeline | Zero dependency but no zoom, no scroll, no click interactions — would need to build all interactivity from scratch. Good for static display only. |
+| Timeline UI | vis-timeline 8.5.1 (standalone UMD) | Timeline.js (Knight Lab) | Designed for storytelling/media timelines (Google Sheets as data source), not for data-driven event timelines. Wrong use case. |
+| Map UI | Leaflet 1.9.4 | OpenLayers | More feature-rich (vector tiles, WebGL) but 3x larger and requires more setup. Overkill for pin-on-map event markers. |
+| Map UI | Leaflet 1.9.4 | Mapbox GL JS | Requires API key and account, introduces external dependency. Violates "no external services" constraint. |
+| Map UI | Leaflet 1.9.4 | Google Maps JS API | Requires API key, billing account, and terms of service for data storage. Not suitable for a research tool. |
+| Map tiles | OpenStreetMap (default) | CARTO basemaps | CARTO has a nice "positron" style but adds another CDN dependency. OSM tiles are free, well-maintained, and familiar. |
+| Date parsing | dateparser + dateutil | dateparser alone | dateutil's `relativedelta` is needed for duration calculations. Adding it costs ~500KB in the Docker image. |
+| Date parsing | dateparser + dateutil | datefinder | datefinder extracts dates from text but doesn't parse Spanish. Less capable for our use case. |
+| Date parsing | dateparser + dateutil | pendulum | Pendulum is a full datetime replacement library. Overkill — we only need parsing, not a new datetime subsystem. |
+| Frontend dates | ISO strings only (no JS lib) | Temporal (JS) / date-fns / Luxon | All timeline and map data comes from the backend as ISO 8601 strings. vis-timeline accepts ISO strings natively. Leaflet uses Leaflet `L.latLng()`. No client-side date library needed. |
+
+## What NOT to Use
+
+| Avoid | Why | Use Instead |
+|-------|-----|-------------|
+| npm / node packages for frontend | Existing SPA has no build step. Adding one for two CDN-loadable libraries is unjustified complexity. | CDN `<script>` tags in `index.html` |
+| Mapbox or Google Maps | Requires API keys, external accounts, billing. Violates zero-external-dependency constraint. | Leaflet + OpenStreetMap tiles (free, no key) |
+| D3.js for timeline | ~500+ lines of custom code to match vis-timeline's 5-line initialization. Wrong tradeoff: D3 for custom chart types, not standard timelines. | vis-timeline standalone UMD |
+| pandas for date handling | Massive dependency (~50MB) for what dateparser + dateutil do in < 5MB combined. Pandas adds no value for date parsing. | dateparser + python-dateutil |
+| Moment.js / Luxon / date-fns on frontend | vis-timeline accepts ISO strings natively. Leaflet uses numeric lat/lon. No JS date manipulation needed. | Server-sent ISO 8601 strings |
+| New Docker services | Timeline, map, and references are all in-process features — no new infrastructure needed. | Extend existing FastAPI endpoints |
+| Build tools (webpack, vite, rollup) | Vanilla JS SPA architecture decision (PROJECT.md line 105). Breaking this for visualizations adds churn with no user-facing benefit. | Continue with CDN-loaded scripts |
+
+## Stack Patterns
+
+**If the event has coordinates (from lugar reference resolution):**
+- Store as SurrealDB geometry point in canonical entity `properties.coordinates`
+- Serve as `{ lat, lng }` in API responses
+- Leaflet renders as `L.marker([lat, lng])` with popup showing event details
+
+**If the event has a parsed date (from tiempo reference resolution):**
+- Store as ISO 8601 string in event `properties.time_window.start` / `time_window.end`
+- Serve as `{ start: "2024-03-15T00:00:00Z", end: "2024-03-16T00:00:00Z" }`
+- vis-timeline renders as a range item with event title as content
+
+**If the event lacks coordinates or dates:**
+- Map: skip the marker (show count of unmapped events)
+- Timeline: show as a point event (single date) or skip (show count of undated events)
+- Never fabricate data — always show "X events without dates/locations"
+
+## Integration Points with Existing Codebase
+
+### FastAPI (src/eth_pipeline/api/)
+
+New endpoints needed:
+- `GET /api/events/timeline` — returns events with time_window data for vis-timeline
+- `GET /api/events/map` — returns events with coordinates for Leaflet markers
+- `GET /api/references` — paginated reference list (already partially exists, may need enhancement)
+- `GET /api/events/by-participant/{entity_id}` — events involving a specific person/entity
+
+All follow the existing pagination envelope pattern: `{ items, total, page, per_page, pages }`.
+
+### Static UI (src/eth_pipeline/static/index.html)
+
+New tabs in nav:
+```html
+<button role="tab" data-tab="timeline">Línea de Tiempo</button>
+<button role="tab" data-tab="map">Mapa</button>
+<!-- references tab already exists -->
 ```
 
-### Processing Time
+New tab content sections:
+- `#tab-timeline` — `<div id="timeline-container">` for vis-timeline
+- `#tab-map` — `<div id="map-container">` for Leaflet
 
-Wrap the HTTP call with `time.monotonic()`:
+CDN scripts loaded in `<head>` (see Installation section above). All JS inline in `<script>` tags — no module imports, no build step.
 
-```python
-import time
+### SurrealDB Schema (src/eth_pipeline/schema.surql)
 
-start = time.monotonic()
-response = await client.post(url, headers=headers, json=payload, timeout=300.0)
-end = time.monotonic()
-self._last_duration_ms = int((end - start) * 1000)
-```
+Schema changes needed (additive only, no destructive migrations):
+- Event entity properties include structured `time_window` and `location` fields
+- Place-type canonical entities may include `coordinates` in properties
+- New indexes for geospatial queries (deferred, not required for v6.0)
 
-### Replay-Safe Activity Pattern
+## Version Compatibility
 
-Each calling activity deletes old usage entries for the document, then inserts new ones:
-
-```python
-# In extract_events_activity, before the chunk loop:
-async with get_db(**params) as db:
-    await db.query(
-        "DELETE llm_usage_log WHERE document = $doc",
-        {"doc": f"document:{document_id}"},
-    )
-
-# Inside the chunk loop:
-result = await provider.extract_events(chunk, prior_events=prior)
-usage = result.pop("_usage", {})
-all_usage_entries.append(usage)
-
-# After the loop, insert all usage entries
-```
-
----
-
-## 4. UI Display — Token Usage in Vanilla SPA
-
-### New Columns in Documents Table
-
-Two new columns after the existing "Palabras" column:
-
-**CSS additions:**
-```css
-.documents-table th.col-tokens {
-  width: 90px;
-  text-align: center;
-}
-.documents-table th.col-cost {
-  width: 80px;
-  text-align: center;
-}
-```
-
-**JavaScript helpers:**
-```javascript
-function formatTokenCount(tokens) {
-  if (tokens == null) return '—';
-  if (tokens < 1000) return String(tokens);
-  if (tokens < 1000000) return (tokens / 1000).toFixed(1) + 'K';
-  return (tokens / 1000000).toFixed(1) + 'M';
-}
-
-function formatCost(cost) {
-  if (cost == null) return '—';
-  if (cost < 0.01) return '<$0.01';
-  return '$' + cost.toFixed(4);
-}
-```
-
-**Row cell template:**
-```javascript
-'<td class="col-count">' + formatTokenCount(item.total_tokens) + '</td>' +
-'<td class="col-count">' + formatCost(item.total_cost) + '</td>'
-```
-
-### API Changes
-
-Add to `DocumentListItem` and `DocumentStatus` Pydantic models:
-```python
-total_tokens: int = 0
-total_cost: float | None = None
-```
-
----
-
-## 5. What Does NOT Change
-
-| Component | Change Required | Rationale |
-|-----------|----------------|-----------|
-| `EVENT_EXTRACTION_SCHEMA` | None | Token usage is metadata about the call, not part of extraction |
-| `ENTITY_RESOLUTION_SCHEMA` | None | Same |
-| FastAPI routes | Minor: new fields | Document list gains token/cost summary fields |
-| Temporal worker | Register new activity | `write_llm_usage_log_activity` |
-| Processing log / `document_event_log` | None | Separate table for LLM usage |
-| MinIO / blob storage | None | Unrelated |
-| PDF extraction / chunking | None | Unrelated |
-| Entity resolution logic | None | Token tracking wraps existing calls |
-| Merge/split operations | None | Usage logging is read-only |
-| UI tab structure | None | Usage shown within existing Documents and Logs tabs |
-| Build tooling | None | Vanilla JS, no build step |
-
----
-
-## 6. Key Design Decisions
-
-### D013: Separate `llm_usage_log` table (not embedded in `document`)
-**Why:** One document → N LLM calls. Embedded array would need array appends, which break Temporal replay safety. The `DELETE WHERE document = $doc + re-insert` pattern is proven.
-
-### D014: `_usage` key in result dicts (not protocol change)
-**Why:** The `LLMProvider` protocol's return type stays the same dict shape. An underscore-prefixed key is the Python convention for semi-internal data. Callers that don't need usage ignore it. No test mocks need updating.
-
-### D015: Capture `usage.cost` from response when available
-**Why:** OpenRouter's `usage.cost` is the authoritative billed amount. Computing from token counts × pricing requires syncing pricing data and introduces rounding errors.
-
-### D016: Processing time in usage log (not separate log entry)
-**Why:** Duration is inherently tied to the LLM call. Same row keeps aggregation simple (`SELECT math::sum(duration_ms)`).
-
----
-
-## 7. Installation
-
-No new dependencies. All features use existing packages or stdlib.
-
-```
-# No pip install commands needed.
-# Existing: httpx, surrealdb, temporalio
-# Stdlib: time.monotonic()
-# All data from OpenRouter API response body.
-```
-
----
+| Package | Compatible With | Notes |
+|---------|-----------------|-------|
+| leaflet@1.9.4 | All modern browsers (IE11 dropped after 1.7) | No conflicts with existing vanilla JS |
+| vis-timeline@8.5.1 | All modern browsers. Standalone build has UUID v14 internal dep (self-contained) | No global namespace pollution beyond `vis` object |
+| dateparser~=1.2.1 | Python >=3.7 (project requires >=3.11) | Pure Python, no C extensions |
+| python-dateutil~=2.9.0 | Python >=3.7 (project requires >=3.11) | Already commonly installed as transitive dep |
+| SurrealDB geospatial | SurrealDB >=1.0 (project uses SurrealDB 2.x) | Built into the Rust core — no version concerns |
 
 ## Sources
 
-- **OpenRouter ResponseUsage type**: `llms-full.txt` lines 18870-18920 (HIGH confidence)
-- **OpenRouter Models API pricing object**: `llms-full.txt` lines 395-406 (HIGH confidence)
-- **OpenRouter prompt_tokens_details (cache)**: `llms-full.txt` lines 16720-16744 (HIGH confidence)
-- **OpenRouter Response Caching (zeroed usage)**: `llms-full.txt` lines 9249-9251 (HIGH confidence)
-- **Current `llm.py`**: `src/eth_pipeline/llm.py` (HIGH confidence — read from source)
-- **Current schema**: `src/eth_pipeline/schema.surql` (HIGH confidence)
-- **Current UI**: `src/eth_pipeline/static/index.html` (HIGH confidence)
-- **SurrealDB `math::sum()`**: surrealdb.com/docs/surrealql/functions/math (HIGH confidence)
-- **Python `time.monotonic()`**: docs.python.org/3/library/time.html (HIGH confidence)
+- **Leaflet.js:** Context7 `/websites/leafletjs`, official download page `https://leafletjs.com/download.html` — confirmed v1.9.4 (May 2023) is latest stable. v2.0.0-alpha.1 exists but not stable. Confidence: HIGH.
+- **vis-timeline:** Context7 `/visjs/vis-timeline`, GitHub releases `https://github.com/visjs/vis-timeline/releases` — confirmed v8.5.1 (May 2026) is latest. Spanish locale fix in v8.4.1. Standalone UMD build confirmed working via CDN. Confidence: HIGH.
+- **dateparser:** Context7 `/scrapinghub/dateparser` — confirmed Spanish date parsing (`"Martes 21 de Octubre de 2014"`), `search_dates()` with `languages=['es']`. Confidence: HIGH.
+- **python-dateutil:** Context7 `/dateutil/dateutil` — confirmed `parser.parse()` and `relativedelta` availability. Standard Python library, well-maintained. Confidence: HIGH.
+- **SurrealDB geospatial:** Context7 `/websites/surrealdb` — confirmed `type::point()`, `geo::distance()`, geometry types (Point, Line, Polygon, etc.). Built into SurrealDB core. Confidence: HIGH.
+- **Existing codebase:** `PROJECT.md`, `ROADMAP.md`, `schema.surql`, `index.html`, `pyproject.toml` — confirmed vanilla JS SPA pattern, CDN compatibility, existing pagination envelope. Confidence: HIGH.
 
 ---
-
-*Stack research for: v5.0 LLM Cost & Usage Tracking, Researched: 2026-06-04*
+*Stack research for: v6.0 Event Data Model & UI additions*
+*Researched: 2026-06-04*
