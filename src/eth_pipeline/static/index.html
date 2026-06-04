@@ -478,9 +478,30 @@
     .documents-table th.col-refs,
     .documents-table th.col-ents,
     .documents-table th.col-chunks,
-    .documents-table th.col-words {
-      width: 68px;
-      text-align: center;
+    .documents-table th.col-words,
+    .documents-table th.col-tokens,
+    .documents-table th.col-cost {
+        width: 90px;
+        text-align: right;
+        padding-right: 8px;
+    }
+
+    .documents-table td.col-refs,
+    .documents-table td.col-ents,
+    .documents-table td.col-chunks,
+    .documents-table td.col-words,
+    .documents-table td.col-tokens,
+    .documents-table td.col-cost {
+        text-align: right;
+        font-variant-numeric: tabular-nums;
+    }
+
+    .documents-table td.col-tokens {
+        font-size: 13px;
+    }
+
+    .documents-table td.col-cost {
+        font-size: 13px;
     }
 
     .documents-table td.col-count {
@@ -787,6 +808,8 @@
                 <th class="col-ents">Ents</th>
                 <th class="col-chunks">Fragmentos</th>
                 <th class="col-words">Palabras</th>
+                <th class="col-tokens" title="Tokens: entrada/salida/en caché">Tokens</th>
+                <th class="col-cost" title="Costo estimado en USD">Costo</th>
                 <th class="col-actions">Acciones</th>
               </tr>
             </thead>
@@ -910,6 +933,25 @@
               <div style="font-size:14px;font-weight:600;color:#1e293b" id="logs-doc-filename"></div>
               <div style="font-size:13px;color:#64748b;font-family:monospace" id="logs-doc-id"></div>
             </div>
+            <div style="margin-left:auto;display:flex;align-items:center;gap:8px">
+              <span id="logs-poll-indicator" style="font-size:12px;color:#64748b;display:none">Actualización automática...</span>
+              <button class="btn-icon btn-refresh" id="logs-refresh-btn" aria-label="Actualizar registros" title="Actualizar registros">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+              </button>
+            </div>
+          </div>
+        </div>
+        <div id="logs-token-summary" style="display:none;margin-bottom:16px;padding:12px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;font-size:13px">
+          <div style="font-weight:600;color:#166534;margin-bottom:8px">Resumen de Tokens</div>
+          <div style="display:flex;gap:24px;flex-wrap:wrap">
+            <div><span style="color:#64748b">Entrada:</span> <span id="tok-prompt" style="font-variant-numeric:tabular-nums;font-weight:600">0</span></div>
+            <div><span style="color:#64748b">Salida:</span> <span id="tok-completion" style="font-variant-numeric:tabular-nums;font-weight:600">0</span></div>
+            <div><span style="color:#64748b">En caché:</span> <span id="tok-cached" style="font-variant-numeric:tabular-nums;font-weight:600">0</span></div>
+            <div><span style="color:#64748b">Total:</span> <span id="tok-total" style="font-variant-numeric:tabular-nums;font-weight:600">0</span></div>
+            <div><span style="color:#64748b">Costo:</span> <span id="tok-cost" style="font-variant-numeric:tabular-nums;font-weight:600">—</span></div>
+            <div><span style="color:#64748b">Duración:</span> <span id="tok-duration" style="font-variant-numeric:tabular-nums;font-weight:600">0s</span></div>
+          </div>
+        </div>
             <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
               <span id="logs-poll-indicator" style="font-size:12px;color:#64748b;display:none">Actualización automática...</span>
               <button class="btn-icon btn-refresh" id="logs-refresh-btn" aria-label="Actualizar registros" title="Actualizar registros">
@@ -1151,22 +1193,45 @@
     }
 
     function statusLabel(status) {
-      if (!status) return 'Desconocido';
-      var translated = {
-        pending: 'Pendiente',
-        processing: 'Procesando',
-        extracting_blob: 'Extrayendo Blob',
-        extracting_text: 'Extrayendo Texto',
-        chunking: 'Fragmentando',
-        processed: 'Procesado',
-        failed: 'Fallido',
-        extracted: 'Extraído'
+      const labels = {
+        pending: 'Pendiente', processing: 'Procesando',
+        extracted: 'Extraído', extracting_blob: 'Extrayendo Blob',
+        extracting_text: 'Extrayendo Texto', chunking: 'Fragmentando',
+        processed: 'Procesado', failed: 'Fallido'
       };
-      if (translated.hasOwnProperty(status)) return translated[status];
-      return status
-        .split('_')
-        .map(function(word) { return word.charAt(0).toUpperCase() + word.slice(1); })
-        .join(' ');
+      return labels[status] || status || 'Desconocido';
+    }
+
+    function formatTokens(item) {
+      if (!item || item.prompt_tokens === undefined) return '—';
+      if (item.prompt_tokens === 0 && item.completion_tokens === 0 && item.total_tokens === 0) return '—';
+      var input = (item.prompt_tokens || 0).toLocaleString();
+      var output = (item.completion_tokens || 0).toLocaleString();
+      var cached = item.cached_tokens || 0;
+      if (cached > 0) {
+        return cached.toLocaleString() + '/' + input + '/' + output;
+      }
+      return input + '/' + output;
+    }
+
+    function formatCost(item) {
+      if (item == null || item.total_cost == null) return '\u2014';
+      return '$' + Number(item.total_cost).toFixed(4);
+    }
+
+    function formatTokenTitle(item) {
+      if (!item || item.prompt_tokens === undefined) return '';
+      if (item.prompt_tokens === 0 && item.completion_tokens === 0 && item.total_tokens === 0) {
+        return 'Sin datos de tokens (documento anterior a v5.0)';
+      }
+      var parts = [];
+      parts.push('Tokens de entrada: ' + (item.prompt_tokens || 0).toLocaleString());
+      parts.push('Tokens de salida: ' + (item.completion_tokens || 0).toLocaleString());
+      if (item.cached_tokens) parts.push('Tokens en cach\u00e9: ' + item.cached_tokens.toLocaleString());
+      if (item.total_tokens) parts.push('Total: ' + item.total_tokens.toLocaleString());
+      if (item.total_cost != null) parts.push('Costo: $' + Number(item.total_cost).toFixed(4));
+      if (item.duration_ms) parts.push('Duraci\u00f3n: ' + (item.duration_ms / 1000).toFixed(1) + 's');
+      return parts.join(' | ');
     }
 
     function showDocLoading() {
@@ -1253,6 +1318,8 @@
           '<td class="col-count">' + (item.entity_count ?? '-') + '</td>' +
           '<td class="col-count">' + (item.chunk_count ?? '-') + '</td>' +
           '<td class="col-count">' + (item.text_word_count ?? '-') + '</td>' +
+          '<td class="col-tokens" title="' + formatTokenTitle(item) + '">' + formatTokens(item) + '</td>' +
+          '<td class="col-cost"' + (item.total_cost != null ? '' : ' style="color:#94a3b8"') + '>' + formatCost(item) + '</td>' +
           '<td class="col-actions">' +
           '<button class="btn-icon btn-logs" data-document-id="' + escapeHtml(item.document_id) + '" data-filename="' + escapeHtml(item.filename || '') + '" aria-label="Ver registros" title="Ver registros de procesamiento">' +
           '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>' +
@@ -1703,6 +1770,13 @@
     const logsPrevBtn = document.getElementById('logs-prev-btn');
     const logsNextBtn = document.getElementById('logs-next-btn');
     const logsPageInfo = document.getElementById('logs-page-info');
+    const logsTokenSummary = document.getElementById('logs-token-summary');
+    const tokPrompt = document.getElementById('tok-prompt');
+    const tokCompletion = document.getElementById('tok-completion');
+    const tokCached = document.getElementById('tok-cached');
+    const tokTotal = document.getElementById('tok-total');
+    const tokCost = document.getElementById('tok-cost');
+    const tokDuration = document.getElementById('tok-duration');
 
     function updateLogsTabState() {
       const logsTabBtn = document.querySelector('nav button[data-tab="logs"]');
@@ -1770,6 +1844,7 @@
       switchTab('logs');
       logsShouldPoll = true;
       fetchLogs(docId, 1);
+      fetchLogsTokens(docId);
     }
 
     async function fetchLogs(docId, page) {
@@ -1869,6 +1944,32 @@
       }
     }
 
+    async function fetchLogsTokens(docId) {
+      if (!docId) return;
+      try {
+        const res = await fetch('/documents/' + encodeURIComponent(docId) + '/tokens');
+        if (!res.ok) {
+          logsTokenSummary.style.display = 'none';
+          return;
+        }
+        const data = await res.json();
+        if (!data || !data.has_data) {
+          logsTokenSummary.style.display = 'none';
+          return;
+        }
+        tokPrompt.textContent = (data.prompt_tokens || 0).toLocaleString();
+        tokCompletion.textContent = (data.completion_tokens || 0).toLocaleString();
+        tokCached.textContent = (data.cached_tokens || 0).toLocaleString();
+        tokTotal.textContent = (data.total_tokens || 0).toLocaleString();
+        tokCost.textContent = data.total_cost != null ? '$' + Number(data.total_cost).toFixed(4) : '\u2014';
+        tokDuration.textContent = (data.duration_ms ? (data.duration_ms / 1000).toFixed(1) : '0') + 's';
+        logsTokenSummary.style.display = '';
+      } catch (err) {
+        console.error('fetchLogsTokens error:', err);
+        logsTokenSummary.style.display = 'none';
+      }
+    }
+
     // Logs details toggle (event delegation)
     logsTbody.addEventListener('click', function(e) {
       var btn = e.target.closest('.log-details-toggle');
@@ -1887,6 +1988,7 @@
       stopLogPolling();
       logsDocumentId = null;
       logsDocInfo.style.display = 'none';
+      logsTokenSummary.style.display = 'none';
       logsLoading.style.display = 'none';
       logsTableContainer.style.display = 'none';
       logsPagination.style.display = 'none';
