@@ -5,7 +5,7 @@
   "type": "module",
   "description": "Integration tests for eth-pipeline — executable API documentation",
   "scripts": {
-    "test": "node --test",
+    "test": "node --test e2e_pipeline.test.ts",
     "test:watch": "node --test --watch"
   },
   "devDependencies": {

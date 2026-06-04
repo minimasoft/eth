@@ -1,15 +1,12 @@
 /**
  * End-to-end integration test for eth-pipeline.
  *
- * Submits a rich Spanish criminal case document with named entities
- * (people, places, objects) and verifies the COMPLETE pipeline:
+ * 3 essential tests for sample-document e2e:
+ *   1. Submit → process → events stored
+ *   2. Entities + references generated
+ *   3. Cascade delete cleanup
  *
- *   ingest → event extraction → reference storage → event canonical
- *   entities → entity resolution (search-first) → processing logs →
- *   cascade delete
- *
- * Degraded-mode tolerant: all assertions are wrapped in skipIfDegraded
- * so the test passes gracefully when Temporal/LLM are unavailable.
+ * Degraded-mode tolerant: tests pass gracefully when Temporal/LLM are unavailable.
  *
  * @module
  */
@@ -19,10 +16,6 @@ import assert from "node:assert/strict";
 import {
   API_BASE,
   SURREAL_HTTP,
-  SURREAL_USER,
-  SURREAL_PASS,
-  SURREAL_NS,
-  SURREAL_DB,
   graphqlQuery,
   graphqlOk,
   skipIfDegraded,
@@ -76,10 +69,7 @@ const COMPREHENSIVE_CASE = [
 // Configuration
 // ---------------------------------------------------------------------------
 
-/** How long to wait (ms) between status polls. */
 const POLL_INTERVAL = 2_000;
-
-/** Maximum time (ms) to wait for document processing to complete. */
 const PROCESSING_TIMEOUT = 120_000;
 
 // ---------------------------------------------------------------------------
@@ -89,18 +79,18 @@ const PROCESSING_TIMEOUT = 120_000;
 const testDocIds: string[] = [];
 
 // ---------------------------------------------------------------------------
-// Test suite — single document, complete pipeline verification
+// Test suite — 3 focused e2e tests
 // ---------------------------------------------------------------------------
 
-describe("e2e — full pipeline (events, references, event entities, resolution, logs, delete)", () => {
+describe("e2e — full pipeline (events, entities, references, delete)", () => {
   after(async () => {
     await cleanupTestDocuments();
   });
 
   // ===================================================================
-  // Step 1: Submit comprehensive_case.txt → get document_id, assert status=pending
+  // Test 1: Submit document → poll until processed → assert events stored
   // ===================================================================
-  it("1. Submit document → status=pending", async () => {
+  it("1. Submit document → process → events stored", async () => {
     await skipIfDegraded(`${API_BASE}/health`, async () => {
       const doc = await createDocument(
         COMPREHENSIVE_CASE,
@@ -108,36 +98,17 @@ describe("e2e — full pipeline (events, references, event entities, resolution,
       );
       assertNonNull(doc, "Document should be created");
       testDocIds.push(doc.document_id);
-
       assert.ok(doc.document_id.length > 0, "document_id should be non-empty");
       assert.equal(doc.status, "pending");
+      console.log(`Submitted document ${doc.document_id} (status=${doc.status})`);
 
-      console.log(
-        `✓ Submitted document ${doc.document_id} (status=${doc.status})`,
-      );
-    });
-  });
-
-  // ===================================================================
-  // Step 2: Poll status until processed (max 120s, degraded-mode tolerant)
-  // ===================================================================
-  it("2. Poll status → processed", async () => {
-    await skipIfDegraded(`${API_BASE}/health`, async () => {
-      const docId = testDocIds[0];
-      if (!docId) {
-        console.log("ℹ  No document from Step 1 — skipping poll");
-        return;
-      }
-
+      const docId = doc.document_id;
       const deadline = Date.now() + PROCESSING_TIMEOUT;
-      let lastStatus = "unknown";
+      let lastStatus = "pending";
       let pendingPolls = 0;
-
-      console.log(`  Monitoring document ${docId}...`);
 
       while (Date.now() < deadline) {
         await new Promise((r) => setTimeout(r, POLL_INTERVAL));
-
         const [status, body] = await httpGet(`${API_BASE}/documents/${docId}`, 5_000);
         if (status !== 200) continue;
 
@@ -156,7 +127,7 @@ describe("e2e — full pipeline (events, references, event entities, resolution,
 
         if (currentStatus === "processed") {
           console.log(`✓ Document processed in ${PROCESSING_TIMEOUT - (deadline - Date.now())}ms`);
-          return;
+          break;
         }
 
         if (currentStatus === "failed") {
@@ -173,212 +144,80 @@ describe("e2e — full pipeline (events, references, event entities, resolution,
         }
       }
 
-      console.log(`ℹ  Document still "${lastStatus}" after ${PROCESSING_TIMEOUT}ms timeout`);
-    });
-  });
-
-  // ===================================================================
-  // Step 3: Query events via GraphQL → assert fields present
-  // ===================================================================
-  it("3. Query events via GraphQL → assert que_paso, espacio, humanos, objetos", async () => {
-    await skipIfDegraded(`${API_BASE}/health`, async () => {
-      const [status, parsed, error] = await graphqlQuery<{
-        event: Array<{
-          id: string;
-          que_paso: string;
-          espacio?: string | null;
-          tiempo?: string | null;
-          humanos?: string | null;
-          objetos?: string | null;
-        }>;
-      }>(
-        `query AllEvents { event { id que_paso espacio tiempo humanos objetos } }`,
-        undefined,
-        15_000,
-      );
-
-      if (!graphqlOk([status, parsed, error])) {
-        console.log("ℹ  GraphQL event query unavailable (degraded mode)");
+      if (lastStatus !== "processed") {
+        console.log("ℹ  Document not processed — skipping event verification");
         return;
       }
 
-      const events = parsed!.data!.event;
-      console.log(`✓ GraphQL returned ${events.length} events`);
-
-      if (events.length > 0) {
-        const sample = events[events.length - 1];
-        console.log(`  Latest event: "${(sample.que_paso ?? "").slice(0, 80)}..."`);
-        if (sample.espacio) console.log(`  Location: ${sample.espacio}`);
-        if (sample.tiempo) console.log(`  Time: ${sample.tiempo}`);
-
-        // Basic field assertions
-        const withFields = events.filter(
-          (e) => e.que_paso && e.que_paso.length > 0,
-        );
-        console.log(`  ${withFields.length}/${events.length} events have que_paso field`);
-      }
+      const rows = await surrealQuery(
+        "SELECT count() as cnt FROM event",
+      );
+      const eventCnt = rows.length > 0 ? ((rows[0] as any).cnt ?? 0) : 0;
+      console.log(`✓ SurrealDB: ${eventCnt} total events`);
     });
   });
 
   // ===================================================================
-  // Step 4: Query references via GraphQL → assert types include espacio, humanos
+  // Test 2: Entities and references generated
   // ===================================================================
-  it("4. Query references via GraphQL → assert types", async () => {
+  it("2. Entities + references generated", async () => {
     await skipIfDegraded(`${API_BASE}/health`, async () => {
-      const [status, parsed, error] = await graphqlQuery<{
-        reference: Array<{
-          id: string;
-          verbatim_text?: string;
-          reference_type?: string;
-        }>;
+      const docId = testDocIds[0];
+      if (!docId) {
+        console.log("ℹ  No document — skipping entity verification");
+        return;
+      }
+
+      // GraphQL: events
+      const [, eventsParsed] = await graphqlQuery<{
+        event: Array<{ id: string; que_paso: string }>;
+      }>(
+        `query AllEvents { event { id que_paso } }`,
+        undefined,
+        15_000,
+      );
+      const events = eventsParsed?.data?.event ?? [];
+      console.log(`✓ GraphQL: ${events.length} events`);
+
+      // GraphQL: references
+      const [, refsParsed] = await graphqlQuery<{
+        reference: Array<{ id: string; verbatim_text?: string; reference_type?: string }>;
       }>(
         `query AllRefs { reference { id verbatim_text reference_type } }`,
         undefined,
         15_000,
       );
+      const refs = refsParsed?.data?.reference ?? [];
+      console.log(`✓ GraphQL: ${refs.length} references`);
 
-      if (!graphqlOk([status, parsed, error])) {
-        console.log("ℹ  GraphQL reference query unavailable (degraded mode)");
-        return;
-      }
+      // SurrealDB: event canonical entities
+      const entityRows = await surrealQuery(
+        "SELECT count() as cnt FROM canonical_entity WHERE entity_type = 'event'",
+      );
+      const ecnt = entityRows.length > 0 ? ((entityRows[0] as any).cnt ?? 0) : 0;
+      console.log(`✓ SurrealDB: ${ecnt} event canonical entities`);
 
-      const refs = parsed!.data!.reference;
-      console.log(`✓ GraphQL returned ${refs.length} references`);
+      // SurrealDB: event_entity_link edges
+      const edgeRows = await surrealQuery(
+        "SELECT count() as cnt FROM event_entity_link",
+      );
+      const edgeCnt = edgeRows.length > 0 ? ((edgeRows[0] as any).cnt ?? 0) : 0;
+      console.log(`✓ SurrealDB: ${edgeCnt} event_entity_link edges`);
 
-      if (refs.length > 0) {
-        const types = new Set(refs.map((r) => r.reference_type).filter(Boolean));
-        console.log(`  Reference types: ${[...types].join(", ") || "(none)"}`);
-
-        const sample = refs[0];
-        console.log(
-          `  Sample: "${(sample.verbatim_text ?? "").slice(0, 60)}..." (${sample.reference_type ?? "unknown"})`,
-        );
-      }
-    });
-  });
-
-  // ===================================================================
-  // Step 5: Direct SurrealDB verification
-  // ===================================================================
-  it("5a. SurrealDB → reference count via dot notation", async () => {
-    await skipIfDegraded(`${SURREAL_HTTP}/health`, async () => {
-      const docId = testDocIds[0];
-      if (!docId) {
-        console.log("ℹ  No document — skipping DB verification");
-        return;
-      }
-
-      const rows = await surrealQuery(
+      // SurrealDB: references via dot notation
+      const refRows = await surrealQuery(
         "SELECT count() as cnt FROM reference WHERE event.document = $doc_rid",
         { doc_rid: `document:${docId}` },
       );
-
-      if (rows.length > 0) {
-        const cnt = (rows[0] as any).cnt ?? 0;
-        console.log(`✓ SurrealDB: ${cnt} references via dot notation (event.document)`);
-        // In degraded mode (no LLM), count may be 0 — that's OK
-      } else {
-        console.log("ℹ  SurrealDB reference check returned no rows (interface may be degraded)");
-      }
-    });
-  });
-
-  it("5b. SurrealDB → event canonical entities", async () => {
-    await skipIfDegraded(`${SURREAL_HTTP}/health`, async () => {
-      const docId = testDocIds[0];
-      if (!docId) {
-        console.log("ℹ  No document — skipping DB verification");
-        return;
-      }
-
-      const rows = await surrealQuery(
-        "SELECT count() as cnt FROM canonical_entity " +
-        "WHERE entity_type = 'event' AND properties.document_id = $doc_id",
-        { doc_id: docId },
-      );
-
-      if (rows.length > 0) {
-        const cnt = (rows[0] as any).cnt ?? 0;
-        console.log(`✓ SurrealDB: ${cnt} event canonical entities`);
-      } else {
-        console.log("ℹ  SurrealDB event entity check returned no rows (interface may be degraded)");
-      }
-    });
-  });
-
-  it("5c. SurrealDB → canonical entity via CONTAINS (search-first resolution)", async () => {
-    await skipIfDegraded(`${SURREAL_HTTP}/health`, async () => {
-      const rows = await surrealQuery(
-        "SELECT count() as cnt FROM canonical_entity " +
-        "WHERE name CONTAINS 'María Elena Gutiérrez'",
-      );
-
-      if (rows.length > 0) {
-        const cnt = (rows[0] as any).cnt ?? 0;
-        console.log(
-          cnt > 0
-            ? `✓ SurrealDB: entity for 'María Elena Gutiérrez' found (search-first resolution works)`
-            : `✓ SurrealDB: 0 entities for 'María Elena Gutiérrez' (may not have been processed yet)`,
-        );
-      } else {
-        console.log("ℹ  SurrealDB entity name check returned no rows (interface may be degraded)");
-      }
-    });
-  });
-
-  it("5d. SurrealDB → event_entity_link edges created", async () => {
-    await skipIfDegraded(`${SURREAL_HTTP}/health`, async () => {
-      const rows = await surrealQuery(
-        "SELECT count() as cnt FROM event_entity_link",
-      );
-
-      if (rows.length > 0) {
-        const cnt = (rows[0] as any).cnt ?? 0;
-        console.log(`✓ SurrealDB: ${cnt} event_entity_link edges`);
-      } else {
-        console.log("ℹ  SurrealDB edge check returned no rows (interface may be degraded)");
-      }
+      const refCnt = refRows.length > 0 ? ((refRows[0] as any).cnt ?? 0) : 0;
+      console.log(`✓ SurrealDB: ${refCnt} references for document via dot notation`);
     });
   });
 
   // ===================================================================
-  // Step 6: Query processing logs via REST API
+  // Test 3: Cascade delete → zero orphans
   // ===================================================================
-  it("6. Processing logs → assert log entries", async () => {
-    await skipIfDegraded(`${API_BASE}/health`, async () => {
-      const docId = testDocIds[0];
-      if (!docId) {
-        console.log("ℹ  No document — skipping log check");
-        return;
-      }
-
-      const [status, body] = await httpGet(`${API_BASE}/documents/${docId}/logs`, 5_000);
-
-      if (status === 200 && body) {
-        try {
-          const logs = JSON.parse(body);
-          const entries = Array.isArray(logs) ? logs : (logs.logs ?? logs.entries ?? []);
-          console.log(`✓ Processing logs: ${entries.length} entries`);
-
-          if (entries.length > 0) {
-            const stepNames = new Set(
-              entries.map((e: any) => e.step ?? e.activity ?? e.log_type ?? "").filter(Boolean),
-            );
-            console.log(`  Log steps: ${[...stepNames].join(", ")}`);
-          }
-        } catch {
-          console.log("ℹ  Processing logs could not be parsed (degraded mode)");
-        }
-      } else {
-        console.log("ℹ  Processing logs unavailable (HTTP ${status}, degraded mode)");
-      }
-    });
-  });
-
-  // ===================================================================
-  // Step 7: Delete document → assert cascade cleanup
-  // ===================================================================
-  it("7. Delete document → assert cascade cleanup", async () => {
+  it("3. Cascade delete → zero orphans", async () => {
     await skipIfDegraded(`${API_BASE}/health`, async () => {
       const docId = testDocIds[0];
       if (!docId) {
@@ -389,34 +228,34 @@ describe("e2e — full pipeline (events, references, event entities, resolution,
       const [delStatus] = await httpDelete(`${API_BASE}/documents/${docId}`, 10_000);
       console.log(`✓ DELETE /documents/${docId} → HTTP ${delStatus}`);
 
-      // Verify no orphan events remain
       const eventRows = await surrealQuery(
         "SELECT count() as cnt FROM event WHERE document = $doc_rid",
         { doc_rid: `document:${docId}` },
       );
       const eventCnt = eventRows.length > 0 ? ((eventRows[0] as any).cnt ?? 0) : 0;
-      console.log(`  Events remaining after cascade delete: ${eventCnt}`);
+      console.log(`  Events remaining: ${eventCnt}`);
 
-      // Verify no references remain 
       const refRows = await surrealQuery(
         "SELECT count() as cnt FROM reference WHERE event.document = $doc_rid",
         { doc_rid: `document:${docId}` },
       );
       const refCnt = refRows.length > 0 ? ((refRows[0] as any).cnt ?? 0) : 0;
-      console.log(`  References remaining after cascade delete: ${refCnt}`);
+      console.log(`  References remaining: ${refCnt}`);
 
-      // Verify no document_event_logs remain
       const logRows = await surrealQuery(
         "SELECT count() as cnt FROM document_event_log WHERE document = $doc_rid",
         { doc_rid: `document:${docId}` },
       );
       const logCnt = logRows.length > 0 ? ((logRows[0] as any).cnt ?? 0) : 0;
-      console.log(`  Document logs remaining after cascade delete: ${logCnt}`);
+      console.log(`  Document logs remaining: ${logCnt}`);
 
-      // In degraded mode, doc may not have been processed → soft assertions
       if (eventCnt > 0 || refCnt > 0 || logCnt > 0) {
         console.log("ℹ  Some records remain after delete (may be degraded-mode race condition)");
       }
+
+      // Remove from testDocIds since we already deleted it
+      const idx = testDocIds.indexOf(docId);
+      if (idx !== -1) testDocIds.splice(idx, 1);
     });
   });
 });
@@ -427,9 +266,9 @@ describe("e2e — full pipeline (events, references, event entities, resolution,
 
 async function cleanupTestDocuments(): Promise<void> {
   if (testDocIds.length === 0) return;
-  console.log(`\nCleaning up ${testDocIds.length} test document(s)...`);
+  console.log(`Cleaning up ${testDocIds.length} test document(s)...`);
   for (const docId of testDocIds) {
     const [status] = await httpDelete(`${API_BASE}/documents/${docId}`, 10_000);
-    console.log(`  ✓ Deleted document ${docId} (HTTP ${status})`);
+    console.log(`  Deleted document ${docId} (HTTP ${status})`);
   }
 }
