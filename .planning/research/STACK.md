@@ -1,512 +1,395 @@
-# Technology Stack — v4.0 Pipeline Quality & Entity Resolution
+# Technology Stack — v5.0 LLM Cost & Usage Tracking
 
 **Project:** eth-pipeline (Espacio Tiempo Humanos)
-**Researched:** 2026-06-03
-**Mode:** Ecosystem — Reference offsets, structured event entities, search-first entity resolution, per-document processing logs
-**Confidence:** HIGH
+**Researched:** 2026-06-04
+**Mode:** Ecosystem — OpenRouter token/cost response format, data model for tracking, SurrealDB schema, UI patterns
+**Confidence:** HIGH on OpenRouter token fields; HIGH on cost data; HIGH on data model; MEDIUM on caching details
 
-## Stack Additions Summary — v4.0
+## Stack Additions Summary — v5.0
 
 | Area | Recommendation | Version | Rationale |
 |------|---------------|---------|-----------|
-| Reference offset tracking | Existing `span_start`/`span_end` + new `page_number` field | — | `ExtractionResult.page_offsets` already available; compute page from offset range |
-| Event canonical entity type | Add `"event"` to `entity_type` enum in `canonical_entity` | — | Existing unified entity model; no new table needed |
-| SurrealDB entity search | `WHERE name CONTAINS ...` + SurrealQL `string::contains()` | SurrealDB >=3.0 | No external search infra needed; string functions are sufficient at this scale |
-| SurrealDB full-text search (future) | `DEFINE ANALYZER` + `DEFINE INDEX ... FULLTEXT` | SurrealDB >=3.0 | BM25 scoring, multi-language support — defer until search volume requires it |
-| Per-document processing log | New SurrealDB table `processing_log` + dedicated activity `write_processing_log_activity` | — | Keeps logs in same DB as data; Temporal replay-safe via idempotent DELETE+INSERT |
-| Python structured logging | Stdlib `logging` with JSON-formatted log entries | Python >=3.10 | Already used; extend with structured dict messages, no new dependency needed |
-| Temporal error accumulation | Warnings accumulated in activity result dicts + application-level log tables | Temporal Python SDK >=1.28 | `ApplicationError(BENIGN)` exists but is for errors, not warnings; return warnings in result |
+| Token extraction | Capture `usage` dict from OpenRouter response body | — | OpenRouter returns `prompt_tokens`, `completion_tokens`, `total_tokens` on EVERY response. Also `usage.cost`, `prompt_tokens_details.cached_tokens`. |
+| Cost data source | Use `usage.cost` from response if present; null otherwise | — | OpenRouter `ResponseUsage` type includes optional `cost` field. Authoritative billed amount. No computation needed. |
+| Cache hit detection | `prompt_tokens_details.cached_tokens` in response | — | Provider-level prompt caching reported via this field. OpenRouter Response Caching zeroes ALL usage fields. |
+| Token storage | New `llm_usage_log` table in SurrealDB | — | A separate table (not embedded in `document`) supports DELETE+re-insert replay safety. Follows `document_event_log` pattern. |
+| Per-document aggregation | SurrealQL `math::sum()` on `llm_usage_log` | — | Same pattern as reference/entity counts. No new aggregation infra. |
+| UI display | Two new columns in documents table | — | "Tokens" and "Cost" columns using existing `col-count` CSS and `font-variant-numeric: tabular-nums`. |
+| Python dependencies | None new | — | All token/cost data is parsed from `response.json()`. `time.monotonic()` from stdlib. |
+| JS dependencies | None new | — | Vanilla `fetch()`, `Intl.NumberFormat`, `String.prototype.toFixed()`. |
 
 ---
 
-## 1. Reference Offsets (Character + Page)
+## 1. OpenRouter API Response — Token & Cost Fields
 
-### Current State
-The `reference` table and `EVENT_EXTRACTION_SCHEMA` already have `span_start` and `span_end` (character offsets, 0-based, exclusive end). `ExtractionResult.page_offsets` is already computed by `PdfExtractor` and available in the workflow.
+### Confirmed Response Shape
 
-### v4.0: Add `page_number` to references
+The OpenRouter `/api/v1/chat/completions` response includes a `usage` object on every non-streaming response:
 
-**Schema change:** Add `page_number` field (integer, nullable, 1-based) to the `reference` table.
-
-**Computation:** Given `page_offsets = [0, 523, 1047, ...]` and a reference with `span_start`/`span_end`, determine the page by binary search:
-
-```python
-def span_to_page(span_start: int, span_end: int, page_offsets: list[int]) -> int:
-    """Return 1-based page number for a character span.
-
-    Parameters
-    ----------
-    span_start: 0-based character offset where span begins.
-    span_end: 0-based exclusive character offset where span ends.
-    page_offsets: Cumulative offsets list, where page_offsets[i] is the
-        character offset of page i (0-based page index).
-
-    Returns
-    -------
-    int: 1-based page number (last page if span straddles a boundary).
-    """
-    for page_idx in range(len(page_offsets) - 1):
-        if span_start < page_offsets[page_idx + 1]:
-            return page_idx + 1
-    return len(page_offsets) - 1  # fallback to last page
+```typescript
+type ResponseUsage = {
+  prompt_tokens: number;              // Always present. Input tokens.
+  completion_tokens: number;          // Always present. Output tokens.
+  total_tokens: number;               // Always present. Sum of above.
+  prompt_tokens_details?: {           // Optional breakdown
+    cached_tokens: number;            // Tokens served from provider prompt cache
+    cache_write_tokens?: number;      // Tokens written to cache
+  };
+  completion_tokens_details?: {       // Optional breakdown
+    reasoning_tokens?: number;        // Internal reasoning tokens
+  };
+  cost?: number;                      // Cost in OpenRouter credits (optional)
+  is_byok?: boolean;
+  cost_details?: {                    // Detailed cost breakdown
+    upstream_inference_prompt_cost: number;
+    upstream_inference_completions_cost: number;
+  };
+};
 ```
 
-**Why not store page_number from the LLM:** The LLM already outputs `span_start`/`span_end`. Computing `page_number` from `page_offsets` is deterministic and avoids LLM hallucination risk. This is a pure post-processing step added to `store_extraction_results_activity`.
-
-**LLM schema change:** No change needed to `EVENT_EXTRACTION_SCHEMA` — keep `span_start`/`span_end` as they are. The `page_number` is derived server-side.
-
-### Sources
-
-- Current `extractors.py` `ExtractionResult.page_offsets` — already computed (HIGH confidence)
-- Current `llm.py` `EVENT_EXTRACTION_SCHEMA` — already has `span_start`/`span_end` (HIGH confidence)
-- Current `activities.py` `store_extraction_results_activity` — creates references with `ss`/`se` from LLM output (HIGH confidence)
-
----
-
-## 2. Structured Event Objects as Canonical Entities
-
-### Current State
-The `canonical_entity` table uses a unified model: `entity_type` enum (currently `place`, `person`, `object`, and `tiempo` which is skipped during resolution), `name` string, `properties` flexible JSON.
-
-Events are stored as flat records in the `event` table with `que_paso`, `espacio`, `tiempo`, `humanos`, `objetos` as flat text fields.
-
-### v4.0: Add `"event"` to `canonical_entity.entity_type` enum
-
-**Schema change:** Add `"event"` to the `entity_type` enum on `canonical_entity`. The `properties` JSON stores structured event data:
+### Actual JSON Example
 
 ```json
 {
-  "que_paso": "La parte demandada fue notificada",
-  "time": "15 de enero de 2024",
-  "place": "Juzgado de Primera Instancia",
-  "participants": ["Juan Pérez", "María García"],
-  "objects": ["notificación judicial"],
-  "source_document": "document:abc123"
-}
-```
-
-**Why this works:** The unified `canonical_entity` model already supports:
-- `superseded_by` for soft-delete / merge (already in M002)
-- `split_from` for provenance tracking (already in M002)
-- `properties` flexible JSON for structured event fields
-- Graph edges via `RELATE` to link events to place/person/object entities
-
-**How to use RELATE for event–entity links:**
-
-```surql
--- Link an event entity to the place it references
-RELATE canonical_entity:event001->occurs_at->canonical_entity:place001
-  SET confidence = 0.95, source_reference = reference:abc
-
--- Link an event entity to participants
-RELATE canonical_entity:event001->involves->canonical_entity:person001
-  SET role = "demandante", confidence = 0.9
-
--- Traverse: find all events for a person
-SELECT ->involves<-canonical_entity FROM canonical_entity:person001
-```
-
-**Integration with resolution activity:** Modify `ENTITIY_RESOLUTION_SCHEMA` and `resolve_entities_activity` to handle the `"event"` entity type. Unlike skip-types (tiempo), events should be resolved via LLM just like place/person/object — but with a different prompt that extracts structured time/place/participants/objects fields.
-
-### Sources
-
-- Current `canonical_entity` schema: unified table with `entity_type` enum, `properties` JSON, `superseded_by` (HIGH confidence — code in `activities.py` and `PROJECT.md`)
-- SurrealDB `RELATE` statement: https://surrealdb.com/docs/surrealql/statements/relate (HIGH confidence)
-
----
-
-## 3. Search-First Entity Resolution
-
-### Current State
-`resolve_entities_activity` queries ALL existing canonical entities of a type and sends them all to the LLM for batch matching. This works now because entity counts are low, but doesn't scale and wastes LLM context on irrelevant entities.
-
-### v4.0 Search-First: Query existing entities by name/type during extraction
-
-**Core pattern:** Before `extract_events_activity` runs, query existing canonical entities and provide them as context to the LLM. The LLM then decides whether to match or create.
-
-**SurrealDB query patterns for entity search:**
-
-| Search Type | SurrealQL | Use Case | Performance |
-|-------------|-----------|----------|-------------|
-| Exact name match | `SELECT * FROM canonical_entity WHERE entity_type = $type AND name = $name` | Known entity | Indexed, fast |
-| Case-insensitive | `SELECT * FROM canonical_entity WHERE entity_type = $type AND name ~* $name` | User input | Table scan |
-| Contains match | `SELECT * FROM canonical_entity WHERE entity_type = $type AND name CONTAINS $keyword` | Partial name match | Table scan |
-| String function | `SELECT * FROM canonical_entity WHERE entity_type = $type AND string::contains(name, $keyword)` | Explicit substring | Table scan |
-| Full-text (indexed) | `SELECT * FROM canonical_entity WHERE name @@ "search term"` | Fuzzy/BM25 | Indexed, fast |
-
-**Recommendation for v4.0:** Use `WHERE name CONTAINS $keyword` for the initial implementation. It's simple, readable, and sufficient at current scale. Add full-text search as a future optimization.
-
-**Integration into extraction workflow:**
-
-The current sequential flow is:
-1. `extract_events_activity` → returns events with references
-2. `store_extraction_results_activity` → persists events and references
-3. `resolve_entities_activity` → resolves references against existing entities
-
-For search-first, inject step 1a: query existing entities and pass them to the LLM as context:
-
-```
-Modified extract_events_activity flow:
-1. Query existing canonical entities (all types or by type)
-2. Build LLM prompt with existing entities as candidates
-3. LLM extracts events AND links references to existing entities inline
-4. Return events with pre-resolved canonical_entity links
-```
-
-**LLM prompt pattern for search-first extraction:**
-
-```python
-# In the system prompt for extract_events:
-(
-    "Además de extraer eventos, tu tarea incluye vincular cada referencia "
-    "a entidades canónicas existentes cuando sea posible. "
-    "Se te proporciona una lista de entidades existentes (lugares, personas, objetos, eventos).\n\n"
-    "Para cada referencia en el evento:\n"
-    "1. Si la referencia coincide claramente con una entidad existente, "
-    "incluye el campo 'matched_entity_id' con el ID de esa entidad.\n"
-    "2. Si no coincide con ninguna entidad existente, deja 'matched_entity_id' como null.\n"
-    "3. Describe brevemente la referencia en 'reference_context' para ayudar "
-    "a la resolución posterior.\n\n"
-    "ENTIDADES EXISTENTES:\n"
-    f"{json.dumps(existing_entities, ensure_ascii=False, indent=2)}"
-)
-```
-
-**Schema change to `EVENT_EXTRACTION_SCHEMA`:**
-
-```json
-{
-  "reference_type": {"type": "string", "enum": ["espacio", "tiempo", "humanos", "objetos"]},
-  "verbatim_text": {"type": "string"},
-  "span_start": {"type": "integer"},
-  "span_end": {"type": "integer"},
-  "matched_entity_id": {
-    "type": "string",
-    "description": "ID of matched canonical entity, or null if new"
-  },
-  "reference_context": {
-    "type": "string",
-    "description": "Brief context describing the reference (e.g. 'juzgado where the case was filed')"
+  "id": "gen-abc123",
+  "model": "google/gemini-2.5-flash",
+  "choices": [{"message": {"role": "assistant", "content": "..."}}],
+  "usage": {
+    "prompt_tokens": 10339,
+    "completion_tokens": 60,
+    "total_tokens": 10399,
+    "prompt_tokens_details": {
+      "cached_tokens": 10318,
+      "cache_write_tokens": 0
+    }
   }
 }
 ```
 
-Add `matched_entity_id` as optional (not in `required` array) so existing extraction behavior is preserved when no entities exist yet.
+Source: OpenRouter TypeScript API reference in `llms-full.txt` lines 18870-18920 (HIGH confidence).
 
-### Sources
+### Cache Behavior
 
-- SurrealDB `CONTAINS` operator: https://surrealdb.com/docs/surrealql/statements/select (HIGH confidence — documented in WHERE clause section)
-- SurrealDB `string::contains()` function: https://surrealdb.com/docs/surrealql/functions/database-functions/string (MEDIUM confidence — docs blocked by SPA redirect, confirmed via Context7)
-- SurrealDB full-text `DEFINE ANALYZER`: https://surrealdb.com/docs/surrealql/statements/define/analyzer (HIGH confidence — fetched successfully)
-- SurrealDB full-text `@@` operator: documented in hybrid RAG examples on surrealdb.com (HIGH confidence)
+Two caching layers exist:
+1. **Response Caching** (`X-OpenRouter-Cache` header): Cache HIT returns all usage fields zeroed. Free. Not in use by this pipeline.
+2. **Provider Prompt Caching** (automatic via Anthropic/OpenAI/Gemini): Reported via `prompt_tokens_details.cached_tokens`. Billed at reduced rate.
+
+### What to Capture per LLM Call
+
+| Field | JSON Path | Always? | Notes |
+|-------|-----------|---------|-------|
+| `prompt_tokens` | `usage.prompt_tokens` | Yes | Core metric |
+| `completion_tokens` | `usage.completion_tokens` | Yes | Core metric |
+| `total_tokens` | `usage.total_tokens` | Yes | Sum |
+| `cached_tokens` | `usage.prompt_tokens_details.cached_tokens` | No | Provider caching |
+| `cache_write_tokens` | `usage.prompt_tokens_details.cache_write_tokens` | No | Cache writes |
+| `reasoning_tokens` | `usage.completion_tokens_details.reasoning_tokens` | No | Reasoning models |
+| `cost` | `usage.cost` | No | Authoritative cost |
+| `upstream_prompt_cost` | `usage.cost_details.upstream_inference_prompt_cost` | No | Detailed breakdown |
+
+### No `X-OpenRouter-Usage` Header
+
+No such header exists in OpenRouter documentation. All usage data is in the response body.
 
 ---
 
-## 4. Per-Document Processing Log
+## 2. Data Model — SurrealDB Schema
 
-### Current State
-Processing state is tracked via document status (`processing`, `extracting_blob`, `extracting_text`, `processed`, `failed`) and a single `error_message` field. There is no per-step audit trail or warning accumulation.
+### New Table: `llm_usage_log`
 
-### v4.0: New `processing_log` Table
-
-**Schema:**
+One row per LLM call. A document with 3 chunks and 3 entity types produces ~6 rows.
 
 ```surql
-DEFINE TABLE processing_log SCHEMAFULL;
+DEFINE TABLE llm_usage_log SCHEMAFULL
+    COMMENT 'Per-call LLM token usage and cost tracking (v5.0). One row per OpenRouter API call. Replay-safe via deterministic IDs and delete-then-reinsert.';
 
-DEFINE FIELD document ON processing_log TYPE record<document>;
-DEFINE FIELD step ON processing_log TYPE string;
-DEFINE FIELD level ON processing_log TYPE string
-  ASSERT $value IN ["info", "warning", "error"];
-DEFINE FIELD message ON processing_log TYPE string;
-DEFINE FIELD details ON processing_log TYPE option<object>;
-DEFINE FIELD created_at ON processing_log TYPE datetime
-  DEFAULT time::now();
+DEFINE FIELD document ON llm_usage_log TYPE record<document>
+    COMMENT 'Link to the source document being processed';
 
-DEFINE INDEX log_document_idx ON processing_log FIELDS document;
+DEFINE FIELD activity ON llm_usage_log TYPE string
+    COMMENT 'Activity name: extract_events, resolve_references, resolve_entities_with_search';
+
+DEFINE FIELD chunk_index ON llm_usage_log TYPE option<int>
+    DEFAULT null
+    COMMENT 'Chunk index (0-based) when document was split; null for non-chunked calls';
+
+DEFINE FIELD model ON llm_usage_log TYPE string
+    COMMENT 'Model identifier (e.g. deepseek/deepseek-v4-flash)';
+
+DEFINE FIELD prompt_tokens ON llm_usage_log TYPE int
+    ASSERT $value >= 0
+    COMMENT 'Input token count from response.usage.prompt_tokens';
+
+DEFINE FIELD completion_tokens ON llm_usage_log TYPE int
+    ASSERT $value >= 0
+    COMMENT 'Output token count from response.usage.completion_tokens';
+
+DEFINE FIELD total_tokens ON llm_usage_log TYPE int
+    ASSERT $value >= 0
+    COMMENT 'Sum of prompt_tokens + completion_tokens';
+
+DEFINE FIELD cached_tokens ON llm_usage_log TYPE option<int>
+    DEFAULT null
+    COMMENT 'Cached prompt tokens (prompt_tokens_details.cached_tokens); null if not reported';
+
+DEFINE FIELD cache_write_tokens ON llm_usage_log TYPE option<int>
+    DEFAULT null
+    COMMENT 'Tokens written to provider prompt cache; null if not reported';
+
+DEFINE FIELD reasoning_tokens ON llm_usage_log TYPE option<int>
+    DEFAULT null
+    COMMENT 'Internal reasoning tokens (completion_tokens_details.reasoning_tokens)';
+
+DEFINE FIELD cost ON llm_usage_log TYPE option<float>
+    DEFAULT null
+    COMMENT 'Cost in credits from response.usage.cost; null if not provided';
+
+DEFINE FIELD cost_source ON llm_usage_log TYPE option<string>
+    DEFAULT null
+    COMMENT 'Source: response (from API), computed (from pricing), null when unavailable';
+
+DEFINE FIELD upstream_prompt_cost ON llm_usage_log TYPE option<float>
+    DEFAULT null
+    COMMENT 'Upstream provider prompt cost from cost_details';
+
+DEFINE FIELD upstream_completion_cost ON llm_usage_log TYPE option<float>
+    DEFAULT null
+    COMMENT 'Upstream provider completion cost from cost_details';
+
+DEFINE FIELD duration_ms ON llm_usage_log TYPE option<int>
+    DEFAULT null
+    COMMENT 'Request duration in milliseconds (time.monotonic())';
+
+DEFINE FIELD created_at ON llm_usage_log TYPE datetime
+    DEFAULT time::now() READONLY
+    COMMENT 'Timestamp when this usage record was created';
+
+DEFINE INDEX idx_llm_usage_document ON llm_usage_log COLUMNS document;
+DEFINE INDEX idx_llm_usage_created ON llm_usage_log COLUMNS created_at;
 ```
 
-**Activity pattern: `write_processing_log_activity`**
+### Aggregation Queries
 
-```python
-@activity.defn
-async def write_processing_log_activity(
-    document_id: str,
-    step: str,
-    level: str,  # "info" | "warning" | "error"
-    message: str,
-    details: dict | None = None,
-) -> dict:
+**Per-document totals:**
+```surql
+SELECT
+    math::sum(prompt_tokens) AS total_prompt_tokens,
+    math::sum(completion_tokens) AS total_completion_tokens,
+    math::sum(total_tokens) AS total_tokens,
+    math::sum(cost) AS total_cost,
+    math::sum(duration_ms) AS total_duration_ms
+FROM llm_usage_log WHERE document = $doc GROUP ALL
 ```
 
-**Replay-safe integration in workflow:**
-
-```python
-@workflow.run
-async def run(self, document_id: str) -> dict:
-    # Accumulate warnings in workflow memory
-    warnings: list[str] = []
-
-    async def log(step: str, level: str, msg: str, details: dict | None = None):
-        """Fire-and-forget log write — non-blocking, non-fatal."""
-        await workflow.execute_activity(
-            write_processing_log_activity,
-            args=[document_id, step, level, msg, details],
-            start_to_close_timeout=timedelta(seconds=10),
-        )
-        if level == "warning":
-            warnings.append(f"[{step}] {msg}")
-
-    await log("ingest", "info", "Document processing started")
-
-    # ... existing processing steps with log calls ...
-    await log("extraction", "warning", "Low confidence on 3 event references",
-              {"event_indices": [2, 5, 7]})
-
-    # On reprocess: clear prior logs (idempotency)
-    # This happens in a new activity that deletes logs for the document
-    # before writing new ones.
+**Per-document per-activity breakdown:**
+```surql
+SELECT activity, count() AS calls,
+    math::sum(prompt_tokens) AS prompt_tokens,
+    math::sum(completion_tokens) AS completion_tokens,
+    math::sum(cost) AS cost
+FROM llm_usage_log WHERE document = $doc GROUP BY activity
 ```
 
-**Alternative considered — in-document log JSON field:**
-Appending log entries to a JSON array on the `document` record. **Chosen against** because:
-- Temporal replay safety requires idempotent writes (DELETE+INSERT, not append)
-- A separate table allows querying logs independently (e.g., "show all documents with warnings")
-- Cleaner separation of concerns
-
-### Sources
-
-- SurrealDB `DEFINE FIELD` schema: https://surrealdb.com/docs/surrealql/statements/define/field (HIGH confidence)
-- Temporal replay safety pattern: nullify-then-recreate already established in M002's `resolve_entities_activity` (HIGH confidence)
+**Why a separate table (not embedded in document):**
+- One document → N LLM calls. Embedding requires array appends, which break Temporal replay safety.
+- DELETE WHERE document = $doc + re-insert is clean and proven.
+- Independent querying ("show all LLM calls across documents") is a simple scan.
 
 ---
 
-## 5. Temporal Error Accumulation (Non-Fatal Warnings)
+## 3. Python Implementation — Token Extraction
 
-### Current State
-Activities raise exceptions (which cause retries and eventual failure) or return `{"error": ...}` dicts with no accumulation mechanism. The workflow's `except` block catches any exception and marks the document as `failed`.
+### Where to Add Extraction
 
-### v4.0 Pattern: Return Warnings in Activity Results
+In `llm.py`, at the point where `response.json()` is already parsed. The current code returns only `choices[0].message.content`. v5.0 adds `_usage` to the result dict.
 
-**Core idea:** Activities return both their primary result AND a list of warnings. The workflow accumulates warnings across all activities.
+### Protocol Change
+
+The `LLMProvider` protocol's return dict gains an optional `_usage` key:
 
 ```python
-from dataclasses import dataclass, field
+class LLMProvider(Protocol):
+    async def extract_events(self, text: str, prior_events=None) -> dict:
+        """Returns dict with 'events' key (extracted events) and optional
+        '_usage' key (dict with token/cost metadata from the API response)."""
+```
 
-@dataclass
-class ActivityWarning:
-    step: str
-    message: str
-    details: dict | None = None
+### Modified `extract_events()` Flow
 
-# Activity returns a typed dict with warnings
-@activity.defn
-async def extract_events_activity(document_id: str) -> dict:
-    # ... extraction logic ...
-    return {
-        "events": [...],
-        "warnings": [
-            {"step": "llm_extraction", "message": "Skipped chunk 3: API timeout",
-             "details": {"chunk_index": 3, "retry_attempt": 2}}
-        ],
+```python
+async def extract_events(self, text, prior_events=None):
+    # ... existing HTTP call ...
+    data = response.json()
+    
+    # Extract usage from response body
+    usage = data.get("usage", {})
+    prompt_details = usage.get("prompt_tokens_details", {})
+    completion_details = usage.get("completion_tokens_details", {})
+    
+    # Parse content (existing method)
+    parsed = self._parse_choice(data)
+    
+    # Attach usage metadata
+    parsed["_usage"] = {
+        "model": data.get("model", self._model),
+        "prompt_tokens": usage.get("prompt_tokens", 0),
+        "completion_tokens": usage.get("completion_tokens", 0),
+        "total_tokens": usage.get("total_tokens", 0),
+        "cached_tokens": prompt_details.get("cached_tokens"),
+        "cache_write_tokens": prompt_details.get("cache_write_tokens"),
+        "reasoning_tokens": completion_details.get("reasoning_tokens"),
+        "cost": usage.get("cost"),
+        "cost_source": "response" if usage.get("cost") is not None else None,
+        "duration_ms": self._last_duration_ms,  # Set before/after HTTP call
     }
+    
+    return parsed
 ```
 
-**Workflow accumulation pattern:**
+### Processing Time
+
+Wrap the HTTP call with `time.monotonic()`:
 
 ```python
-@workflow.run
-async def run(self, document_id: str) -> dict:
-    all_warnings: list[dict] = []
+import time
 
-    result = await workflow.execute_activity(
-        extract_events_activity, ...,
-    )
-    all_warnings.extend(result.get("warnings", []))
-
-    store_result = await workflow.execute_activity(
-        store_extraction_results_activity, ...,
-    )
-    all_warnings.extend(store_result.get("warnings", []))
-
-    # Persist all accumulated warnings at the end
-    for w in all_warnings:
-        await workflow.execute_activity(
-            write_processing_log_activity,
-            args=[document_id, w["step"], "warning", w["message"], w.get("details")],
-            ...
-        )
-
-    return {
-        "document_id": document_id,
-        "event_count": len(events),
-        "warning_count": len(all_warnings),
-        "status": "processed",
-    }
+start = time.monotonic()
+response = await client.post(url, headers=headers, json=payload, timeout=300.0)
+end = time.monotonic()
+self._last_duration_ms = int((end - start) * 1000)
 ```
 
-**When to use `ApplicationError` (Temporal native):**
+### Replay-Safe Activity Pattern
 
-The `ApplicationError` with `category=ApplicationErrorCategory.BENIGN` exists to suppress DEBUG-level logging and metrics for known-bad inputs. Use it ONLY when you intend to raise an error that the workflow catches and handles — NOT for accumulating warnings that shouldn't fail the workflow.
+Each calling activity deletes old usage entries for the document, then inserts new ones:
 
 ```python
-# BAD: Don't raise errors for warnings
-raise ApplicationError(
-    "Low confidence on references",
-    category=ApplicationErrorCategory.BENIGN,
-)
+# In extract_events_activity, before the chunk loop:
+async with get_db(**params) as db:
+    await db.query(
+        "DELETE llm_usage_log WHERE document = $doc",
+        {"doc": f"document:{document_id}"},
+    )
 
-# GOOD: Return warnings in results
-return {"events": [...], "warnings": [...]}
+# Inside the chunk loop:
+result = await provider.extract_events(chunk, prior_events=prior)
+usage = result.pop("_usage", {})
+all_usage_entries.append(usage)
+
+# After the loop, insert all usage entries
 ```
-
-**Why this pattern:** 
-- Warnings don't trigger Temporal retry policies
-- Warnings don't set document status to `failed`
-- Warnings are persisted at the end of the workflow, not scattered across activities
-- The pattern is simple, serializable, and Temporal-safe
-
-### Sources
-
-- `ApplicationErrorCategory.BENIGN` documentation: https://python.temporal.io/temporalio.exceptions.ApplicationErrorCategory.html (HIGH confidence)
-- `ApplicationError` properties: https://python.temporal.io/temporalio.exceptions.ApplicationError.html (HIGH confidence)
-- Temporal activity result types: any serializable dict (HIGH confidence — already in use)
 
 ---
 
-## 6. JSON Schema Changes for v4.0
+## 4. UI Display — Token Usage in Vanilla SPA
 
-### Modified `EVENT_EXTRACTION_SCHEMA`
+### New Columns in Documents Table
 
-The current schema has flat string fields for `espacio`, `tiempo`, `humanos`, `objetos`. For v4.0, keep these as-is (they remain as human-readable summaries) but add the richer event entity extraction as a **separate schema path**.
+Two new columns after the existing "Palabras" column:
 
-**New: `STRUCTURED_EVENT_SCHEMA` for compound event entity creation**
-
-```python
-STRUCTURED_EVENT_SCHEMA: dict = {
-    "type": "object",
-    "properties": {
-        "events": {
-            "type": "array",
-            "items": {
-                "type": "object",
-                "properties": {
-                    "que_paso": {"type": "string"},
-                    "espacio": {"type": "string"},
-                    "tiempo": {"type": "string"},
-                    "humanos": {"type": "string"},
-                    "objetos": {"type": "string"},
-                    "references": {
-                        "type": "array",
-                        "items": {
-                            "type": "object",
-                            "properties": {
-                                "reference_type": {"type": "string", "enum": ["espacio", "tiempo", "humanos", "objetos"]},
-                                "verbatim_text": {"type": "string"},
-                                "span_start": {"type": "integer"},
-                                "span_end": {"type": "integer"},
-                                "matched_entity_id": {"type": "string"},
-                                "reference_context": {"type": "string"},
-                            },
-                            "required": ["reference_type", "verbatim_text", "span_start", "span_end"],
-                            "additionalProperties": False,
-                        },
-                    },
-                    "event_entity": {
-                        "type": "object",
-                        "properties": {
-                            "name": {"type": "string", "description": "A descriptive name for this event"},
-                            "time": {"type": "string", "description": "Structured temporal context"},
-                            "place": {"type": "string", "description": "Structured spatial context"},
-                            "participants": {
-                                "type": "array",
-                                "items": {"type": "string"},
-                                "description": "People or organizations involved",
-                            },
-                            "objects": {
-                                "type": "array",
-                                "items": {"type": "string"},
-                                "description": "Objects or assets involved",
-                            },
-                        },
-                        "required": ["name"],
-                        "additionalProperties": False,
-                    },
-                },
-                "required": ["que_paso", "references"],
-                "additionalProperties": False,
-            },
-        },
-    },
-    "required": ["events"],
-    "additionalProperties": False,
+**CSS additions:**
+```css
+.documents-table th.col-tokens {
+  width: 90px;
+  text-align: center;
+}
+.documents-table th.col-cost {
+  width: 80px;
+  text-align: center;
 }
 ```
 
----
+**JavaScript helpers:**
+```javascript
+function formatTokenCount(tokens) {
+  if (tokens == null) return '—';
+  if (tokens < 1000) return String(tokens);
+  if (tokens < 1000000) return (tokens / 1000).toFixed(1) + 'K';
+  return (tokens / 1000000).toFixed(1) + 'M';
+}
 
-## 7. What Does NOT Change
+function formatCost(cost) {
+  if (cost == null) return '—';
+  if (cost < 0.01) return '<$0.01';
+  return '$' + cost.toFixed(4);
+}
+```
 
-| Existing Component | Change Required | Rationale |
-|-------------------|----------------|-----------|
-| Temporal workflow sequence | New `write_processing_log_activity` calls inserted; `resolve_entities_activity` enhanced | Logging is additive; entity resolution adds search-first step before LLM call |
-| FastAPI (`api.py`) | No change | Upload/document APIs unaffected |
-| Temporal worker (`worker.py`) | Register `write_processing_log_activity` | New activity |
-| TypeScript tests | New test suite for v4.0 features | Test log queries, event entities, offset page computation |
-| OpenRouter LLM layer | Schema additions only | `EVENT_EXTRACTION_SCHEMA` gets optional fields; `ENTITY_RESOLUTION_SCHEMA` gets `event` type |
-| SurrealDB schema | Add `page_number` to `reference`; add `"event"` to entity_type enum; create `processing_log` table | No destructive migrations |
-| MinIO / blob storage | No change | Unrelated |
-| PDF extraction | No change | Page offsets already computed |
-| Text chunking | No change | Chunk transparency preserved |
-| GraphQL | New queries for `processing_log` | Auto-GraphQL from schema COMMENT annotations |
-| Canonical entity merge/split (`/entities/merge`, `/entities/{type}/{id}/split`) | No change | Event entities participate in same merge/split lifecycle |
+**Row cell template:**
+```javascript
+'<td class="col-count">' + formatTokenCount(item.total_tokens) + '</td>' +
+'<td class="col-count">' + formatCost(item.total_cost) + '</td>'
+```
 
----
+### API Changes
 
-## 8. Key Design Decisions
-
-### D006: Compute `page_number` server-side, not from LLM
-**Why:** `span_start`/`span_end` are already LLM outputs. Computing page number from `page_offsets` (which come from the PDF extractor) is deterministic and avoids LLM hallucination on page numbers.
-
-### D007: Add `"event"` to existing `entity_type` enum, not a new table
-**Why:** The unified `canonical_entity` model already supports flexible `properties` JSON, `superseded_by` soft-delete, and merge/split operations. A new table would duplicate all of this infrastructure. The `RELATE` statement provides the graph links between events and place/person/object entities.
-
-### D008: Search-first as LLM context injection, not a separate query step
-**Why:** Current architecture does batch LLM resolution AFTER extraction. Moving entity matching INTO extraction eliminates the two-pass pattern and reduces LLM calls. Existing entities are passed as context in the extraction prompt.
-
-### D009: `processing_log` as SurrealDB table, not in-document JSON field
-**Why:** Temporal replay safety requires idempotent writes, and `DELETE processing_log WHERE document = $doc` + re-insert is cleaner than trying to append to a JSON array. Separate table allows independent querying ("find all document processing warnings").
-
-### D010: Warnings accumulated in activity result dicts, not via `ApplicationError(BENIGN)`
-**Why:** `ApplicationError(BENIGN)` suppresses Temporal logging but still raises an exception, which triggers retry policies and workflow failure handling. Returning warnings in the result dict (e.g., `{"events": [...], "warnings": [...]}`) is non-fatal and lets the workflow accumulate warnings across multiple activities before persisting them.
+Add to `DocumentListItem` and `DocumentStatus` Pydantic models:
+```python
+total_tokens: int = 0
+total_cost: float | None = None
+```
 
 ---
 
-## 9. Installation
+## 5. What Does NOT Change
 
-No new external dependencies for v4.0:
+| Component | Change Required | Rationale |
+|-----------|----------------|-----------|
+| `EVENT_EXTRACTION_SCHEMA` | None | Token usage is metadata about the call, not part of extraction |
+| `ENTITY_RESOLUTION_SCHEMA` | None | Same |
+| FastAPI routes | Minor: new fields | Document list gains token/cost summary fields |
+| Temporal worker | Register new activity | `write_llm_usage_log_activity` |
+| Processing log / `document_event_log` | None | Separate table for LLM usage |
+| MinIO / blob storage | None | Unrelated |
+| PDF extraction / chunking | None | Unrelated |
+| Entity resolution logic | None | Token tracking wraps existing calls |
+| Merge/split operations | None | Usage logging is read-only |
+| UI tab structure | None | Usage shown within existing Documents and Logs tabs |
+| Build tooling | None | Vanilla JS, no build step |
 
-```bash
-# All v4.0 features use existing dependencies:
-# - surrealdb (already installed)
-# - temporalio (already installed)
-# - httpx (already installed)
-# - Python stdlib logging (built-in)
+---
+
+## 6. Key Design Decisions
+
+### D013: Separate `llm_usage_log` table (not embedded in `document`)
+**Why:** One document → N LLM calls. Embedded array would need array appends, which break Temporal replay safety. The `DELETE WHERE document = $doc + re-insert` pattern is proven.
+
+### D014: `_usage` key in result dicts (not protocol change)
+**Why:** The `LLMProvider` protocol's return type stays the same dict shape. An underscore-prefixed key is the Python convention for semi-internal data. Callers that don't need usage ignore it. No test mocks need updating.
+
+### D015: Capture `usage.cost` from response when available
+**Why:** OpenRouter's `usage.cost` is the authoritative billed amount. Computing from token counts × pricing requires syncing pricing data and introduces rounding errors.
+
+### D016: Processing time in usage log (not separate log entry)
+**Why:** Duration is inherently tied to the LLM call. Same row keeps aggregation simple (`SELECT math::sum(duration_ms)`).
+
+---
+
+## 7. Installation
+
+No new dependencies. All features use existing packages or stdlib.
+
+```
+# No pip install commands needed.
+# Existing: httpx, surrealdb, temporalio
+# Stdlib: time.monotonic()
+# All data from OpenRouter API response body.
 ```
 
 ---
 
 ## Sources
 
-- **SurrealDB DEFINE ANALYZER docs:** https://surrealdb.com/docs/surrealql/statements/define/analyzer (HIGH confidence — fetched successfully)
-- **SurrealDB Geometry types (geospatial):** https://surrealdb.com/docs/surrealql/datamodel/geometries (HIGH confidence — fetched successfully)
-- **SurrealDB CONTAINS operator:** https://surrealdb.com/docs/surrealql/statements/select (HIGH confidence — documented in WHERE clause section)
-- **Temporal ApplicationErrorCategory.BENIGN:** https://python.temporal.io/temporalio.exceptions.ApplicationErrorCategory.html (HIGH confidence)
-- **Temporal ApplicationError:** https://python.temporal.io/temporalio.exceptions.ApplicationError.html (HIGH confidence)
-- **Current codebase patterns** — `llm.py`, `activities.py`, `workflows.py`, `extractors.py` (HIGH confidence — read from source)
-- **SurrealDB RELATE statement:** https://surrealdb.com/docs/surrealql/statements/relate (HIGH confidence)
-- **SurrealDB Python SDK v2.0.0:** https://surrealdb.com/docs/sdk/python (MEDIUM confidence — docs page confirms Python SDK exists)
+- **OpenRouter ResponseUsage type**: `llms-full.txt` lines 18870-18920 (HIGH confidence)
+- **OpenRouter Models API pricing object**: `llms-full.txt` lines 395-406 (HIGH confidence)
+- **OpenRouter prompt_tokens_details (cache)**: `llms-full.txt` lines 16720-16744 (HIGH confidence)
+- **OpenRouter Response Caching (zeroed usage)**: `llms-full.txt` lines 9249-9251 (HIGH confidence)
+- **Current `llm.py`**: `src/eth_pipeline/llm.py` (HIGH confidence — read from source)
+- **Current schema**: `src/eth_pipeline/schema.surql` (HIGH confidence)
+- **Current UI**: `src/eth_pipeline/static/index.html` (HIGH confidence)
+- **SurrealDB `math::sum()`**: surrealdb.com/docs/surrealql/functions/math (HIGH confidence)
+- **Python `time.monotonic()`**: docs.python.org/3/library/time.html (HIGH confidence)
 
 ---
-*Stack research for: v4.0 Pipeline Quality & Entity Resolution*
-*Researched: 2026-06-03*
+
+*Stack research for: v5.0 LLM Cost & Usage Tracking, Researched: 2026-06-04*

@@ -1,722 +1,396 @@
-# Feature Research — Pipeline Quality & Entity Resolution (v4.0)
+# Feature Landscape: LLM Cost & Usage Tracking
 
-**Domain:** Document event extraction — text offsets, structured event entities, search-first entity resolution, pipeline processing logs
-**Researched:** 2026-06-03
-**Mode:** Ecosystem — Patterns for improving extraction quality in an existing LLM-based event extraction pipeline
-**Confidence:** HIGH (verified against existing codebase patterns + established information extraction literature)
+**Domain:** Per-LLM-call token/cost tracking for document extraction pipelines
+**Researched:** 2026-06-04
+**Mode:** Ecosystem Research
 
----
+## Table Stakes
 
-## Question 1: Text Offset Tracking in Extracted References
+Features users expect in any production LLM pipeline. Missing = pipeline feels unobservable.
 
-> What data model patterns exist for tracking character + page number offsets in extracted verbatim references?
+### T1: Per-LLM-Call Token Accounting
 
-### The Offset Problem
+**Why Expected:** Without per-call token counts, you cannot attribute costs, detect regressions (e.g., prompt bloat), or optimize chunk sizes. Every LLM response from OpenRouter returns usage data — not capturing it wastes free observability.
 
-References currently store `span_start` and `span_end` as character offsets into `document.text_content`. This works for plain-text documents but has three limitations for the v4.0 scope:
+**Complexity:** Low
 
-1. **No page provenance** — given a character offset, you can't determine which PDF page it came from without scanning all page offset ranges
-2. **Stale offsets on reprocess** — if `text_content` changes (re-extraction from PDF), all stored offsets become invalid
-3. **No multi-reference overlap detection** — two references may overlap in character span, which is valid but undetectable without span indexing
+**Token types to capture from OpenRouter response:**
 
-### Recommended Data Model: Dual-offset with Page Index
+| Field | Source | Type | Meaning |
+|-------|--------|------|---------|
+| `prompt_tokens` | `response.usage.prompt_tokens` | integer | Input tokens billed (prompt text + system message + schema) |
+| `completion_tokens` | `response.usage.completion_tokens` | integer | Output tokens generated (model response) |
+| `total_tokens` | `response.usage.total_tokens` | integer | prompt + completion (the billing total) |
+| `cached_tokens` | `response.usage.prompt_tokens_details.cached_tokens` | integer | Tokens read from prompt cache (cache hit; zero on cache miss) |
+| `cost` | `response.usage.cost` | float | Total cost charged to account in USD (or credits) |
+| `reasoning_tokens` | `response.usage.completion_tokens_details.reasoning_tokens` | integer | Thinking/reasoning tokens (model-dependent) |
 
-The established pattern in NLP/IE systems (UIMA, spaCy, Stanford CoreNLP) is to store **document-level character offsets** plus **page-level page number + page-relative character offset**.
+**What to track, minimally:** `prompt_tokens`, `completion_tokens`, `total_tokens`, `cached_tokens`, `cost`
 
+**When to capture:** In `OpenRouterProvider._parse_choice()` or alongside it — extract usage from `data["usage"]` before returning the parsed content. Return both `parsed_content` and `usage_metadata`.
+
+**Confidence:** HIGH — Verified from [OpenRouter Usage Accounting docs](https://openrouter.ai/docs/cookbook/administration/usage-accounting)
+
+### T2: Per-Document Token Aggregation
+
+**Why Expected:** A document may trigger multiple LLM calls (N extraction chunks + 1 entity resolution batch). Per-document totals answer "how much did this document cost to process?"
+
+**Complexity:** Medium
+
+**Expected behavior:**
+- Sum `prompt_tokens` across all LLM calls for a document → `input_tokens_total`
+- Sum `completion_tokens` across all LLM calls → `output_tokens_total`
+- Sum `total_tokens` across all LLM calls → `tokens_total`
+- Sum `cost` across all LLM calls → `cost_total`
+- Sum `cached_tokens` (non-cache-hit calls contribute 0) → `cached_tokens_total`
+- Track call count → `llm_call_count`
+
+**Aggregation strategies:**
+
+| Strategy | How | When Appropriate |
+|----------|-----|------------------|
+| **Post-hoc query** | Aggregate via SurrealDB `GROUP BY document` on `document_event_log.details` | During READ (GET /documents/{id}) — no extra write cost |
+| **Write-time computation** | Compute per-call totals in Temporal activity and store on document record | When document-level totals need to be fast-filterable. Watch for Temporal replay idempotency |
+| **Materialized view** | Periodic aggregation query, cache result | At scale (>10K documents) — unnecessary for current project |
+
+**Recommendation:** Use post-hoc query aggregation via SurrealDB JSON path extraction from `document_event_log.details`. The existing `details` field is FLEXIBLE and already suitable. No schema changes needed.
+
+**Confidence:** HIGH — matches standard observability patterns
+
+### T3: Processing Time per LLM Call
+
+**Why Expected:** Token counts alone don't tell you about latency. Processing time is essential for monitoring model performance and detecting slowdowns.
+
+**Complexity:** Low
+
+**Expected capture:**
+```python
+import time
+start = time.monotonic()
+# ... LLM call ...
+elapsed_ms = (time.monotonic() - start) * 1000
 ```
-reference:
-  span_start: int          # existing — character offset in text_content (0-based)
-  span_end: int            # existing — exclusive end offset
-  page_number: int | null  # NEW — 1-based PDF page number (null for plain-text docs)
-  page_offset_start: int | null  # NEW — character offset within the page (0-based)
-  page_offset_end: int | null    # NEW — exclusive end offset within the page
-```
 
-**Why dual offsets instead of just character offsets:**
+**Where to capture:** Wrap the LLM call in `OpenRouterProvider.extract_events()` and `resolve_references()` — timer around `await client.post()`. Include `duration_ms` in the usage metadata returned alongside parsed content.
 
-| Approach | Problem |
-|---|---|
-| Only character offsets | Can't determine page without scanning document_chunk.page_offsets |
-| Only page offsets | Can't search across documents by character range; breaks GraphQL queries |
-| Both | Each offset domain independently useful; page info is enrichment, not replacement |
+**Confidence:** HIGH — standard practice
 
-**How offsets get computed during extraction:**
+### T4: Storage in Existing document_event_log Infrastructure
 
-The pipeline already computes `page_offsets` in `extract_text_activity` (a list of cumulative character offsets per page boundary — e.g., `[0, 2500, 5100, ...]`). The LLM schema already emits `span_start`/`span_end` per reference. The missing step is **converting** document-level `span_start` → page number + page-relative offset:
+**Why Expected:** The project already has a scalable, replay-safe per-document log table with a flexible `details` field. Storing LLM call data here avoids adding a new table or schema migration.
+
+**Complexity:** Low
+
+**How it fits:**
+
+The `ProcessingLogger.log()` method already accepts:
+- `document_id` — links to the document
+- `step_name` — e.g. "extract_events" or "resolve_references"
+- `severity` — "info" for normal LLM calls, "warning" for high-retry or slow calls
+- `message` — human-readable description
+- `details: dict | None` — FLEXIBLE object — **perfect for LLM usage data**
+
+**Suggested event schema per LLM call:**
 
 ```python
-def resolve_page_offset(span_start: int, page_offsets: list[int]) -> tuple[int, int, int]:
-    """Convert document-level char offset to (page_number, page_start, page_end).
-
-    page_offsets is a list where page_offsets[i] = cumulative char offset
-    at the START of page i (0-based page index).
-    Example: [0, 2500, 5100] means page 1 spans chars 0-2499, page 2 spans 2500-5099.
-    """
-    for page_idx in range(len(page_offsets) - 1):
-        page_char_start = page_offsets[page_idx]
-        page_char_end = page_offsets[page_idx + 1]
-        if page_char_start <= span_start < page_char_end:
-            return (page_idx + 1, span_start - page_char_start, page_char_end - page_char_start)
-    # Falls on last page
-    last_idx = len(page_offsets) - 1
-    return (last_idx + 1, span_start - page_offsets[last_idx], 0)
-```
-
-**Critical detail:** This conversion must happen in `store_extraction_results_activity` (or a new post-processing step), NOT in the LLM. The LLM emits document-level character offsets as it already does. The page resolution is a deterministic post-processing step using the `page_offsets` array stored in SurrealDB or passed through the workflow.
-
-### Data Model Comparison
-
-| Pattern | Used By | Pros | Cons |
-|---------|---------|------|------|
-| **Dual offset** (this proposal) | Custom IE pipelines | Both searchable; page info enriches without breaking existing queries | Slight schema complexity |
-| **Chunk-relative offsets** | RAG systems (LangChain, LlamaIndex) | Aligns naturally with chunk boundaries | Requires chunk ID on every reference; breaks if chunk boundaries change |
-| **Absolute character offsets only** | spaCy, Stanza | Simplest; well-supported in SurrealDB range queries | No page info; stale on reprocess |
-| **PDF coordinates (bbox)** | GROBID, PDF annotation tools | Pixel-level precision for visual reference | Complex; overkill for text-only extraction; needs PDF layout data |
-
-### Schema Changes Needed
-
-```surql
--- Add to existing reference table
-DEFINE FIELD page_number ON TABLE reference TYPE int | null
-    DEFAULT null
-    ASSERT $value IS NULL OR $value >= 1
-    COMMENT 'Page number (1-based) in the source PDF where this reference appears (null for plain-text documents without page structure)';
-
-DEFINE FIELD page_offset_start ON TABLE reference TYPE int | null
-    DEFAULT null
-    ASSERT $value IS NULL OR $value >= 0
-    COMMENT 'Character offset (0-based) within the page where this reference begins; null when page_number is null';
-
-DEFINE FIELD page_offset_end ON TABLE reference TYPE int | null
-    DEFAULT null
-    ASSERT $value IS NULL OR $value >= 0
-    COMMENT 'Character offset (exclusive) within the page where this reference ends; null when page_number is null';
-```
-
-### What About Stale Offsets on Reprocess?
-
-The existing delete-then-recreate idempotency pattern already handles this: when reprocessing, all references are deleted and recreated. New page_offsets from the re-extraction are used. No migration needed — the page info is ephemeral (tied to each extraction run).
-
----
-
-## Question 2: Structured Event Objects as Canonical Entities
-
-> How should structured event objects become queryable, linkable, mergeable, and separable — the same as place/person/object entities?
-
-### The Current Gap
-
-Events currently exist as flat records with string fields (`que_paso`, `espacio`, `tiempo`, `humanos`, `objetos`). Canonical entities exist for places, persons, and objects — but not for events themselves. This means:
-
-- An event like "firma del contrato" mentioned across 3 documents creates 3 separate event records
-- No way to link two extractions of the same real-world event
-- No merge/split for events that are duplicates or should be separated
-- References link TO events but event TO event linking doesn't exist
-
-### Recommended Pattern: Event as a canonical_entity Subtype
-
-The existing `canonical_entity` table uses a unified schema with `entity_type` enum (`place`, `person`, `object`). The simplest v4.0 approach extends this enum to include `event`:
-
-```surql
--- Modify existing: extend enum
-DEFINE FIELD entity_type ON TABLE canonical_entity TYPE string
-    ASSERT $value INSIDE ['place', 'person', 'object', 'event']
-    COMMENT 'Entity category: place, person, object, or event (structured narrative with time/place/participants)';
-```
-
-With a `properties` field already being `FLEXIBLE`, event-specific fields go into properties:
-
-```json
-{
-  "entity_type": "event",
-  "name": "Firma del contrato de arrendamiento",
-  "properties": {
-    "title": "Firma del contrato",
-    "description": "El 15 de marzo de 2023 se firmó el contrato de arrendamiento entre Juan Pérez y María García",
-    "time_range": { "start": "2023-03-15", "end": null, "text": "15 de marzo de 2023" },
-    "location": { "entity_id": "canonical_entity:abc123", "name": "Ciudad de México", "text": "Ciudad de México" },
-    "participants": [
-      { "entity_id": "canonical_entity:def456", "name": "Juan Pérez", "role": "arrendatario" },
-      { "entity_id": "canonical_entity:ghi789", "name": "María García", "role": "arrendadora" }
-    ],
-    "objects": [
-      { "entity_id": "canonical_entity:jkl012", "name": "Propiedad Calle 123", "text": "la propiedad ubicada en Calle 123" }
-    ],
-    "what_happened": "firma del contrato de arrendamiento"
-  }
-}
-```
-
-### The Event-to-Event Link Problem
-
-Events reference other entities (place, person, object) via `properties`. But events do NOT reference other events in the current model. Two patterns exist:
-
-| Pattern | How It Works | When to Use |
-|---------|-------------|-------------|
-| **Parent-child events** | Event A has `properties.parent_event` → Event B | Hierarchical decomposition (e.g., "trial" contains "hearing" contains "testimony") |
-| **Related events set** | Event has `properties.related_events: [id, id]` | Flat many-to-many (e.g., "signing contract" is related to "delivering keys") |
-| **Temporal sequence** | Events have `properties.follows_event` / `properties.precedes_event` | Chronological linking |
-
-**Recommendation for v4.0:** Start with **flat many-to-many** via a new `event_relation` table. This avoids circular property complexity and keeps the SurrealDB graph queryable:
-
-```surql
-DEFINE TABLE event_relation SCHEMAFULL
-    COMMENT 'Directed relationship between two event entities (e.g., contains, precedes, relates_to)';
-
-DEFINE FIELD source_event ON TABLE event_relation TYPE record<canonical_entity>
-    ASSERT $value INSIDE (SELECT id FROM canonical_entity WHERE entity_type = 'event')
-    COMMENT 'The source event in the relationship';
-
-DEFINE FIELD target_event ON TABLE event_relation TYPE record<canonical_entity>
-    ASSERT $value INSIDE (SELECT id FROM canonical_entity WHERE entity_type = 'event')
-    COMMENT 'The target event in the relationship';
-
-DEFINE FIELD relation_type ON TABLE event_relation TYPE string
-    ASSERT $value INSIDE ['contains', 'contained_by', 'precedes', 'follows', 'relates_to', 'same_as']
-    COMMENT 'Semantic type of the event-to-event relationship';
-```
-
-### How Existing Merge/Split Works for Events
-
-The existing merge/split endpoints operate on `canonical_entity` and handle `superseded_by` + reference rewiring. Adding `event` to the `entity_type` enum makes these endpoints work for events automatically (same unified table). However, the merge validator needs updating:
-
-```python
-# Existing merge check:
-MERGE_CONDITIONS = {
-    "same_type": "source.entity_type == target.entity_type",
-    # ... 6 more conditions
-}
-
-# For events, additional merge conditions:
-EVENT_MERGE_CONDITIONS = {
-    "overlapping_time": "source.time_overlaps(target)",  # heuristic check
-    "same_document_or_related": "source and target share a document reference",
-}
-```
-
-### Event Extraction Schema Update
-
-The LLM `EVENT_EXTRACTION_SCHEMA` needs to emit structured event fields that populate `canonical_entity` properties:
-
-```python
-EVENT_EXTRACTION_SCHEMA_REFINED: dict = {
-    "type": "object",
-    "properties": {
-        "events": {
-            "type": "array",
-            "items": {
-                "type": "object",
-                "properties": {
-                    "title": {"type": "string", "description": "Concise title for this event"},
-                    "description": {"type": "string", "description": "Full description of what happened"},
-                    "what_happened": {"type": "string", "description": "Core narrative: qué pasó"},
-                    "time_range": {
-                        "type": "object",
-                        "properties": {
-                            "start_text": {"type": "string", "description": "Start time as mentioned in text"},
-                            "end_text": {"type": "string", "description": "End time as mentioned (or empty)"},
-                            "verbatim": {"type": "string"}
-                        }
-                    },
-                    "location_verbatim": {"type": "string"},
-                    "participants_verbatim": {"type": "string"},
-                    "objects_verbatim": {"type": "string"},
-                    "references": { ... }  # existing references array
-                }
-            }
-        }
+details = {
+    "llm_call": {
+        "model": "deepseek/deepseek-v4-flash",
+        "prompt_tokens": 1234,
+        "completion_tokens": 567,
+        "total_tokens": 1801,
+        "cached_tokens": 0,
+        "cost": 0.0085,
+        "duration_ms": 4230,
+        "chunk_index": 0,          # for extract_events with chunking
+        "total_chunks": 5,         # for extract_events with chunking
     }
 }
 ```
 
-**Key insight:** The LLM still extracts flat references (as it does now), but the v4.0 workflow creates TWO records per extraction: an `event` record (existing, in the event table) AND a `canonical_entity` record (new, with `entity_type=event`). The event entity's `properties` contains the structured fields, while the existing event record retains the flat fields for backward compatibility.
+**LLM call types to log:**
+- `step_name: "extract_events"` — one entry per chunk (multiple per document)
+- `step_name: "resolve_references"` — one entry per resolution batch (typically 1 per document)
+- `step_name: "resolve_entities_with_search"` — one entry per search-first resolution batch
 
-### Event-to-Source-Event Linking
+**What NOT to store in details:** The full prompt/response text (too large, not useful for cost tracking). Log that separately if needed later.
 
-An event entity in `canonical_entity` must link back to one or more source event records (from the `event` table). Add a link field:
+**Confidence:** HIGH — directly leverages existing Phase 15 infrastructure
 
-```surql
-DEFINE FIELD source_events ON TABLE canonical_entity TYPE array | null
-    DEFAULT null
-    COMMENT 'Source event records (from the event table) that this canonical event entity was derived from';
-```
+## Differentiators
 
-This creates an audit trail: `canonical_entity:event → event:source → references → document`.
+Features that distinguish this implementation. Not expected but valuable.
 
----
+### D1: Cost Column in Document List Table
 
-## Question 3: Search-First Entity Resolution During Extraction
+**Value Proposition:** At-a-glance "which documents cost the most to process" without clicking into logs.
 
-> How to search existing entities first, then decide whether to create new ones (rather than post-hoc resolution)?
+**Complexity:** Medium
 
-### The Current Approach (Post-hoc — M002)
+**Implementation options:**
 
-The existing pipeline:
-1. LLM extracts events → stores events + references
-2. `resolve_entities_activity` runs after storage
-3. For each reference type, queries existing canonical_entities
-4. Calls LLM to match/create/uncertain per reference
-5. Links references to entities
+| Option | Complexity | Cost | Notes |
+|--------|------------|------|-------|
+| **Query-time aggregation** in GET /documents endpoint | Medium | 1 extra DB query per page | JOIN/SUBQUERY to sum `details.llm_call.cost` from `document_event_log` |
+| **Storage on document record** | High | Schema change | Add `total_cost`, `total_prompt_tokens`, `total_completion_tokens` fields to document table. Must recompute on reprocess |
+| **Hidden log details column** with expandable row | Low | No schema change | Next to existing `Acciones` column, reuse log-details expand pattern |
 
-**Problem:** The LLM during extraction (step 1) has no knowledge of existing canonical entities. It invents names inconsistently across documents. A place called "Juzgado Primero de lo Civil" in doc 1 might be extracted as "Juzgado Primero Civil" in doc 2.
+**Recommendation:** Start with hidden expandable row (lowest risk, zero schema change). Add cost column to table headers only if users request it.
 
-### Recommended Pattern: Search-First Within the LLM Prompt
+### D2: Cache-Hit Indicator in Token Display
 
-Instead of a separate post-hoc resolution step, inject existing entity context INTO the extraction prompt. The LLM receives existing entity names as a searchable index and is instructed to use identical names for matches:
+**Value Proposition:** Shows users they're getting "free" tokens from caching, making the system feel optimized rather than wasteful.
 
+**Complexity:** Low
+
+**Display format:** `[cached]/input/output` — e.g., `500/1,234/567` means 500 cached + 1,234 input + 567 output tokens.
+
+**When `cached_tokens > 0`:** The `prompt_tokens` field still reports the full input count (for billing tracking), but the cache saved the cost. Display `cached_tokens` separately to surface savings.
+
+**Semantics clarification:**
+- `cached_tokens` = prompt tokens that were read from an existing cache entry (saved cost)
+- These are NOT deducted from `prompt_tokens` — `prompt_tokens` is the full input size
+- On a cache HIT, `prompt_tokens` = `completion_tokens` = `total_tokens` = `cost` = 0 (OpenRouter response caching). In this case, the document was previously processed identically and the entire response is free.
+- On a cache MISS with prompt caching, `prompt_tokens` is the full count, `cached_tokens` = 0, and the provider may create a cache entry for future calls.
+
+**Confidence:** HIGH — Verified from OpenRouter docs: "Cache hits are free. No tokens are consumed and all billable usage counters are reported as 0." and usage object shows cached_tokens separately.
+
+### D3: Hidden Logs Tab Integration
+
+**Value Proposition:** All LLM cost/usage data is already in the processing logs. Adding a dedicated "Cost" tab or LLM-call filter to the hidden Logs tab makes data discoverable.
+
+**Complexity:** Low
+
+**Approach:** Add `?llm_only=true` filter to GET /documents/{id}/logs that filters `step_name IN ['extract_events', 'resolve_references']`. Wire to a "Ver LLM" button in the document row.
+
+### D4: Retry/Error Tracking in LLM Call Metadata
+
+**Value Proposition:** The Temporal workflow already retries on failure (max_attempts=3). Tracking which calls retried and why provides visibility into model reliability.
+
+**Complexity:** Low
+
+**Add to details:**
 ```python
-# Modified extraction prompt
-EVENT_EXTRACTION_SYSTEM_PROMPT_WITH_ENTITIES = (
-    "Eres un asistente especializado en extraer eventos estructurados "
-    "de documentos legales y judiciales en español.\n\n"
-    "EXISTING ENTITIES (use these exact names when referring to known entities):\n"
-    "{existing_entities_context}\n\n"
-    "Instrucciones:\n"
-    "1. Si una persona, lugar u objeto mencionado ya existe en la lista de entidades "
-    "existentes, USA EXACTAMENTE EL MISMO NOMBRE en tu extracción.\n"
-    "2. Si es una entidad nueva, crea un nombre consistente y descriptivo.\n"
-    "3. Para cada evento, identifica a qué entidades existentes se refiere.\n"
-    "4. Incluye el ID de la entidad existente cuando sea aplicable (campo entity_id).\n"
-    "..."
-)
-```
-
-The corresponding schema change adds `entity_id` to references:
-
-```python
-# Updated reference schema
-"references": {
-    "items": {
-        "properties": {
-            "reference_type": { ... },
-            "verbatim_text": { ... },
-            "span_start": { ... },
-            "span_end": { ... },
-            "entity_id": {  # NEW
-                "type": "string",
-                "description": "ID of an existing canonical_entity if this reference matches one, or empty string for new entities"
-            }
-        }
+details = {
+    "llm_call": {
+        ...
+        "attempt": 1,       # current attempt number
+        "max_attempts": 3,  # max retries configured
+        "retry_of": None,   # previous attempt's log entry ID if this is a retry
     }
 }
 ```
 
-### Three Approaches Compared
+**Confidence:** MEDIUM — standard retry tracking pattern
 
-| Approach | How It Works | LLM Cost | Quality | Complexity |
-|----------|-------------|----------|---------|------------|
-| **A: Context injection** (recommended v4.0) | Bake existing entities into extraction prompt | Same as current (1 LLM call) | Good — LLM sees entire context at once | Low — modifies prompt only |
-| **B: Two-pass extraction** | Pass 1: extract events. Pass 2: annotate with entity IDs | 2x LLM calls per chunk | Better — dedicated pass for entity linking | Medium — new activity |
-| **C: Embedding-based pre-match** | Vector search all references against entity embeddings before LLM call | Same as current + embedding cost | Best — deterministic pre-match layer | High — needs embedding model + vector index |
+## Anti-Features
 
-**Recommendation: Approach A (Context injection) for v4.0.**
+Features to explicitly NOT build.
 
-- Modifies only the LLM prompt and schema — no new activities, no embedding infrastructure
-- Leverages the LLM's own understanding of entity identity within a single pass
-- The LLM already produces high-quality verbatim references + offsets; adding entity awareness to the same prompt is a natural extension
-- If quality is insufficient, Approach B is the next step (two-pass), which can be added without changing the extraction schema
+### A1: Real-Time Token Streaming Display
 
-### Where Entity Search Happens
+| Why Avoid | What to Do Instead |
+|-----------|-------------------|
+| Non-streaming LLM calls (current pipeline calls are batch). Streaming adds complexity for zero UX benefit since the pipeline is async/workflow-based. | Post-hoc aggregation in document list is sufficient. |
 
-The entity search (querying existing canonical entities for the prompt context) must happen INSIDE `extract_events_activity`, before the LLM call. The activity already queries SurrealDB for `text_content` — it can also query for existing entities:
+### A2: Per-Request Cost Charts / Graphs
 
-```python
-@activity.defn
-async def extract_events_activity(document_id: str) -> dict:
-    # ... existing setup ...
+| Why Avoid | What to Do Instead |
+|-----------|-------------------|
+| Vanilla JS SPA with no charting library. Adding Chart.js or similar increases page weight and complexity. The user needs table-level numbers, not trends. | Tabular display with sort-by-cost is sufficient for current needs. |
 
-    # NEW: Query existing canonical entities for context injection
-    existing_raw = await db.query(
-        "SELECT id, name, entity_type, properties "
-        "FROM canonical_entity WHERE superseded_by IS NONE "
-        "ORDER BY name ASC LIMIT 200"
-    )
-    existing_entities = _extract_query_results(existing_raw)
-    existing_entities_context = json.dumps(existing_entities, ensure_ascii=False, indent=2)
+### A3: Token Usage Budget / Threshold Alerts
 
-    # Modified: pass context into LLM prompt
-    result = await provider.extract_events(
-        text, 
-        prior_events=prior_events,
-        existing_entities_context=existing_entities_context,  # NEW parameter
-    )
-```
+| Why Avoid | What to Do Instead |
+|-----------|-------------------|
+| Single-user research tool. Budgeting only makes sense in multi-user or production billing scenarios. | Defer indefinitely per project scope. |
 
-### What Happens to `resolve_entities_activity`?
+### A4: Prompt / Response Content Storage
 
-It still runs as a second pass for three reasons:
-1. **Confidence refinement** — the LLM may mark some references as "uncertain" during extraction; the resolution pass provides a second opinion
-2. **Backward compatibility** — existing documents (without entity IDs in references) still need resolution
-3. **Cross-document linking** — the extraction pass matches entities per-document; the resolution pass can detect cross-document duplicates
-
-The resolution pass becomes **lighter**: references with a non-empty `entity_id` are pre-resolved. Only uncertain or unmatched references get the full LLM resolution treatment.
-
-### Storage Impact
-
-When `entity_id` is present on a reference during `store_extraction_results_activity`, it directly sets `canonical_entity`:
-
-```python
-# In store_extraction_results_activity
-entity_id = ref.get("entity_id", "")
-if entity_id:
-    ce_link = RecordID("canonical_entity", entity_id)
-else:
-    ce_link = None
-
-await db.query(
-    "CREATE reference CONTENT { "
-    "reference_type: $ref_type, "
-    "verbatim_text: $vt, "
-    "span_start: $ss, "
-    "span_end: $se, "
-    "page_number: $pn, "
-    "page_offset_start: $pos, "
-    "page_offset_end: $poe, "
-    "event: $evt, "
-    "canonical_entity: $ce "
-    "}",
-    {
-        "ref_type": ...,
-        "vt": ...,
-        "ce": entity_id,
-    },
-)
-```
-
-This means `resolve_entities_activity` can skip already-linked references — it only needs to handle the `None` cases. Add `is_pre_resolved` to the activity's return dict:
-
-```python
-return {
-    "document_id": document_id,
-    "resolved": total_resolved,
-    "created": total_created,
-    "skipped": skipped_count,
-    "pre_resolved": pre_resolved_count,  # NEW
-}
-```
-
----
-
-## Question 4: Processing Log / Audit Trail Patterns
-
-> What patterns exist for per-document pipeline execution logs with error/warning accumulation?
-
-### The Current Problem
-
-When a pipeline step fails:
-1. The workflow throws an exception
-2. `error_message` on the document gets the exception string
-3. All prior results (possibly partial) are lost due to delete-then-recreate
-4. No record of WHICH step failed or WHAT warnings occurred before failure
-
-For v4.0, we need:
-- Per-step log entries (structured, timestamped, with severity)
-- Error accumulation (warnings don't abort, errors set status=failed)
-- Audit trail showing "document X went through steps [a, b, c], step c emitted 2 warnings"
-
-### Recommended Pattern: Append-Only Log Table
-
-The simplest durable pattern is a separate `document_processing_log` table in SurrealDB:
-
-```surql
-DEFINE TABLE document_processing_log SCHEMAFULL
-    COMMENT 'Sequential log of processing steps for a document (append-only, never mutated)';
-
-DEFINE FIELD document ON TABLE document_processing_log TYPE record<document>
-    COMMENT 'The document being processed';
-
-DEFINE FIELD step_name ON TABLE document_processing_log TYPE string
-    COMMENT 'Name of the pipeline step (e.g. extract_text, extract_events, resolve_entities)';
-
-DEFINE FIELD severity ON TABLE document_processing_log TYPE string
-    ASSERT $value INSIDE ['info', 'warning', 'error']
-    COMMENT 'Log severity: info (informational), warning (non-fatal issue), error (fatal)';
-
-DEFINE FIELD message ON TABLE document_processing_log TYPE string
-    COMMENT 'Human-readable log message';
-
-DEFINE FIELD details ON TABLE document_processing_log TYPE object | null FLEXIBLE
-    DEFAULT null
-    COMMENT 'Structured metadata for this log entry (LLM response snippet, counts, durations, etc.)';
-
-DEFINE FIELD created_at ON TABLE document_processing_log TYPE datetime
-    DEFAULT time::now() READONLY
-    COMMENT 'Timestamp when this log entry was created';
-```
-
-### Log Accumulation: Where and How
-
-Each activity appends to the log via a shared helper:
-
-```python
-async def _append_log(db, document_id: str, step_name: str, 
-                       severity: str, message: str,
-                       details: dict | None = None) -> None:
-    """Append a log entry for this document's processing run."""
-    doc_rid = RecordID("document", document_id)
-    await db.create("document_processing_log", {
-        "document": doc_rid,
-        "step_name": step_name,
-        "severity": severity,
-        "message": message,
-        "details": details or {},
-    })
-```
-
-### Warning Accumulation (Non-Fatal)
-
-The key innovation: warnings do NOT abort the workflow. Instead:
-
-```python
-@activity.defn
-async def extract_events_activity(document_id: str) -> dict:
-    params = _db_params()
-    # ... setup ...
-    
-    warnings: list[dict] = []
-    
-    # Example: chunk too small
-    if len(chunks) > 20:
-        warnings.append({
-            "step": "extract_events",
-            "message": f"Document split into {len(chunks)} chunks — extraction quality may degrade",
-            "details": {"chunk_count": len(chunks)}
-        })
-    
-    # ... after LLM call ...
-    if chunk_result.get("error"):
-        warnings.append({
-            "step": "extract_events",
-            "message": f"Chunk {i} extraction had issues: {chunk_result['error']}",
-            "details": {"chunk_index": i}
-        })
-    
-    # Persist warnings before returning
-    async with get_db(**params) as db:
-        for w in warnings:
-            await _append_log(db, document_id, **w)
-    
-    return {"events": all_events, "warnings": warnings}
-```
-
-### Where Log Entries Are Created
-
-| Pipeline Step | Log Entries | Severity |
-|---------------|-------------|----------|
-| `get_document_metadata` | "Document found: {filename}, format={blob_format}" | info |
-| `extract_text` | "PDF extracted: {page_count} pages, {text_length} chars", or "PDF has no text layer" | info / error |
-| `extract_text` | "Falling back to pypdf (PyMuPDF unavailable)" | warning |
-| `chunk_document` | "Document chunked into {chunk_count} chunks" | info |
-| `chunk_document` | "Chunk 0 exceeded max size, forced split" | warning |
-| `extract_events` | "LLM extraction: {event_count} events from {chunk_count} chunks" | info |
-| `extract_events` | "LLM returned empty result for chunk {i}" | warning |
-| `extract_events` | "LLM API call failed (attempt {n}): {error}" | error |
-| `entity_resolution` | "Reference batch resolved: {resolved} matched, {created} created, {uncertain}" | info |
-| `entity_resolution` | "LLM resolution failed for {entity_type}: {error}" | warning |
-| `store_results` | "Stored {event_count} events, {ref_count} references" | info |
-
-### Temporal Workflow Integration
-
-The workflow orchestrator appends step-level logs:
-
-```python
-@workflow.run
-async def run(self, document_id: str) -> dict:
-    try:
-        await workflow.execute_activity(
-            update_document_status_activity,
-            args=[document_id, "processing"],
-        )
-        
-        # ... steps ...
-        
-        metadata = await workflow.execute_activity(
-            get_document_metadata_activity,
-            args=[document_id],
-        )
-        
-        # Log a structured entry for this step
-        await workflow.execute_activity(
-            append_log_activity,
-            args=[document_id, "processing", "info", 
-                  "Document metadata retrieved", metadata],
-        )
-        
-        # ... continue ...
-```
-
-### New Activity: `append_log_activity`
-
-```python
-@activity.defn
-async def append_log_activity(
-    document_id: str,
-    step_name: str,
-    severity: str,
-    message: str,
-    details: dict | None = None,
-) -> dict:
-    """Append a processing log entry."""
-    params = _db_params()
-    try:
-        async with get_db(**params) as db:
-            await _append_log(db, document_id, step_name, severity, message, details)
-        return {"logged": True}
-    except ConnectionError as exc:
-        activity.logger.error("Failed to append log: %s", exc)
-        return {"logged": False, "error": str(exc)}
-```
-
-### Log Visibility in the API
-
-Add a `GET /documents/{document_id}/logs` endpoint:
-
-```python
-@app.get("/documents/{document_id}/logs")
-async def get_document_logs(document_id: str) -> list[dict]:
-    """Retrieve processing log entries for a document."""
-    db = app.state.db
-    if db is None:
-        raise HTTPException(503, "Database unavailable")
-    
-    doc_ref = f"document:{document_id}"
-    try:
-        result = await db.query(
-            "SELECT * FROM document_processing_log "
-            "WHERE document = $doc_ref "
-            "ORDER BY created_at ASC",
-            {"doc_ref": doc_ref},
-        )
-        return [r for r in (result or []) if isinstance(r, dict)]
-    except Exception as exc:
-        raise HTTPException(502, str(exc))
-```
-
-### Key Design Decision: Logs vs. Activity Logging
-
-Temporal already records activity execution history. Why add separate processing logs?
-
-| Aspect | Temporal History | Processing Log |
-|--------|-----------------|----------------|
-| Visibility | Temporal Web UI (dev only) | API + Web UI (user-facing) |
-| Persistence | Temporal server (ephemeral per workflow) | SurrealDB (permanent, queryable) |
-| Content | Activity params + results | Curated, human-readable messages |
-| Warnings | Activity success/failure only | Warning accumulation (non-fatal) |
-| Queryable | No (Temporal API only) | Yes (GraphQL, REST) |
-
-**Bottom line:** The processing log is a **user-facing audit trail**. Temporal history is operational. Both coexist.
-
-### Log Cleanup Strategy
-
-Since logs are append-only, they accumulate. Two patterns:
-
-1. **Auto-cleanup on reprocess** — `DELETE /documents/{id}/events` also deletes old log entries
-2. **Retention limit** — Keep N most recent runs per document
-
-**Recommendation:** Option 1 (delete on reprocess). Simple, consistent with existing delete-then-recreate pattern. The log shows the CURRENT run's steps, not a historical archive.
-
-### What the Log Table Enables
-
-- Web UI tab: "Processing Log" showing step-by-step execution timeline
-- Debug: "This document processed in 3.2s, LLM step took 2.1s"  
-- Quality metrics: "Warning density: 0.3 warnings per document"
-- Error root cause: "Step extract_events failed on chunk 4 of 12"
-
----
+| Why Avoid | What to Do Instead |
+|-----------|-------------------|
+| Prompts can be 400K chars; storing them in processing_log for cost tracking is wasteful. The document text is already stored separately. | Store only token counts, cost, duration, and model name. Prompt/response content can be debug-logged separately if needed. |
 
 ## Feature Dependencies
 
 ```
-Reference offsets (page_number, page_offset_start, page_offset_end)
-    └──requires──> page_offsets from extract_text_activity (EXISTS in v2.0)
-    └──requires──> modified store_extraction_results_activity
-
-Structured event entities (entity_type=event)
-    └──requires──> canonical_entity.entity_type enum extension
-    └──requires──> EVENT_EXTRACTION_SCHEMA update (structured fields)
-    └──requires──> store_extraction_results_activity creates both event + canonical_entity records
-
-Search-first entity resolution
-    └──requires──> existing_canonical entity query in extract_events_activity
-    └──requires──> LLMProvider.extract_events() parameter extension (existing_entities_context)
-    └──requires──> EVENT_EXTRACTION_SCHEMA update (entity_id on references)
-    └──enhances──  resolve_entities_activity (lighter second pass)
-
-Processing log table
-    └──requires──> document_processing_log SurrealDB table
-    └──requires──> append_log_activity (Temporal activity)
-    └──enhances──  all other activities (call _append_log at key points)
-
-Short legal document test corpus
-    └──requires──> Spanish-language court document samples
-    └──enhances──  all integration tests
-
-README/docs update
-    └──requires──> all features completed
+document_event_log schema (EXISTING — flexible details field)
+  └── ProcessingLogger (EXISTING — fire-and-forget per-document log writer)
+       └── LLM usage capture in OpenRouterProvider
+            ├── T1: Per-LLM-call token accounting
+            ├── T3: Processing time per LLM call
+            ├── T4: Storage in document_event_log
+            │     └── T2: Per-document token aggregation (post-hoc query)
+            │           └── D3: Hidden Logs tab integration (new filter)
+            └── D4: Retry/error tracking
 ```
 
-## Anti-Features
+## MVP Recommendation
 
-| Anti-Feature | Why Avoid | What to Do Instead |
-|---|---|---|
-| **Page offsets from the LLM** | LLM character offsets are already noisy (±5 chars on long documents). Asking the LLM to also emit page numbers compounds the error. | Compute page offsets deterministically in `store_extraction_results_activity` using `page_offsets` array from extraction. |
-| **Full event history (all runs)** | Storing ALL processing runs' logs creates unbounded growth, especially during development with frequent reprocessing. | Delete log entries on reprocess. Keep only the current run's audit trail. |
-| **Embedding-based entity pre-matching (v4.0)** | Adding a vector embedding pipeline (sentence-transformers, vector index) is significant infrastructure for incremental quality gain. | Context injection (Approach A) covers most cases. Embedding pre-match is a v4.1+ option if quality analysis shows it's needed. |
-| **Events in a separate table from canonical_entity** | A separate `event_canonical` table would duplicate merge/split logic, break existing merge/split endpoints, and lose graph queryability. | Keep events as `entity_type=event` in the unified `canonical_entity` table. Properties are FLEXIBLE and can hold event-specific fields. |
-| **Real-time log streaming** | WebSocket-based log streaming adds complexity. The pipeline processes sequentially per document, so there's no benefit over polling. | REST endpoint `GET /documents/{id}/logs` with `?since=timestamp` for incremental reads. |
-| **Log deduplication / idempotency** | Temporal replay re-executes activities, which would re-append duplicate log entries. | Accept duplicates in the log on replay — they're harmless and accurately reflect what Temporal did. Or wrap in a transaction with a run ID check. |
+**Prioritize (Phase 1 — core tracking):**
+1. **T1 + T3 + T4** — Extract usage data from OpenRouter responses, add processing time, log via ProcessingLogger. This is the foundation; everything else depends on it.
+2. **T2** — Aggregate per-document totals via GET /documents/{id}/logs query. No new storage needed.
 
-## MVP Definition for v4.0
+**Prioritize (Phase 2 — UI):**
+3. **D1** — Add token/cost columns to document list (initially as hidden columns, then visible). Needs document-level aggregation in the GET /documents endpoint.
+4. **D3** — LLM-call filter in Logs tab.
 
-### Launch With (v4.0)
+**Defer:**
+- **D4** — Retry tracking: nice-to-have, adds complexity to the first version
+- Cost charts/graphs: not appropriate for vanilla JS SPA
 
-| Feature | Why Essential |
-|---------|---------------|
-| Reference page offsets | Core to the "Pipeline Quality" theme — enables "show me the PDF page for this reference" in the Web UI. Page_number field on reference table, computed from existing page_offsets. |
-| Event entities in canonical_entity | Enables cross-document event deduplication, merge/split, and entity-type filtering (events appear alongside place/person/object in the Web UI). Extends entity_type enum, adds structured event properties. |
-| Search-first entity resolution (context injection) | Directly measurables: lower duplicate entity creation, higher cross-document name consistency. Prompt-level change + entity_id field on references. |
-| Processing log table + append_log_activity | User-visible quality improvement: instead of silent failures, warnings accumulate and are queryable. Error root cause analysis without Temporal Web UI. |
-| Short legal document test corpus | Without real Spanish legal docs, quality improvements can't be measured. 3-5 short court documents. |
-| README/docs update | Externalize knowledge about the core pipeline — offsets, entities, resolution, logs. |
+## UI Layout Patterns
 
-### Add After v4.0 Validated
+### Document Table Column Order (proposed)
 
-| Feature | Trigger for Adding |
-|---------|-------------------|
-| Embedding-based entity pre-match | If context injection yields <80% entity matching accuracy on the test corpus |
-| Event-to-event relationship table | If multiple cross-document event merges require temporal/hierarchical linking |
-| Log tailing endpoint with polling | If users frequently monitor long-running documents |
-| Web UI processing log tab | If the REST endpoint sees regular use |
+| Existing | After v5.0 | Notes |
+|----------|-----------|-------|
+| ID | ID | Unchanged |
+| Archivo | Archivo | Unchanged |
+| Fecha | Fecha | Unchanged |
+| Estado | Estado | Unchanged |
+| Refs | Refs | Unchanged |
+| Ents | Ents | Unchanged |
+| Fragmentos | Fragmentos | Unchanged |
+| Palabras | Palabras | Unchanged |
+| _ | Tokens | NEW — e.g. "1.2K/567" (input/output) |
+| _ | Coste | NEW — e.g. "$0.0085" |
+| Acciones | Acciones | Unchanged, add "Ver LLM" icon |
 
-### Future (v4.1+)
+### Token Display Format
 
-| Feature | Why Defer |
-|---------|-----------|
-| OCR for scanned PDFs | Separate concern from entity quality |
-| Automatic event merge suggestions | Requires production data to tune heuristics |
-| Event timeline visualization | Significant frontend effort; requires event-to-event relations first |
+```
+[cached]/input/output
+Example: 500/1,234/567
 
-## Feature Prioritization Matrix
+When cached=0:  "1,234/567" (no cached prefix)
+When all zero (cache HIT): "✓ CACHED"
+```
 
-| Feature | User Value | Implementation Cost | Priority |
-|---------|-----------|-------------------|----------|
-| Reference page offsets | HIGH — enables provenance | LOW — deterministic computation from existing data | P1 |
-| Event entities (entity_type=event) | HIGH — cross-doc event querying | MEDIUM — enum change + schema + extraction update | P1 |
-| Search-first entity resolution | HIGH — fewer duplicate entities | MEDIUM — prompt change + entity_id field | P1 |
-| Processing log table | HIGH — operational visibility | LOW — new table + activity | P1 |
-| Test corpus | HIGH — quality measurement | LOW — find 3-5 docs | P1 |
-| Event-to-event relation table | MEDIUM — nice but not needed yet | MEDIUM — new table + linking logic | P2 |
-| Embedding-based pre-match | MEDIUM — better accuracy | HIGH — embedding infra | P3 |
+### Token Abbreviation
+
+Display human-readable abbreviations in table cells:
+
+| Value | Display |
+|-------|---------|
+| 0-999 | Exact number: "567" |
+| 1,000-999,999 | "1.2K", "123.4K" |
+| 1,000,000+ | "1.2M", "12.3M" |
+
+### Cost Display Format
+
+```
+$0.0085
+$1.2340
+```
+
+- Always 4 decimal places minimum
+- Use `item.cost.toFixed(4)` prefix with "$"
+- Values < $0.0001 → "< $0.0001"
+
+### Processing Log Entry Format for LLM Calls
+
+```
+[info] LLM extract_events chunk 2/5 — 1,234 input / 567 output / 50 cached / $0.0085 / 4.2s
+```
+
+This is the `message` in `ProcessingLogger.log()`. Includes key data at a glance.
+
+## Test Patterns for Token Count Verification
+
+### Unit Test Patterns
+
+```python
+# Verify usage data is extracted from OpenRouter response
+def test_parse_choice_extracts_usage():
+    provider = OpenRouterProvider(api_key="test")
+    mock_response = {
+        "choices": [{"message": {"content": '{"events": []}'}}],
+        "usage": {
+            "prompt_tokens": 100,
+            "completion_tokens": 50,
+            "total_tokens": 150,
+            "cost": 0.0025,
+            "prompt_tokens_details": {"cached_tokens": 20},
+        },
+    }
+    result, usage = provider._parse_choice(mock_response)
+    assert usage["prompt_tokens"] == 100
+    assert usage["completion_tokens"] == 50
+    assert usage["cached_tokens"] == 20
+    assert usage["cost"] == 0.0025
+```
+
+### E2E Test Patterns
+
+```python
+# Verify that after processing a document, the processing log
+# contains LLM call entries with expected token counts
+
+async def test_token_counts_in_processing_log(test_doc_id):
+    # Process document through workflow
+    await process_document(test_doc_id)
+
+    # Fetch log entries
+    logs = await fetch_logs(test_doc_id)
+    llm_calls = [l for l in logs
+                 if l.step_name in ("extract_events", "resolve_references")]
+    assert len(llm_calls) >= 1
+
+    # Verify each LLM call has token data
+    for call in llm_calls:
+        llm = call.details["llm_call"]
+        assert llm["prompt_tokens"] > 0
+        assert llm["completion_tokens"] > 0
+        assert llm["total_tokens"] > 0
+        assert llm["duration_ms"] > 0
+        assert "cost" in llm
+
+    # Document-level aggregation
+    total_input = sum(c.details["llm_call"]["prompt_tokens"] for c in llm_calls)
+    total_output = sum(c.details["llm_call"]["completion_tokens"] for c in llm_calls)
+    total_cost = sum(c.details["llm_call"]["cost"] for c in llm_calls)
+    assert total_input > 0
+    assert total_output > 0
+    assert total_cost >= 0
+
+    # Reprocess should produce the same token entries (Temporal replay safety)
+    await process_document(test_doc_id)
+    logs2 = await fetch_logs(test_doc_id)
+    assert len(logs2) == len(logs)  # deterministic replay
+```
+
+### Test for Cache Hit Handling
+
+```python
+async def test_cache_hit_zeroes_tokens():
+    # Process same document twice (identical LLM calls)
+    await process_document(test_doc_id)
+    await process_document(test_doc_id)
+
+    logs = await fetch_logs(test_doc_id)
+
+    # First run: normal token counts
+    # Second run (replay): if OpenRouter returns cached response,
+    # token counts may be zero — but our logger records what the API returns
+    # HAZARD: Temporal replay will recreate log entries from scratch;
+    # the second processing is a NEW workflow run, not a cache hit
+```
+
+## Hazards / Edge Cases
+
+| Hazard | Behavior | Mitigation |
+|--------|----------|------------|
+| **OpenRouter cache HIT** | All usage fields zeroed | Still log the call with `cached_tokens=0` and zero totals. The value 0 is informative. |
+| **Temporal replay** | A new workflow run for the same document triggers new LLM calls | Each run is a real API call (or cache hit separately) — log entries are deterministic via SHA256 IDs |
+| **Cost = 0 on free models** | Some OpenRouter models are free | Still store token counts; cost = 0.0 is valid data. |
+| **Cost = null/absent** | Some model responses may omit cost field | Default to 0.0 if not present. Check `response.usage.get("cost", 0.0)`. |
+| **Streaming** | Not currently used, but usage data appears in last SSE chunk | Not applicable now; document if streaming is added later. |
+| **Model fallback** | OpenRouter may route to a different model | Log the `model` actually used (from `response.get("model", provider._model)`) — different models = different tokenizers = different token counts. |
 
 ## Sources
 
-- **Existing codebase patterns:** `schema.surql` (reference table fields, canonical_entity type enum), `activities.py` (extract_events_activity, store_extraction_results_activity, resolve_entities_activity), `workflows.py` (DocumentProcessingWorkflow blob/text branching), `llm.py` (EVENT_EXTRACTION_SCHEMA, ENTITY_RESOLUTION_SCHEMA) — all VERIFIED HIGH confidence
-- **Page offset computation:** Algorithm derived from `extract_text_activity`'s `page_offsets` output + existing chunking pattern in `chunker.py` — VERIFIED HIGH confidence
-- **Entity resolution patterns:** Two-pass (extract + resolve) vs single-pass (baked-in) — synthesis of information extraction common practices; M002's existing per-type batching approach — VERIFIED HIGH confidence
-- **Processing log design:** Append-only log table pattern used in data pipeline systems (Apache Airflow task logs, Dagster event log) — MEDIUM confidence (general pattern knowledge; specific implementation derived from project constraints)
-- **SurrealDB schema patterns:** FLEXIBLE object type for canonical_entity.properties, RECORD links for graph traversal — HIGH confidence (verified in existing schema and codebase)
-
----
-
-*Feature research for: eth-pipeline v4.0 Pipeline Quality & Entity Resolution*
-*Research date: 2026-06-03*
-*Confidence: HIGH*
+- [OpenRouter Usage Accounting (official docs)](https://openrouter.ai/docs/cookbook/administration/usage-accounting) — HIGH confidence
+- [OpenRouter Prompt Caching guide](https://openrouter.ai/docs/guides/best-practices/prompt-caching) — HIGH confidence
+- [OpenRouter Models API pricing object](https://openrouter.ai/docs/api-reference/models/get-models) — HIGH confidence (verifies `cost` field)
+- Existing codebase: `llm.py`, `processing_log.py`, `schema.surql`, `static/index.html` — HIGH confidence

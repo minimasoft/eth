@@ -1,196 +1,237 @@
 # Project Research Summary
 
-**Project:** eth-pipeline v4.0 — Pipeline Quality & Entity Resolution
-**Domain:** Spanish legal document event extraction (LLM pipeline + SurrealDB + Temporal)
-**Researched:** 2026-06-03
-**Confidence:** HIGH
+**Project:** eth-pipeline — v5.0 LLM Cost & Usage Tracking
+**Domain:** Token/cost observability for document extraction pipeline
+**Researched:** 2026-06-04
+**Confidence:** HIGH (stack, features, pitfalls); MEDIUM (architecture — conflict resolved below)
 
 ## Executive Summary
 
-This is an LLM-based document event extraction pipeline that processes Spanish legal documents through a Temporal workflow (extract text → chunk → extract events with offsets → store → resolve entities) and persists results in SurrealDB. The v4.0 milestone targets four quality improvements: (1) reference offsets with page provenance, (2) structured event objects as first-class canonical entities, (3) search-first entity resolution that eliminates the two-pass extract-then-resolve pattern, and (4) per-document processing logs for audit trails and warning accumulation. These are enabled by existing infrastructure — no new external dependencies, no new services.
+This project adds per-LLM-call token and cost tracking to an existing document extraction pipeline powered by OpenRouter and Temporal workflows. The pipeline processes documents through extraction chunks and entity resolution steps, each making independent LLM API calls — currently invisible in terms of cost. The research confirms this is a well-understood domain with standard patterns: capture `usage` from the OpenAI-compatible response body, store in a dedicated table, aggregate at query time, and display in the existing vanilla-JS SPA.
 
-**Recommended approach:** Execute in 6 additive phases — schema first, then offset computation, logs, event entities, search-first resolution, then full integration. Phases 2–4 (offsets, logs, event entities) are architecturally independent and could be parallelized, though schema evolution (Phase 1) is a hard prerequisite for all database operations. The guiding principle throughout is **compute, don't hallucinate** — page numbers and document-level character offsets are derived deterministically from chunk metadata, not extracted by the LLM.
+**The recommended approach** diverges from the initial "reuse existing log infrastructure" assumption. A critical finding from the pitfalls research — the 100-entry cap on `document_event_log` — makes a separate `llm_usage` table mandatory. Token data must use deterministic record IDs with UPSERT semantics to survive Temporal replay without double-counting, and must be included in the existing nullify-then-recreate cycle for reprocessing safety. The result is a replay-safe, append-only audit trail of every LLM call the pipeline makes.
 
-**Key risks:** (1) Offset drift when document text is reprocessed — mitigated by storing a `text_hash` and validating offsets at write time. (2) Event entities creating circular references and breaking merge/split — mitigated by using unidirectional outgoing links, banning event-to-event property references, and excluding event entities from merge/split operations. (3) Search-first resolution degrading performance at scale — mitigated by hybrid (batch + search) approach with top-5 candidate pre-filtering. (4) Log entries violating Temporal replay semantics — mitigated by deterministic log IDs derived from workflow execution context. (5) Testing with synthetic text producing meaningless results — mitigated by requiring 3–5 anonymized real Spanish court rulings with annotated ground truth.
+**The key risk** is Temporal replay double-counting (Pitfall #1, CRITICAL severity). Every activity retry, worker restart, or workflow replay must produce identical token records — which requires careful design of deterministic ID derivation, UPSERT persistence, and inclusion in the delete cycle. The secondary risk is the 100-entry ProcessingLogger cap silently dropping token data if shoehorned into the existing infrastructure. Both risks have clear mitigations documented in the pitfalls research.
 
 ## Key Findings
 
 ### Recommended Stack
 
-The v4.0 milestone requires **zero new external dependencies**. All features build on existing infrastructure. See [STACK.md](./STACK.md) for full details.
+**Core finding:** Zero new dependencies. All token/cost data is extracted from the OpenRouter API response body using existing packages (httpx, surrealdb, temporalio) and stdlib (`time.monotonic()`). The vanilla JS SPA needs only `Intl.NumberFormat` and `toFixed()`.
 
 **Core technologies:**
-- **SurrealDB >=3.0**: Entity search via `string::contains()`, `CONTAINS` operator; full-text search deferred until scale warrants it. New `processing_log` and `event_link` tables. `RELATE` for event–entity graph edges.
-- **Temporal Python SDK >=1.28**: Warning accumulation via activity result dicts (NOT `ApplicationError(BENIGN)`). New `write_processing_log_activity`, `create_event_canonical_entities_activity`, and enhanced `resolve_entities_with_search_activity`.
-- **Python stdlib logging**: Extended with structured dict messages for per-document log entries — no new logging dependency.
-- **OpenRouter LLM**: Schema additions only — `EVENT_EXTRACTION_SCHEMA` gets optional `page_number` and `matched_entity_id` fields; new `STRUCTURED_EVENT_SCHEMA` for compound event entity creation.
+- **SurrealDB `llm_usage` table** (new): Schemaful table with `PERMISSIONS FOR update NONE, FOR delete NONE` — append-only audit trail of every LLM call
+- **OpenRouter `response.usage` dict**: Source of `prompt_tokens`, `completion_tokens`, `total_tokens`, `cached_tokens`, and optional `cost`
+- **`time.monotonic()` from stdlib**: Wall-clock round-trip timing for each LLM call (labeled as such, not "inference time")
+- **SurrealQL `math::sum()`**: Per-document aggregation — identical pattern to existing reference/entity count queries
 
-**Key design decisions (from STACK.md):**
-- D006: Compute `page_number` server-side, not from LLM (deterministic, avoids hallucination)
-- D007: Add `"event"` to existing `entity_type` enum, not a new table (unified model already supports flexible properties, soft-delete, merge/split)
-- D008: Search-first as LLM context injection, not a separate query step (eliminates two-pass pattern, reduces LLM calls)
-- D009: `processing_log` as SurrealDB table, not in-document JSON field (Temporal replay safety, independent querying)
-- D010: Warnings accumulated in activity result dicts, not via `ApplicationError(BENIGN)` (non-fatal, no retry triggers)
+**See:** [STACK.md](./STACK.md) for full schema definition, field-by-field extraction logic, and UI formatting helpers.
 
 ### Expected Features
 
-See [FEATURES.md](./FEATURES.md) for full details.
+**Must have (table stakes):**
+- **T1: Per-LLM-call token accounting** — capture `prompt_tokens`, `completion_tokens`, `total_tokens`, `cached_tokens`, `cost` from every OpenRouter response
+- **T2: Per-document token aggregation** — sum token/cost across all LLM calls for a document (extraction chunks + entity resolution)
+- **T3: Processing time per LLM call** — `time.monotonic()` round-trip timing alongside token data
+- **T4: Storage in a dedicated table** — NOT in `document_event_log` (100-entry cap is the deal-breaker)
 
-**Must have (P1 — table stakes):**
-- **Reference page offsets** — `page_number` field on references, computed from existing `page_offsets` array. Enables "show me the PDF page for this reference" in the Web UI.
-- **Event entities in canonical_entity** — extend `entity_type` enum to include `"event"`, with structured properties (time, place, participants, objects) in the existing `properties` JSON. Enables cross-document event deduplication, merge/split, and entity-type filtering.
-- **Search-first entity resolution via context injection** — bake existing entities into the extraction prompt so the LLM produces consistent names and entity IDs. Reduces duplicate entity creation. Modifies prompt + schema only — no new activities or embedding infrastructure.
-- **Processing log table + `log_processing_event_activity`** — per-document audit trail with severity levels (info/warning/error), step names, and structured details. Enables error root-cause analysis without Temporal Web UI.
-- **Short legal document test corpus** — 3–5 anonymized real Spanish court rulings with annotated ground truth. Without it, quality improvements can't be measured.
+**Should have (differentiators):**
+- **D1: Token/cost in document list** — single aggregated column (e.g., "1,234 / 567 | $0.02") rather than separate columns
+- **D2: Cache-hit indicator** — show cached tokens separately (e.g., "500/1,234/567" meaning 500 cached + 1,234 input + 567 output)
+- **D3: LLM-call filter in Logs tab** — `?llm_only=true` filter on `GET /documents/{id}/logs`
+- **D4: Retry/error tracking** — `attempt_number` and `retry_of` in token records
 
-**Should have (P2 — differentiators):**
-- **Event-to-event relation table** (`event_link`) — typed relationships (sub_event, related_to, followed_by, caused_by). Deferred until multiple cross-document event merges require it.
+**Defer (v2+):**
+- Real-time streaming token display (non-streaming pipeline)
+- Cost charts/graphs (vanilla JS SPA limitation)
+- Token usage budgets/threshold alerts (single-user tool)
+- Prompt/response content storage (too large, stored elsewhere)
 
-**Defer (P3+):**
-- **Embedding-based entity pre-match** — sentence-transformers + vector index. Only if context injection yields <80% entity matching accuracy.
-- **Full-text search on entity names** — SurrealDB `DEFINE ANALYZER` + `@@` operator. Defer until search volume requires BM25 scoring.
-- **OCR for scanned PDFs** — separate concern from entity quality.
-- **Automatic event merge suggestions** — requires production data to tune heuristics.
-- **Event timeline visualization** — significant frontend effort; requires event-to-event relations first.
+**Anti-features (explicitly warned against by research):**
+- Do NOT push token data into `document_event_log.details` (100-entry cap swallows it — Pitfall #4)
+- Do NOT create a new table when a separate approach is needed — actually CREATE the separate `llm_usage` table (the architecture researcher's anti-pattern #2 is overridden by the critical pitfall finding)
+- Do NOT compute cost from model pricing lookups when `usage.cost` is available from OpenRouter
+- Do NOT add 4 new columns to the document table (layout over-crowding — Pitfall #5)
 
-**Anti-features (explicitly avoided):**
-- Page offsets from the LLM (compounds error)
-- Full event history / all processing runs (unbounded growth)
-- Embedding-based pre-match in v4.0 (infrastructure cost outweighs gain)
-- Events in a separate table from canonical_entity (duplicates merge/split logic)
-- Real-time log streaming (no benefit over polling for sequential pipeline)
+**See:** [FEATURES.md](./FEATURES.md) for full feature breakdown, MVP prioritization, and test patterns.
 
 ### Architecture Approach
 
-See [ARCHITECTURE.md](./ARCHITECTURE.md) for full details. Current architecture (v3.0) uses a Temporal workflow with activities for metadata → text extraction → chunking → LLM event extraction → store results → entity resolution → status update. v4.0 extends this with **3 new activities** and **4 schema changes** while preserving all existing patterns (nullify-then-recreate, per-activity DB connections, dual-path verification).
+The architecture is a clean extension of the existing pipeline: the `OpenRouterProvider` returns usage metadata alongside parsed content, the Temporal activity writes it to a dedicated `llm_usage` table via deterministic-ID UPSERT, and the API aggregates it at query time for the SPA.
 
-**Major components (new/modified):**
-1. **`log_processing_event_activity`** (NEW) — append-only log writer. Fire-and-forget; failures silently swallowed. Each pipeline step calls it via a `_log()` workflow helper.
-2. **`create_event_canonical_entities_activity`** (NEW) — runs after `store_extraction_results_activity`. Creates `canonical_entity` records of type `"event"` with structured properties. Replay-safe via nullify-then-recreate scoped to the document.
-3. **`resolve_entities_with_search_activity`** (REPLACES existing) — search-first candidate matching with exact-match bypass. For each reference type, queries existing entities, auto-assigns exact text matches (no LLM call), passes remaining to LLM with top-5 candidates.
-4. **Schema changes (additive)** — 3 fields on `reference` (`char_offset_start`, `char_offset_end`, `page_number`), `entity_type` enum expansion on `canonical_entity`, two new tables (`document_event_log`, `event_link`).
+**NOTE: Conflict resolved.** The architecture researcher (ARCHITECTURE.md) and features researcher (FEATURES.md) recommended storing token data in the existing `document_event_log.details` field. The pitfalls researcher discovered the 100-entry cap on this table (Pitfall #4), which would silently drop token data for documents with many chunks. **The separate `llm_usage` table is mandatory**, not an anti-pattern.
 
-**Key architectural patterns:**
-- **Separate concerns**: `document.status` = state machine for orchestration; `document_event_log` = append-only audit trail. Never merge them.
-- **Deterministic offset computation**: LLM returns chunk-relative `span_start`/`span_end`. Activity adds chunk offset to produce document-level `char_offset_start`/`char_offset_end`. No LLM arithmetic.
-- **Lazy migration**: Existing event records get canonical entity representations on reprocess, not via blocking backfill.
+**Major components:**
+1. **OpenRouterProvider** (in `llm.py`) — Extract `usage` dict from response, return alongside parsed content. No DB writes from this layer.
+2. **Temporal activities** (`extract_events_activity`, etc.) — Call provider, unpack usage, call `record_llm_usage()`. Include token records in nullify-then-recreate cycle.
+3. **`llm_usage` table** (SurrealDB) — Schemaful, append-only via PERMISSIONS. Deterministic IDs (SHA256 of `document_id:step_name:chunk_index`) + UPSERT for replay safety.
+4. **API endpoints** — `GET /documents/{id}/tokens` (per-doc aggregation), batched token data in `GET /documents` list to avoid N+1
+5. **Web UI** (vanilla JS SPA) — Token summary in logs panel/detail view, single aggregated column in document table
+
+**Data flow:**
+```
+LLM Response → OpenRouterProvider._parse_choice()
+  ├── parsed_content → activity (existing flow)
+  └── usage_metadata → ProcessingLogger.log() or record_llm_usage()
+                                              ↓
+                                       llm_usage table
+                                              ↓
+                              API: GET /documents/{id}/tokens
+                              API: GET /documents (batch query)
+```
+
+**Key patterns:**
+- **Deterministic replay-safe logging** (existing SHA256 + UPSERT pattern)
+- **Graceful degradation** for missing API fields (`.get()` with defaults)
+- **Context-manager timing** to handle `asyncio.CancelledError` cleanly
+
+**See:** [ARCHITECTURE.md](./ARCHITECTURE.md) for data flow diagrams, component boundaries, and scalability considerations.
 
 ### Critical Pitfalls
 
-See [PITFALLS.md](./PITFALLS.md) for all 12 pitfalls with recovery strategies.
+**Top 5 by severity:**
 
-1. **Offset drift after text reprocessing** — When `text_content` changes (re-extraction, bug fix), stored offsets silently point to wrong text. *Mitigation:* Store SHA-256 `text_hash` alongside offsets; add bounds-checking validation gate in `store_extraction_results_activity`. Never modify `text_content` in place.
+1. **CRITICAL: Temporal replay double-counts tokens (Pitfall #1)** — Activity retries and workflow replays can inflate token totals unless deterministic ID + UPSERT is used and token records are included in the nullify-then-recreate delete cycle. **Mitigation:** Record inside provider, persist via deterministic-ID UPSERT in activity.
 
-2. **Page number vs. document page confusion** — LLM-reported page numbers may be logical (folio numbers) not physical (0-indexed extracted pages). *Mitigation:* Compute page number from `char_offset_start` via `document_chunk` page ranges. Store LLM-reported page separately as informational only.
+2. **HIGH: ProcessingLogger 100-entry cap swallows token data (Pitfall #4)** — The existing `document_event_log` has a hard cap of 100 entries per document. Token data pushed into `details` would be silently dropped for documents with many chunks. **Mitigation:** Use a separate `llm_usage` table with no cap and its own write path.
 
-3. **Event-as-entity creates circular references** — Event entities linking to other event entities breaks the DAG assumption of merge/split. *Mitigation:* Unidirectional outgoing links only; ban event-to-event property references; use a separate `event_link` table for typed relationships; exclude event entities from merge/split operations.
+3. **HIGH: OpenRouter cache hits report 0 tokens (Pitfall #2)** — Cache HIT responses can zero out `prompt_tokens` or omit `usage` entirely. Crash on missing `usage` = pipeline failure. **Mitigation:** Null-safe parsing, store raw usage JSON for future recalculation.
 
-4. **Search-first resolution kills performance at scale** — Per-reference entity queries turn O(1) into O(N), and sending all entities to the LLM grows prompts beyond context windows. *Mitigation:* Hybrid approach — keep batch pattern as primary path, add search only for ambiguous references (confidence < 0.7). Pre-filter to top-5 candidates via fuzzy string matching (rapidfuzz). Set performance budget benchmark before deployment.
+4. **HIGH: Chunked extraction produces multiple records requiring aggregation (Pitfall #3)** — 5-20+ LLM calls per document across extraction chunks + entity resolution types. Missing a record type in aggregation = incomplete totals. **Mitigation:** `step_name` discriminator + `chunk_index` on each record; aggregate at query time with a documented helper function.
 
-5. **Log entries violate Temporal replay semantics** — Naive INSERT creates duplicate log entries on retry/replay. *Mitigation:* Use deterministic log IDs derived from `workflow_id + step + attempt_number`. Use `CREATE ONLY` (idempotent) or `UPSERT` semantics.
+5. **MEDIUM: UI token columns overwhelm document table layout (Pitfall #5)** — Adding 3-4 token columns to an already-wide table ruins mobile UX. **Mitigation:** Show token data in logs panel/detail view, not as new columns. Single aggregated column if table-adjacent is unavoidable.
+
+**See:** [PITFALLS.md](./PITFALLS.md) for all 15 pitfalls with warning signs, phase mappings, and the "Looks Done But Isn't" checklist.
 
 ## Implications for Roadmap
 
-Based on research, a 6-phase build order is recommended. Phases 2–4 are architecturally independent and could be reordered.
+Based on the combined research, I recommend **5 phases** with the following structure:
 
-### Phase 1: SurrealDB Schema Evolution (Foundation)
-**Rationale:** Hard prerequisite for all database operations. Additive DDL only — no destructive migrations. Existing queries continue to work because new fields default to `null` and new tables are additive.
-**Delivers:** Updated `reference` table (+3 fields), expanded `entity_type` enum on `canonical_entity`, new `document_event_log` table, new `event_link` table.
-**Addresses:** All features depend on schema.
-**Avoids:** Pitfall 7 (SCHEMAFULL migration without downtime planning) — all new fields use `TYPE int | null DEFAULT null` and enum expansion is widening.
-**Research flag:** Well-documented pattern. Skip research-phase.
+### Phase 1: Token Recording & Schema (Foundation)
+**Rationale:** Everything depends on capturing token data from OpenRouter responses and storing it safely. The `llm_usage` table must exist before anything else works.
+**Delivers:** Token/cost data captured for every LLM call and persisted to SurrealDB with replay safety.
+**Features addressed:** T1 (per-LLM-call accounting), T3 (processing time)
+**Pitfalls avoided:** #1 (replay double-count via deterministic ID + UPSERT), #2 (cache hit via null-safe parsing), #3 (chunked records via step_name + chunk_index), #4 (log cap via separate table), #9 (async cancellation via context manager), #12 (schema perms), #14 (model storage)
+**Key deliverables:**
+- `llm_usage` table definition in `schema.surql` (SCHEMAFULL, PERMISSIONS FOR update/delete NONE)
+- `_usage` extraction in `OpenRouterProvider._parse_choice()` return dict
+- `record_llm_usage()` helper with deterministic ID (SHA256 of `document_id:step_name:chunk_index`) + UPSERT
+- Context manager for `time.monotonic()` timing
+- Token record deletion in nullify-then-recreate cycle
+- Include `llm_usage` in `DELETE /documents/{id}` and `DELETE /documents/{id}/events` cascade
+- **Research flag:** Needs `/gsd-plan-phase --research-phase 1` — the Temporal replay safety design requires careful verification of deterministic ID collision boundaries and UPSERT semantics in the existing activity patterns.
 
-### Phase 2: Reference Offset Computation
-**Rationale:** Phase 1 schema fields must exist. This is purely additive logic in `store_extraction_results_activity` — no workflow reordering needed.
-**Delivers:** Document-level `char_offset_start`/`char_offset_end` computed from chunk offsets + LLM `span_start`/`span_end`. `page_number` stored from deterministic computation.
-**Addresses:** Reference page offsets feature (P1).
-**Avoids:** Pitfall 1 (offset drift) — add text_hash validation gate. Pitfall 2 (page confusion) — compute from char offset, not LLM.
-**Research flag:** Well-documented pattern (existing codebase patterns). Skip research-phase.
+### Phase 2: API Aggregation Endpoints
+**Rationale:** Once token data is in the database, it needs to be queryable. This phase adds the REST endpoints for per-document token aggregation and list-level batch queries.
+**Delivers:** Token totals usable by the frontend and API consumers.
+**Features addressed:** T2 (per-document aggregation), D4 (retry tracking — attempt_number, retry_of)
+**Pitfalls avoided:** #3 (multi-record aggregation via query-time SUM), #8 (legacy document handling via coalesce + has_data), #13 (N+1 via batch query or document-record storage)
+**Key deliverables:**
+- `GET /documents/{id}/tokens` endpoint (per-doc aggregation, null-coalesced)
+- Batch token query in `GET /documents` list endpoint (`WHERE document INSIDE $docs GROUP ALL`) to avoid N+1
+- `has_data: bool` flag for legacy pre-v5.0 documents
+- 404 handling for documents with no token records
+- Attempt number recording in token records
+- **Research flag:** Standard patterns — no deeper research needed.
 
-### Phase 3: Per-Document Processing Logs
-**Rationale:** Independent of Phases 2 and 4. Phase 1 schema (document_event_log table) must exist. Lowest-risk addition — isolated new activity with no dependencies on other v4 changes.
-**Delivers:** `log_processing_event_activity`, workflow `_log()` helper with logging calls at each pipeline step, `GET /documents/{id}/log` API endpoint.
-**Addresses:** Processing log table feature (P1).
-**Avoids:** Pitfall 5 (unbounded log growth) — implement 100-entry retention limit from day one. Pitfall 6 (Temporal replay violations) — deterministic log IDs + idempotent insert.
-**Research flag:** Well-documented pattern (append-log event sourcing). Skip research-phase.
+### Phase 3: UI Token Display
+**Rationale:** Token data must be visible to users. This phase adds it to the existing vanilla-JS SPA without over-crowding the layout.
+**Delivers:** Token/cost visibility in the document detail view and LLM-call filter in the Logs tab.
+**Features addressed:** D1 (token/cost in document list), D2 (cache-hit indicator), D3 (LLM-call filter)
+**Pitfalls avoided:** #5 (table overcrowding via logs panel display), #8 (legacy display via graceful fallback), #15 (meaningless numbers via tooltips + step grouping)
+**Key deliverables:**
+- Token summary section in `logs-doc-info` panel (not new columns)
+- Single aggregated token column in document table (e.g., "1,234 / 567 | $0.02")
+- `formatTokenCount()` and `formatCost()` JS helpers
+- Step-grouped token breakdown in logs detail view (extraction chunks vs. entity resolution)
+- Tooltips on all token numbers
+- Cache-hit visual indicator (e.g., "500/1,234/567" format)
+- `?llm_only=true` filter on Logs tab with "Ver LLM" button
+- Green/yellow/red cost badges
+- "Sin datos de tokens (documento anterior a v5.0)" for legacy docs
+- **Research flag:** Standard UI patterns — no deeper research needed if following the existing SPA patterns.
 
-### Phase 4: Event Canonical Entities
-**Rationale:** Independent of Phases 2 and 3. Phase 1 schema (entity_type enum expansion) must exist. New activity runs after `store_extraction_results_activity`.
-**Delivers:** `create_event_canonical_entities_activity` — creates `canonical_entity` records of type `"event"` with structured properties. Event-to-event `event_link` table ready for human curation.
-**Addresses:** Structured event objects feature (P1).
-**Avoids:** Pitfall 3 (circular references) — enforce unidirectional outgoing links, ban event-to-event property links. Pitfall 10 (orphaned entity links on reprocess) — nullify event entities scoped to document.
-**Research flag:** MEDIUM confidence on event merge/split guard design. Phase planning may need `/gsd-plan-phase --research-phase 4` to validate merge condition updates and Web UI entity list changes.
+### Phase 4: Cost Estimation & Retry Accounting
+**Rationale:** Cost data from OpenRouter's `usage.cost` field is optional and not always present. This phase adds fallback cost estimation from model pricing and comprehensive retry tracking.
+**Delivers:** Estimated cost for calls where `usage.cost` is absent; visibility into retry overhead.
+**Features addressed:** D4 (retry tracking — full), Pitfall #10 (cost estimation), Pitfall #11 (test brittleness)
+**Pitfalls avoided:** #7 (retry ambiguity via attempt_number + retry_of), #10 (cost via configurable pricing), #11 (brittle tests via structural assertions)
+**Key deliverables:**
+- Configurable model pricing dict (input/output/cached per-1M rates)
+- `estimate_cost()` function for fallback when `usage.cost` is absent
+- `cost_usd_estimated` and `cost_source` fields on `llm_usage` records
+- "Coste estimado" labels in UI when cost is estimated
+- `retry_of` field on token records linking retries to original attempts
+- Documented accounting policy: "totals include retry overhead"
+- Structural test assertions in Python verification scripts (not hardcoded numerical values)
+- Replay-safety e2e test (process twice without DELETE, verify identical totals)
+- **Research flag:** Needs `/gsd-plan-phase --research-phase 4` — OpenRouter pricing is model-dependent and changes over time; the estimation strategy needs validation against the user's actual OpenRouter billing data.
 
-### Phase 5: Search-First Entity Resolution
-**Rationale:** Should come after Phase 4 because it needs to search event-type entities. Also benefits from Phase 3 logging support. Most architecturally impactful change — replaces existing `resolve_entities_activity`.
-**Delivers:** `resolve_entities_with_search_activity` with exact-match bypass, top-5 candidate pre-filtering, support for event-type entity resolution. Fewer LLM calls per document.
-**Addresses:** Search-first entity resolution feature (P1).
-**Avoids:** Pitfall 4 (performance at scale) — hybrid batch + search approach, top-5 candidate pre-filtering, performance budget benchmark. Pitfall 8 (LLM prompt drift) — keep extraction and resolution as separate phases; prompt-size monitoring. Pitfall 11 (race conditions in concurrent processing) — UNIQUE constraint on entity name+type with graceful retry on constraint violation.
-**Research flag:** HIGH-impact change. Recommend `/gsd-plan-phase --research-phase 5` during planning to validate candidate search function, exact-match heuristic, and performance benchmark methodology.
-
-### Phase 6: Full Integration + Test Corpus + Docs
-**Rationale:** All previous phases complete. Integration-only — no new functionality.
-**Delivers:** Extended DELETE cascade (events, logs, event entities per document). End-to-end integration tests with real Spanish legal documents. README/docs update covering offsets, entities, resolution, logs.
-**Addresses:** Test corpus feature (P1), docs update (P1).
-**Avoids:** Pitfall 9 (meaningless testing with synthetic text) — require 3–5 anonymized real court rulings with annotated ground truth.
-**Research flag:** Well-documented pattern (existing test infrastructure). Skip research-phase.
+### Phase 5: Pricing Sync (Optional)
+**Rationale:** Keeping model pricing up to date is a maintenance task, not a launch requirement. Phase 4's configurable pricing dict works immediately.
+**Delivers:** Automated pricing updates from OpenRouter's model list API.
+**Features addressed:** Pricing freshness
+**Pitfalls avoided:** #10 (stale cost estimates via periodic sync)
+**Key deliverables:**
+- `scripts/sync_pricing.py` — optional script fetching pricing from `https://openrouter.ai/api/v1/models`
+- Pricing cache update mechanism
+- **Research flag:** Can skip research entirely if the sync script is deferred to a future milestone.
 
 ### Phase Ordering Rationale
 
-- **Phase 1 must come first** — schema is prerequisite for ALL database operations.
-- **Phases 2–4 are architecturally independent** — offset computation (Phase 2), processing logs (Phase 3), and event entities (Phase 4) don't require each other. They share only the Phase 1 schema prerequisite. Could be parallelized.
-- **Phase 5 (search-first resolution) should come after Phase 4** — it needs to search event-type entities, which don't exist until Phase 4.
-- **Phase 6 is purely integration/verification** — all features must be stable before the test corpus and docs can be finalized.
+- **Phase 1 first** because everything depends on capturing and storing token data safely. The schema must exist, the extraction must work, and the replay-safety mechanism must be correct before any other phase has meaning.
+- **Phase 2 second** because the API layer is the bridge between storage and UI. Without aggregation endpoints, the UI has nothing to display.
+- **Phase 3 third** because the UI is the consumer of the API endpoints from Phase 2. These two phases could partially overlap (build the UI alongside the API contract).
+- **Phase 4 fourth** because cost estimation and retry tracking are enhancements on top of the core token tracking. The basic token data pipeline works without cost estimation — it just shows null-cost where `usage.cost` is absent.
+- **Phase 5 deferred** because pricing sync is a maintenance automation task. The configurable pricing dict from Phase 4 works immediately with manual updates.
 
 ### Research Flags
 
-Phases likely needing deeper research during planning:
-- **Phase 4 (Event Canonical Entities):** Merge/split guard design for event entities, Web UI entity list changes, event-to-event linking strategy. MEDIUM confidence — recommend `/gsd-plan-phase --research-phase 4`.
-- **Phase 5 (Search-First Entity Resolution):** Candidate search function design, exact-match heuristic tuning, performance budget benchmark, LLM prompt template for entity context injection. HIGH-impact — recommend `/gsd-plan-phase --research-phase 5`.
-
-Phases with standard patterns (skip research-phase):
-- **Phase 1:** SurrealDB additive DDL — well-documented, patterns established in M002.
-- **Phase 2:** Offset computation from chunk metadata — deterministic arithmetic, no LLM involvement.
-- **Phase 3:** Append-only log pattern — established practice, well-understood Temporal replay considerations.
-- **Phase 6:** Integration tests and docs — standard project hygiene.
+| Phase | Needs Research? | Reason |
+|-------|----------------|--------|
+| Phase 1: Token Recording | **YES** | Temporal replay safety design requires verification of: deterministic ID collision boundaries with existing SHA256 pattern, UPSERT semantics in SurrealDB Temporal context, integration with existing nullify-then-recreate cycle |
+| Phase 2: API Aggregation | No | Standard REST endpoint patterns, existing codebase patterns to follow |
+| Phase 3: UI Display | No | Standard vanilla JS SPA patterns, existing table/logs patterns to follow |
+| Phase 4: Cost & Retry | **YES** | OpenRouter pricing model validation needed — `usage.cost` field availability, model pricing change frequency, retry behavior with actual OpenRouter responses |
+| Phase 5: Pricing Sync | No | Optional maintenance script; standard HTTP + file write pattern |
 
 ## Confidence Assessment
 
 | Area | Confidence | Notes |
 |------|------------|-------|
-| Stack | HIGH | Verified against existing codebase patterns (schema.surql, activities.py, llm.py, workflows.py). SurrealDB and Temporal docs fetched successfully. No new dependencies. |
-| Features | HIGH | Derived from existing codebase gaps + established IE literature (UIMA, spaCy patterns). Anti-features explicitly documented. All P1 features have known implementation paths. |
-| Architecture | HIGH | All integration points verified against existing codebase. Build order derived from Temporal dependency chains. Additive schema changes only — no breaking changes. |
-| Pitfalls | HIGH | 12 pitfalls documented with prevention strategies, recovery plans, and phase mapping. Sources include official Temporal docs, SurrealDB docs, and established distributed systems patterns. |
+| Stack | **HIGH** | OpenRouter `response.usage` shape confirmed via TypeScript types in `llms-full.txt`. SurrealDB schema patterns verified against existing codebase. Zero new dependencies. |
+| Features | **HIGH** | Feature taxonomy directly from OpenRouter API capabilities and existing pipeline architecture. MVP recommendation follows standard observability patterns. |
+| Architecture | **MEDIUM** | The architecture researcher recommended using `document_event_log.details` for storage, which the pitfalls researcher showed is broken (100-entry cap). The recommended architecture (separate `llm_usage` table) resolves this but needs implementation verification during Phase 1. |
+| Pitfalls | **HIGH** | 15 pitfalls identified with severity ratings, mitigations, and phase mappings. All derived from codebase analysis and Temporal/OpenRouter domain knowledge. Primary source: actual codebase behavior. |
 
-**Overall confidence:** HIGH
+**Overall confidence:** HIGH — the core approach is well-understood, the conflicts have been resolved with clear rationale, and the pitfalls research provides robust guardrails. The only uncertainty is around OpenRouter's `usage.cost` field availability (captured as a gap below).
 
 ### Gaps to Address
 
-- **Event merge/split guard design (Phase 4):** The exact merge conditions for event entities (time overlap, same-document check, participant overlap) need validation during Phase 4 planning. The existing 7-condition pipeline must be extended with type-specific logic. *Resolution:* Validate during Phase 4 research-phase.
+- **OpenRouter `usage.cost` field availability:** STACK.md says `cost?: number` is optional in the response type. PITFALLS.md says OpenRouter does not return per-call cost at all. These may reflect different versions of the API. **Resolution:** Capture `usage.cost` when present; fall back to model-pricing estimation when absent. Phase 1 stores `cost_source` to distinguish. Phase 4 validates against actual billing data.
 
-- **Exact-match heuristic for search-first resolution (Phase 5):** The threshold for "exact match" (confidence 0.95, case-insensitive name comparison, accent normalization) needs empirical tuning. The rapidfuzz `ratio > 70` threshold is a starting point, not a final value. *Resolution:* Benchmark on the test corpus during Phase 5 research-phase.
+- **Deterministic ID collision with existing SHA256 pattern:** The `ProcessingLogger` already uses SHA256 for log entry IDs. The `llm_usage` table needs its own ID namespace. **Resolution:** Prefix the hash with `"llm:"` or use a separate hash domain (`document_id:step_name:chunk_index` is naturally distinct from the log entry hash composition).
 
-- **Log retention test (Phase 3):** The 100-entry-per-document retention limit relies on a DELETE-before-INSERT query that may not handle concurrent inserts correctly. Verify with a concurrent insert test. *Resolution:* Add to Phase 3 integration tests.
+- **`time.monotonic()` precision sufficiency:** The round-trip time for a typical LLM call is 5-30 seconds, so `time.monotonic()` at millisecond precision is more than adequate. This is not a real gap — just noting that sub-millisecond precision is neither needed nor achievable over HTTP.
 
-- **Spanish legal test documents (Phase 6):** Need 3–5 anonymized real court rulings from CENDOJ or Aranzadi. Must include edge cases: one-paragraph doc, multi-page doc exceeding chunk size, PDF with OCR noise, document with no clear events. *Resolution:* Procure during Phase 6 as part of test corpus work.
+- **Model pricing change frequency:** Phase 4's configurable pricing dict works for initial launch. The frequency of OpenRouter pricing changes determines whether Phase 5 (sync script) becomes valuable. **Resolution:** Start with manual config; add sync script if pricing changes more than quarterly.
 
 ## Sources
 
 ### Primary (HIGH confidence)
-- **Existing codebase** (`src/eth_pipeline/`): schema.surql, activities.py, workflows.py, api.py, llm.py, chunker.py, storage.py, worker.py — all integration points verified
-- **Existing patterns**: D012 (per-activity connections), D016 (per-type batching), D009 (protocol-based abstraction), nullify-then-recreate, delete-then-recreate — established in M001/M002
-- **Integration tests** (`tests/integration/helpers.ts`): dual-path verification pattern (GraphQL + SQL fallback)
-- **PROJECT.md**: M001–M002 scope, v2.0–v3.0 history, v4.0 requirements
-- **SurrealDB docs**: `DEFINE ANALYZER`, `CONTAINS` operator, `RELATE` statement, `DEFINE FIELD` — fetched successfully
-- **Temporal docs**: `ApplicationErrorCategory.BENIGN`, `ApplicationError` — official Python SDK docs
+- **STACK.md research**: OpenRouter TypeScript `ResponseUsage` type (llms-full.txt lines 18870-18920), current `llm.py`, current `schema.surql`, current `static/index.html`
+- **FEATURES.md research**: OpenRouter Usage Accounting docs, OpenRouter Prompt Caching guide, existing codebase
+- **ARCHITECTURE.md research**: Existing codebase (`llm.py`, `processing_log.py`, `schema.surql`), OpenRouter usage docs
+- **PITFALLS.md research**: Codebase analysis (`llm.py`, `activities.py`, `processing_log.py`, `schema.surql`, `api/models.py`, `api/routes/documents.py`, `static/index.html`), OpenRouter chat completions format
 
 ### Secondary (MEDIUM confidence)
-- **Spanish legal document structure**: CENDOJ (Centro de Documentación Judicial) — public judicial documentation confirms standardized structure
-- **Entity name normalization for Spanish names**: Community conventions — strip titles (D., Doña), normalize accents, handle compound surnames
-- **Page offset algorithm**: Derived from `extract_text_activity`'s `page_offsets` output + existing chunking pattern — verified empirically
-- **Processing log design**: Append-only log table pattern from data pipeline systems (Apache Airflow task logs, Dagster event log) — general pattern knowledge, specific implementation derived from project constraints
+- OpenRouter model list API at `/api/v1/models` — referenced for pricing sync (Phase 5) but not verified at time of research
+- `httpx` event hooks — alternative timing approach (Pitfall #6) — available but not currently imported
+
+### Tertiary (LOW confidence)
+- None — all research findings were cross-referenced against actual codebase behavior or official OpenRouter documentation
 
 ---
-*Research completed: 2026-06-03*
+
+*Research completed: 2026-06-04*
 *Ready for roadmap: yes*
