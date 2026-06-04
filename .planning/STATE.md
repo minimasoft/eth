@@ -3,10 +3,10 @@ gsd_state_version: 1.0
 milestone: v5.0
 milestone_name: LLM Cost & Usage Tracking
 status: planning
-last_updated: "2026-06-04T18:13:16.684Z"
+last_updated: "2026-06-04T20:00:00.000Z"
 last_activity: 2026-06-04
 progress:
-  total_phases: 0
+  total_phases: 4
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -25,10 +25,10 @@ See: .planning/PROJECT.md (updated 2026-06-02)
 
 ## Current Position
 
-Phase: Not started (defining requirements)
+Phase: Not started (roadmap defined)
 Plan: —
-Status: Defining requirements
-Last activity: 2026-06-04 — Milestone v5.0 started
+Status: Defining roadmap
+Last activity: 2026-06-04 — v5.0 roadmap created (phases 19-22)
 
 ## Performance Metrics
 
@@ -45,6 +45,18 @@ Last activity: 2026-06-04 — Milestone v5.0 started
 
 **Totals:** 6 phases, 8 plans
 **Timeline:** Phase 13-17 completed, Phase 18 in progress
+
+### v5.0 LLM Cost & Usage Tracking
+
+| Phase | Plans | Status | Completed |
+|-------|-------|--------|-----------|
+| 19. Token Recording & Schema | 0/0 | Planning | — |
+| 20. API Aggregation Endpoints | 0/0 | Planning | — |
+| 21. UI Token Display | 0/0 | Planning | — |
+| 22. No-Regression Verification | 0/0 | Planning | — |
+
+**Totals:** 4 phases, 0 plans
+**Timeline:** Planning
 
 ## Accumulated Context
 
@@ -70,6 +82,11 @@ Recent decisions affecting current work:
 - D027: Quick task 260603-wqw uses DEFINE FIELD OVERWRITE (not DEFINE FIELD) for schema migration compatibility on already-initialized schemas
 - D028: Quick task 260603-wqw uses retry loop (3x, 500ms) for DELETE chunk count check to handle race condition between worker chunking and verification
 - D029: Quick task 260604-h1i uses str(doc_rid) instead of f-string to stay DRY — RecordID already knows its format
+- D030: v5.0 phases start at Phase 19 (continuing from v4.0 Phase 18)
+- D031: v5.0 has 4 phases: Token Recording → API Aggregation → UI Display → No-Regression Verification
+- D032: Token data goes to dedicated `llm_usage` table (NOT ProcessingLogger's document_event_log) — per critical Pitfall #4 (100-entry cap)
+- D033: Deterministic SHA256 record IDs (`document_id:step_name:chunk_index`) + UPSERT for Temporal replay safety
+- D034: Token records included in nullify-then-recreate cycle (deleted on document reprocess/events-clear)
 
 ### Pending Todos
 

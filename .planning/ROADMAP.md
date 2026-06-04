@@ -8,6 +8,7 @@
 - ✅ **v2.0 Blob & Chunk Pipeline** — Phases 6-8 (shipped 2026-06-01)
 - ✅ **v3.0 Web UI** — Phases 9-12 (shipped 2026-06-02)
 - ✅ **v4.0 Pipeline Quality & Entity Resolution** — Phases 13-18 (shipped 2026-06-04)
+- 🚧 **v5.0 LLM Cost & Usage Tracking** — Phases 19-22 (in progress)
 
 ## Phases
 
@@ -241,6 +242,13 @@ Plans:
 - [x] **Phase 17: Search-First Entity Resolution** — resolve_entities_with_search_activity with candidate pre-filtering and LLM context injection
 - [x] **Phase 18: Full Integration + Test Corpus + Docs** — Integration tests with real Spanish legal documents, README/docs update (Plan 02 complete, Plan 01 complete)
 
+### v5.0 — LLM Cost & Usage Tracking
+
+- [ ] **Phase 19: Token Recording & Schema** — Dedicated `llm_usage` table, OpenRouter token extraction, replay-safe writes, nullify-then-recreate cycle
+- [ ] **Phase 20: API Aggregation Endpoints** — Per-document token totals, batched list queries, legacy document handling
+- [ ] **Phase 21: UI Token Display** — Token/cost columns in document list, per-LLM-call breakdown in logs tab
+- [ ] **Phase 22: No-Regression Verification** — E2E tests for token tracking, replay safety verification, zero regressions
+
 ## Phase Details
 
 ### Phase 13: Schema Evolution
@@ -361,8 +369,77 @@ Plans:
 
 Plans:
 
-- [ ] 18-01-PLAN.md — Test fixtures (civil case + multi-page document) + pipeline_v4.test.ts with 4 test groups
+- [x] 18-01-PLAN.md — Test fixtures (civil case + multi-page document) + pipeline_v4.test.ts with 4 test groups
 - [x] 18-02-PLAN.md — README update: architecture diagram, v4.0 Features, Processing Logs, Audit Trail documentation
+
+### Phase 19: Token Recording & Schema (Foundation)
+
+**Goal**: Every LLM call made by the pipeline records its token usage, cost, and timing in a dedicated SurrealDB table with Temporal replay safety — no data lost to ProcessingLogger's 100-entry cap, no double-counting on replay
+
+**Depends on**: Nothing (additive schema, modifies OpenRouterProvider, extends activities)
+
+**Requirements**: TOKN-01, TOKN-02, TOKN-03, TOKN-04, TOKN-05, TOKN-06, TOKN-07
+
+**Success Criteria** (what must be TRUE):
+
+1. `llm_usage` SCHEMAFULL table exists in SurrealDB with fields: document, step_name, chunk_index, model, prompt_tokens, completion_tokens, total_tokens, cached_tokens, cache_write_tokens, reasoning_tokens, cost, cost_source, duration_ms, created_at — with PERMISSIONS FOR update NONE, FOR delete NONE, and indexes on document and created_at
+2. Every OpenRouter response from all pipeline steps (extract_events, resolve_entities, resolve_entities_with_search) produces a record in `llm_usage` with prompt_tokens > 0, completion_tokens > 0, total_tokens > 0, cached_tokens (when reported), model, and duration_ms (from time.monotonic() round-trip timing)
+3. Token records use deterministic SHA256 record IDs derived from `document_id:step_name:chunk_index` with UPSERT semantics — replaying the same document via Temporal produces identical records, not duplicates
+4. Token records are deleted when a document's events are cleared (nullify-then-recreate cycle includes `DELETE llm_usage WHERE document = $doc`) — reprocessing replaces old records without accumulation
+5. Token records use a dedicated write path (`record_llm_usage()` function) with warning-only failure on error — extraction continues if token recording fails
+
+**Plans**: TBD
+
+### Phase 20: API Aggregation Endpoints
+
+**Goal**: Token usage data is queryable via REST API — per-document totals, batched list queries, and graceful handling of legacy pre-v5.0 documents
+
+**Depends on**: Phase 19
+
+**Requirements**: AGGR-01, AGGR-02, AGGR-03, AGGR-04
+
+**Success Criteria** (what must be TRUE):
+
+1. `GET /documents/{id}/tokens` returns per-document token aggregation (sum of prompt_tokens, completion_tokens, total_tokens, cached_tokens, cost, duration_ms) computed via `math::sum()` with null coalescence — `has_data: bool` indicates whether the document has any llm_usage records
+2. `GET /documents` list endpoint includes aggregated token fields per document using a single batched SurrealQL query (`WHERE document INSIDE $docs GROUP ALL`) — not N+1 per-item queries — token totals appear alongside existing reference/entity/chunk counts without increasing DB query count beyond 1 extra batch query
+3. Pre-v5.0 documents (no `llm_usage` records) return `has_data: false` with zero/numeric values for all token fields — no 404 errors, no null leakage into API response numeric fields
+4. Cost field returns the API-provided value when available, null when absent — field type `float | None` in the response model
+
+**Plans**: TBD
+
+### Phase 21: UI Token Display
+
+**Goal**: Users can see token usage and cost for documents in the web UI without overwhelming the table layout — token data in the logs detail panel, aggregated columns in the document list
+
+**Depends on**: Phase 20
+
+**Requirements**: UI-01, UI-02, UI-03
+
+**Success Criteria** (what must be TRUE):
+
+1. Document list table shows an aggregated token column with format `[cached]/input/output` (e.g., "500/1,234/567") — single column avoids table overcrowding; when cached=0, displays as "1,234/567"
+2. Cost column appears in the document table when cost data is available, displayed as `$0.xxxx` with 4 decimal places — absent/null cost shows a dash (`—`)
+3. Document detail / logs tab shows a per-LLM-call breakdown with timing, input/output/cached token counts, and cost, grouped by pipeline step (extraction chunks vs. entity resolution) — each step shows a subtotal
+4. All token numbers have tooltips explaining their meaning in Spanish — legacy documents (pre-v5.0) show "Sin datos de tokens (documento anterior a v5.0)" instead of NaN/null
+
+**Plans**: TBD
+**UI hint**: yes
+
+### Phase 22: No-Regression Verification
+
+**Goal**: All existing pipeline functionality continues to work, and token tracking is verified end-to-end with structural assertions — no hardcoded numerical token expectations
+
+**Depends on**: Phases 19, 20, 21
+
+**Requirements**: NR-01, NR-02, NR-03
+
+**Success Criteria** (what must be TRUE):
+
+1. All existing integration tests from prior milestones (M001, M002, v2.0, v3.0, v4.0) pass — no regressions from any schema, activity, API, or UI changes made in v5.0
+2. E2E test verifies that after document processing, `llm_usage` contains >0 records with non-negative values for prompt_tokens, completion_tokens, total_tokens — structural assertions only (records exist, counts are non-negative), no hardcoded numerical token values
+3. E2E test verifies reprocessing a document (DELETE events + re-process) produces identical token counts — the old records are cleared (nullify-then-recreate) and the new records match the expected structure
+
+**Plans**: TBD
 
 ## Progress
 
@@ -384,3 +461,7 @@ Plans:
 | 16. Event Canonical Entities | 1/1 | Complete | 2026-06-03 |
 | 17. Search-First Entity Resolution | 2/2 | Complete   | 2026-06-03 |
 | 18. Full Integration + Test Corpus + Docs | 2/2 | Complete | 2026-06-04 |
+| 19. Token Recording & Schema | 0/0 | Planning | — |
+| 20. API Aggregation Endpoints | 0/0 | Planning | — |
+| 21. UI Token Display | 0/0 | Planning | — |
+| 22. No-Regression Verification | 0/0 | Planning | — |

@@ -62,29 +62,29 @@ Explicitly excluded. Documented to prevent scope creep.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| TOKN-01 | — | Pending |
-| TOKN-02 | — | Pending |
-| TOKN-03 | — | Pending |
-| TOKN-04 | — | Pending |
-| TOKN-05 | — | Pending |
-| TOKN-06 | — | Pending |
-| TOKN-07 | — | Pending |
-| AGGR-01 | — | Pending |
-| AGGR-02 | — | Pending |
-| AGGR-03 | — | Pending |
-| AGGR-04 | — | Pending |
-| UI-01 | — | Pending |
-| UI-02 | — | Pending |
-| UI-03 | — | Pending |
-| NR-01 | — | Pending |
-| NR-02 | — | Pending |
-| NR-03 | — | Pending |
+| TOKN-01 | Phase 19 | Pending |
+| TOKN-02 | Phase 19 | Pending |
+| TOKN-03 | Phase 19 | Pending |
+| TOKN-04 | Phase 19 | Pending |
+| TOKN-05 | Phase 19 | Pending |
+| TOKN-06 | Phase 19 | Pending |
+| TOKN-07 | Phase 19 | Pending |
+| AGGR-01 | Phase 20 | Pending |
+| AGGR-02 | Phase 20 | Pending |
+| AGGR-03 | Phase 20 | Pending |
+| AGGR-04 | Phase 20 | Pending |
+| UI-01 | Phase 21 | Pending |
+| UI-02 | Phase 21 | Pending |
+| UI-03 | Phase 21 | Pending |
+| NR-01 | Phase 22 | Pending |
+| NR-02 | Phase 22 | Pending |
+| NR-03 | Phase 22 | Pending |
 
 **Coverage:**
 - v5.0 requirements: 17 total
-- Mapped to phases: 0
-- Unmapped: 17 ⚠️
+- Mapped to phases: 17 ✓
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-06-04*
-*Last updated: 2026-06-04 after initial definition*
+*Last updated: 2026-06-04 after roadmap creation (Phase 19-22 mappings)*
