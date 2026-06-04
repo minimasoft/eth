@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v4.0
 milestone_name: milestone
 status: executing
-stopped_at: Quick task 260604-279 completed (worker log diagnostic — all fixes verified, 0 live bugs)
+stopped_at: Quick task 260604-2oj completed (connect to surrealdb and clean-up orphan references — 463 deleted)
 last_updated: "2026-06-04T04:43:36.000Z"
-last_activity: 2026-06-04 -- Quick task 260604-279: worker log diagnostic — all fixes verified, 0 live bugs, 1 stale Temporal replay
+last_activity: 2026-06-04 -- Quick task 260604-2oj: connect to surrealdb and clean-up orphan references (refs with no document)
 progress:
   total_phases: 6
   completed_phases: 6
@@ -123,6 +123,12 @@ None — milestone just started.
   - REPORT: `.planning/quick/260604-279-check-docker-compose-worker-logs-there-s/260604-279-REPORT.md`
   - SUMMARY: `.planning/quick/260604-279-check-docker-compose-worker-logs-there-s/260604-279-SUMMARY.md`
   - Recommended: terminate stuck workflow + re-upload document
+
+- **2026-06-04** — `260604-2oj`: Connect to SurrealDB and clean up orphan references
+  - Created `scripts/cleanup_orphan_references.py` — async CLI script with dry-run default mode
+  - Detected and deleted 463 orphan references (Type A: event missing)
+  - Verified: dry-run, verbose mode, and --execute all work correctly
+  - SUMMARY: `.planning/quick/260604-2oj-connect-to-surrealdb-and-clean-up-orphan/260604-2oj-SUMMARY.md`
 
 ## Deferred Items
 
