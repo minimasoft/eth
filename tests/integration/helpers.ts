@@ -327,6 +327,36 @@ export async function getDocument(id: string): Promise<DocumentStatus | null> {
   }
 }
 
+/**
+ * Execute a raw SQL query directly against SurrealDB's HTTP SQL endpoint.
+ *
+ * Used for direct DB verification (RecordID binding, dot notation queries)
+ * that bypasses the GraphQL proxy layer.
+ *
+ * @param query - The SurrealQL query string.
+ * @param vars - Optional variables for parameterized queries.
+ * @returns An array of result rows (flat across all statements).
+ */
+export async function surrealQuery(query: string, vars?: Record<string, unknown>): Promise<any[]> {
+  const body: Record<string, unknown> = { query };
+  if (vars) body.variables = vars;
+  const resp = await fetch(SURREAL_SQL_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Accept": "application/json",
+      "NS": SURREAL_NS,
+      "DB": SURREAL_DB,
+      "Authorization": "Basic " + Buffer.from(`${SURREAL_USER}:${SURREAL_PASS}`).toString("base64"),
+    },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(10_000),
+  });
+  const json = await resp.json();
+  // SurrealDB returns array of result objects; extract the first result
+  return Array.isArray(json) ? json.flatMap((r: any) => r.result ?? []) : [];
+}
+
 // ── Introspection helpers ───────────────────────────────────────────────
 
 /** Minimal schema type shape from introspection. */
