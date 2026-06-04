@@ -76,6 +76,12 @@
       border-bottom-color: #2563eb;
     }
 
+    nav button.tab-disabled {
+      color: #cbd5e1;
+      cursor: default;
+      pointer-events: none;
+    }
+
     main {
       max-width: 1400px;
       margin: 0 auto;
@@ -982,8 +988,10 @@
     }
 
     switchTab('upload');
+    updateLogsTabState();
 
     function onTabClick(tabName) {
+      if (tabName === 'logs' && !logsDocumentId) return;
       switchTab(tabName);
       if (tabName === 'documents') fetchDocuments();
       if (tabName === 'entities') fetchEntities();
@@ -1696,6 +1704,18 @@
     let logsPollTimer = null;
     let logsShouldPoll = false;
 
+    function updateLogsTabState() {
+      const logsTabBtn = document.querySelector('nav button[data-tab="logs"]');
+      if (!logsTabBtn) return;
+      if (logsDocumentId) {
+        logsTabBtn.classList.remove('tab-disabled');
+        logsTabBtn.title = 'Ver registros de ' + logsFilename;
+      } else {
+        logsTabBtn.classList.add('tab-disabled');
+        logsTabBtn.title = 'Seleccione un documento para ver sus registros';
+      }
+    }
+
     function showLogsLoading() {
       logsLoading.style.display = 'flex';
       logsTableContainer.style.display = 'none';
@@ -1746,6 +1766,7 @@
       logsDocId.textContent = docId;
       logsDocInfo.style.display = '';
       logsEmptyMsg.textContent = 'Cargando registros...';
+      updateLogsTabState();
       switchTab('logs');
       logsShouldPoll = true;
       fetchLogs(docId, 1);
@@ -1866,6 +1887,11 @@
       stopLogPolling();
       logsDocumentId = null;
       logsDocInfo.style.display = 'none';
+      logsLoading.style.display = 'none';
+      logsTableContainer.style.display = 'none';
+      logsPagination.style.display = 'none';
+      logsEmpty.style.display = 'none';
+      updateLogsTabState();
       switchTab('documents');
       fetchDocuments();
     });
