@@ -112,13 +112,14 @@ class ProcessingLogger:
                     )
                     return
 
-                # 6. Write the log entry (UPSERT via UPDATE ... CONTENT)
+                # 6. Write the log entry (UPSERT with CONTENT — creates on first call,
+                # updates on Temporal replay; created_at omitted because it has
+                # READONLY constraint and DEFAULT time::now()).
                 doc_record = RecordID("document", document_id)
                 await db.query(
-                    "UPDATE type::record('document_event_log', $rid) CONTENT { "
+                    "UPSERT type::record('document_event_log', $rid) CONTENT { "
                     "document: $doc, step_name: $step, "
-                    "severity: $sev, message: $msg, details: $det, "
-                    "created_at: time::now() "
+                    "severity: $sev, message: $msg, details: $det "
                     "}",
                     {
                         "rid": record_id,
