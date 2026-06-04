@@ -75,7 +75,6 @@ None — milestone just started.
 
 ### Blockers/Concerns
 
-- I-01 (CRITICAL): ProcessingLogger `$rid` syntax bug at `processing_log.py:118` — all audit log writes fail silently
 - I-03 (MEDIUM): SurrealDB in-memory-only storage despite `/data` volume mount — all data lost on container restart
 - See [REPORT.md](./quick/260603-u19-review-docker-compose-logs-and-report-po/260603-u19-REPORT.md) for full analysis
 
