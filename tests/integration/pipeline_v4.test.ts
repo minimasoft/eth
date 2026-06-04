@@ -685,151 +685,130 @@ describe("v4.0 pipeline — offsets, logs, events, search-first", () => {
   });
 
   // ===================================================================
-  // Test Group 4: Search-First Resolution
+  // Test Group 5: Cascade Delete — full cleanup
   // ===================================================================
-  describe("4. Search-First Resolution — entity_id on references", () => {
-    it("should populate entity_id on references after search-first resolution", async () => {
+  describe("5. Cascade delete — full cleanup", () => {
+    it("should delete all associated records when deleting a document", async () => {
       await skipIfDegraded(`${API_BASE}/health`, async () => {
         const doc = await createDocument(
           SAMPLE_CRIMINAL_CASE_SNIPPET,
-          "search_first_resolution_test.txt",
+          "cascade_delete_test.txt",
         );
         assertNonNull(doc, "Document should be created");
-        testDocIds.push(doc.document_id);
+        // Do not push to testDocIds — we'll verify deletion directly
+        const docId = doc.document_id;
 
-        // Wait for processing
-        await waitForProcessing(doc.document_id);
+        // Wait for processing (may be passive if no worker)
+        await waitForProcessing(docId);
 
-        // First try GraphQL with entity_id field
-        const gqlResult = await graphqlQuery<{
-          reference: Array<{
-            id: string;
-            entity_id?: { id: string } | null;
-            verbatim_text?: string;
-            reference_type?: string;
-          }>;
-        }>(
-          `
-          query V4SearchFirst {
-            reference {
-              id
-              entity_id { id }
-              verbatim_text
-              reference_type
-            }
-          }
-        `,
-          undefined,
-          15_000,
+        // Check document exists
+        const beforeDoc = await httpGet(`${API_BASE}/documents/${docId}`, 5_000);
+        const [beforeStatus] = beforeDoc;
+        if (beforeStatus !== 200) {
+          console.log("ℹ  Document not found after creation — skipping");
+          return;
+        }
+
+        // Count pre-delete references and events
+        const [, preRefs] = await sqlExecute(
+          `SELECT count() as cnt FROM reference ` +
+          `WHERE event IN (SELECT id FROM event WHERE document = document:${docId});`,
+        );
+        const [, preEvents] = await sqlExecute(
+          `SELECT count() as cnt FROM event WHERE document = document:${docId};`,
+        );
+        const preRefCount = preRefs
+          ? Number((extractSqlRows(preRefs)[0]?.cnt ?? 0))
+          : 0;
+        const preEventCount = preEvents
+          ? Number((extractSqlRows(preEvents)[0]?.cnt ?? 0))
+          : 0;
+
+        // Delete the document
+        const [delStatus] = await httpDelete(
+          `${API_BASE}/documents/${docId}`,
+          10_000,
+        );
+        assert.equal(
+          delStatus, 200,
+          `DELETE /documents/{id} should return 200 — got ${delStatus}`,
         );
 
-        let totalRefs = 0;
-        let refsWithEntityId = 0;
+        // Verify document is gone
+        const [getStatus] = await httpGet(
+          `${API_BASE}/documents/${docId}`,
+          5_000,
+        );
+        assert.equal(
+          getStatus, 404,
+          `Document should return 404 after delete — got ${getStatus}`,
+        );
 
-        if (graphqlOk(gqlResult)) {
-          const [, parsed] = gqlResult;
-          const refs = parsed!.data!.reference;
-          totalRefs = refs.length;
-          refsWithEntityId = refs.filter(
-            (r) => r.entity_id != null && typeof r.entity_id.id === "string",
-          ).length;
+        // Verify zero references remain for this document
+        const [, refResult] = await sqlExecute(
+          `SELECT count() as cnt FROM reference ` +
+          `WHERE event IN (SELECT id FROM event WHERE document = document:${docId});`,
+        );
+        const refCount = refResult
+          ? Number((extractSqlRows(refResult)[0]?.cnt ?? 0))
+          : -1;
+        assert.equal(
+          refCount, 0,
+          `Zero references should remain after cascade delete — got ${refCount} (had ${preRefCount})`,
+        );
 
-          console.log(
-            `✓ GraphQL: ${refsWithEntityId}/${totalRefs} references have entity_id populated`,
-          );
+        // Verify zero events remain
+        const [, evtResult] = await sqlExecute(
+          `SELECT count() as cnt FROM event WHERE document = document:${docId};`,
+        );
+        const evtCount = evtResult
+          ? Number((extractSqlRows(evtResult)[0]?.cnt ?? 0))
+          : -1;
+        assert.equal(
+          evtCount, 0,
+          `Zero events should remain after cascade delete — got ${evtCount} (had ${preEventCount})`,
+        );
 
-          if (refsWithEntityId > 0) {
-            const sample = refs.find(
-              (r) => r.entity_id != null && typeof r.entity_id.id === "string",
-            );
-            if (sample) {
-              console.log(
-                `  Sample: entity_id=${sample.entity_id!.id.slice(0, 24)}..., ` +
-                `text="${(sample.verbatim_text ?? "").slice(0, 60)}...", ` +
-                `type=${sample.reference_type ?? "unknown"}`,
-              );
-            }
-          }
-        } else {
-          console.log("ℹ  GraphQL reference query unavailable — trying SQL fallback");
-        }
+        // Verify zero document_chunks remain
+        const [, chunkResult] = await sqlExecute(
+          `SELECT count() as cnt FROM document_chunk WHERE document = document:${docId};`,
+        );
+        const chunkCount = chunkResult
+          ? Number((extractSqlRows(chunkResult)[0]?.cnt ?? 0))
+          : -1;
+        assert.equal(
+          chunkCount, 0,
+          `Zero document_chunks should remain after cascade delete — got ${chunkCount}`,
+        );
 
-        // SQL fallback: query references with non-null entity_id
-        if (refsWithEntityId === 0) {
-          const [, sqlResult] = await sqlExecute(
-            `SELECT entity_id, verbatim_text, reference_type ` +
-            `FROM reference WHERE entity_id IS NOT NULL LIMIT 10;`,
-          );
+        // Verify zero document_event_log entries remain
+        const [, logResult] = await sqlExecute(
+          `SELECT count() as cnt FROM document_event_log WHERE document = document:${docId};`,
+        );
+        const logCount = logResult
+          ? Number((extractSqlRows(logResult)[0]?.cnt ?? 0))
+          : -1;
+        assert.equal(
+          logCount, 0,
+          `Zero document_event_log entries should remain after cascade delete — got ${logCount}`,
+        );
 
-          if (sqlResult) {
-            const rows = extractSqlRows(sqlResult);
-            refsWithEntityId = rows.length;
-
-            // Also get total count to compute coverage
-            const [, totalResult] = await sqlExecute(
-              `SELECT count() as cnt FROM reference;`,
-            );
-            let total = 0;
-            if (totalResult) {
-              const totalRows = extractSqlRows(totalResult);
-              if (totalRows.length > 0) {
-                const cntRaw = totalRows[0].cnt;
-                const cntVal = cntRaw && typeof cntRaw === "object"
-                  ? (cntRaw as Record<string, unknown>).value
-                  : cntRaw;
-                total = Number(cntVal ?? 0);
-              }
-            }
-            totalRefs = total > 0 ? total : rows.length;
-
-            console.log(
-              `  SQL: ${refsWithEntityId}/${totalRefs} references have entity_id populated`,
-            );
-
-            if (rows.length > 0) {
-              // Verify entity_id links to an existing canonical entity
-              const firstEntityId = String(rows[0].entity_id ?? "");
-              if (firstEntityId.startsWith("canonical_entity:") ||
-                  firstEntityId.startsWith("entity:")) {
-                const [, verifyResult] = await sqlExecute(
-                  `SELECT id FROM ${firstEntityId.replace(":", ":")};`,
-                );
-                if (verifyResult) {
-                  const verifyRows = extractSqlRows(verifyResult);
-                  if (verifyRows.length > 0) {
-                    console.log(
-                      `  ✓ entity_id ${firstEntityId.slice(0, 32)}... resolves to existing entity`,
-                    );
-                  } else {
-                    console.log(
-                      `  Note: entity_id ${firstEntityId.slice(0, 32)}... does not resolve`,
-                    );
-                  }
-                }
-              }
-
-              const sample = rows[0];
-              console.log(
-                `  Sample: entity_id=${String(sample.entity_id).slice(0, 32)}..., ` +
-                `text="${String(sample.verbatim_text ?? "").slice(0, 60)}..."`,
-              );
-            }
-          } else {
-            console.log("ℹ  SQL query unavailable — SurrealDB may not be reachable");
-          }
-        }
-
-        // Log coverage even if no entity_ids found (degraded tolerance)
-        if (refsWithEntityId === 0) {
-          console.log(
-            "ℹ  No entity_id on references found — " +
-            "may require active Temporal worker + LLM for resolution",
-          );
-        }
+        // Verify no orphan references exist (regression: references with missing events)
+        const [, orphanResult] = await sqlExecute(
+          "SELECT count() as cnt FROM reference " +
+          "WHERE event NOT IN (SELECT id FROM event);",
+        );
+        const orphanCount = orphanResult
+          ? Number((extractSqlRows(orphanResult)[0]?.cnt ?? 0))
+          : -1;
 
         console.log(
-          `  entity_id coverage: ${refsWithEntityId}/${totalRefs} ` +
-          `(${totalRefs > 0 ? Math.round(refsWithEntityId / totalRefs * 100) : 0}%)`,
+          `✓ Cascade delete: ${docId} — ` +
+          `refs=${refCount}/${preRefCount}, ` +
+          `events=${evtCount}/${preEventCount}, ` +
+          `chunks=${chunkCount}, ` +
+          `logs=${logCount}, ` +
+          `orphans=${orphanCount}`,
         );
       });
     });

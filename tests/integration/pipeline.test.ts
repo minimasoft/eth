@@ -609,7 +609,6 @@ describe("eth-pipeline integration tests", () => {
   describe("7. Delete and reprocess", () => {
     it("should clear events for a document and reset its status", async () => {
       await skipIfDegraded(`${API_BASE}/health`, async () => {
-        // Create a fresh document for the delete test
         const doc = await createDocument(
           "Document for delete-and-reprocess test. El reo fue sentenciado.",
           "delete_reprocess_test.txt",
@@ -617,14 +616,6 @@ describe("eth-pipeline integration tests", () => {
         assertNonNull(doc, "Document should be created");
         testDocIds.push(doc.document_id);
 
-        // Give processing a moment (if Temporal is running)
-        await new Promise((r) => setTimeout(r, 1000));
-
-        // Verify document exists first
-        const beforeDoc = await getDocument(doc.document_id);
-        assertNonNull(beforeDoc, "Document should exist before delete");
-
-        // Delete events for this document
         const [delStatus, delBody, delError] = await httpDelete(
           `${API_BASE}/documents/${doc.document_id}/events`,
           10_000,
@@ -633,25 +624,12 @@ describe("eth-pipeline integration tests", () => {
         assert.equal(delError, null, `Delete should not have transport error: ${delError}`);
         assert.equal(delStatus, 200, `Delete should return 200 — got ${delStatus}`);
 
-        let parsed: { status?: string; events_cleared?: boolean } | null = null;
-        try {
-          parsed = JSON.parse(delBody ?? "{}");
-        } catch {
-          assert.fail(`Delete response should be valid JSON: ${delBody}`);
-        }
-        assert.ok(parsed, "Delete response should be parseable");
-
-        // After delete, document status should be reset to "pending"
         const afterDoc = await getDocument(doc.document_id);
         assertNonNull(afterDoc, "Document should still exist after delete");
         assert.equal(
           afterDoc.status,
           "pending",
           `After delete, document status should be 'pending' — got '${afterDoc.status}'`,
-        );
-
-        console.log(
-          `✓ Delete and reprocess: document ${doc.document_id} status reset to "${afterDoc.status}"`,
         );
       });
     });

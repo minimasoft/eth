@@ -270,12 +270,6 @@ describe("v2.0 Blob & Chunk Pipeline integration tests", () => {
         const beforeDoc = await getDocument(doc.document_id);
         assertNonNull(beforeDoc, "Document should exist before delete");
 
-        // Check chunk count before delete
-        const preDeleteChunks = await sqlCountChunks(doc.document_id);
-        console.log(
-          `  Chunk count before DELETE: ${preDeleteChunks ?? "N/A"}`,
-        );
-
         // Delete events for this document
         const [delStatus, delBody, delError] = await httpDelete(
           `${API_BASE}/documents/${doc.document_id}/events`,
@@ -291,22 +285,11 @@ describe("v2.0 Blob & Chunk Pipeline integration tests", () => {
           `Delete should return 200 — got ${delStatus}: ${(delBody ?? "").slice(0, 100)}`,
         );
 
-        // After delete, retry chunk count check (worker may still be processing)
-        let postDeleteChunks: number | null = null;
-        for (let attempt = 0; attempt < 3; attempt++) {
-          postDeleteChunks = await sqlCountChunks(doc.document_id);
-          if (postDeleteChunks === 0) break;
-          if (attempt < 2) {
-            console.log(
-              `  DELETE chunk check attempt ${attempt + 1}: ${postDeleteChunks} ` +
-              `chunks — retrying in 500ms`,
-            );
-            await new Promise((r) => setTimeout(r, 500));
-          }
-        }
+        // Verify chunks are cleared
+        const postDeleteChunks = await sqlCountChunks(doc.document_id);
         assert.equal(
           postDeleteChunks, 0,
-          `DELETE should leave zero orphaned document_chunks after 3 retries — got ${postDeleteChunks}`,
+          `DELETE should leave zero orphaned document_chunks — got ${postDeleteChunks}`,
         );
 
         // Verify document still exists and status is reset

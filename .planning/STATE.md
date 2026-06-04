@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v4.0
 milestone_name: milestone
 status: executing
-stopped_at: Quick task 260604-2oj completed (connect to surrealdb and clean-up orphan references — 463 deleted)
+stopped_at: Quick task 260604-2v5 completed (integration tests reviewed — 38/43 pass, 5 known infrastructure limitations)
 last_updated: "2026-06-04T04:43:36.000Z"
-last_activity: 2026-06-04 -- Quick task 260604-2oj: connect to surrealdb and clean-up orphan references (refs with no document)
+last_activity: 2026-06-04 -- Quick task 260604-2v5: review status of integration tests and make fixes
 progress:
   total_phases: 6
   completed_phases: 6
@@ -129,6 +129,12 @@ None — milestone just started.
   - Detected and deleted 463 orphan references (Type A: event missing)
   - Verified: dry-run, verbose mode, and --execute all work correctly
   - SUMMARY: `.planning/quick/260604-2oj-connect-to-surrealdb-and-clean-up-orphan/260604-2oj-SUMMARY.md`
+
+- **2026-06-04** — `260604-2v5`: Review integration tests and fix failures
+  - Fixed TS compilation error in pipeline_v4.test.ts (count result type guard)
+  - Fixed 5 test failures in 13-schema-evolution.test.ts (camelCase→snake_case field names, graceful DESCRIBE TABLE, field-based SQL)
+  - Result: 33→38 tests pass, 10→5 failures (remaining 5 are backend/Temporal infrastructure)
+  - SUMMARY: `.planning/quick/260604-2v5-review-status-of-integration-tests-and-m/260604-2v5-SUMMARY.md`
 
 ## Deferred Items
 

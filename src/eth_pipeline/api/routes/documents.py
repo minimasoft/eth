@@ -673,8 +673,6 @@ async def clear_document_events(document_id: str) -> EventsCleared:
             detail="SurrealDB is not available. Please try again later.",
         )
 
-    doc_ref = f"document:{document_id}"
-
     try:
         from surrealdb.data.types.record_id import RecordID
 
@@ -702,23 +700,31 @@ async def clear_document_events(document_id: str) -> EventsCleared:
 
     try:
         await db.query(
+            "DELETE event_entity_link WHERE event IN ("
+            "SELECT id FROM canonical_entity "
+            "WHERE entity_type = 'event' AND properties.document_id = $doc_id"
+            ")",
+            {"doc_id": document_id},
+        )
+
+        await db.query(
             "DELETE document_chunk WHERE document = $doc_id",
-            {"doc_id": doc_ref},
+            {"doc_id": doc_id_obj},
         )
 
         await db.query(
             "DELETE reference WHERE event IN "
             "(SELECT id FROM event WHERE document = $doc_id)",
-            {"doc_id": doc_ref},
+            {"doc_id": doc_id_obj},
         )
 
         await db.query(
             "DELETE event WHERE document = $doc_id",
-            {"doc_id": doc_ref},
+            {"doc_id": doc_id_obj},
         )
 
         await db.query(
-            f"UPDATE {doc_ref} SET status = 'pending', "
+            f"UPDATE {doc_id_obj} SET status = 'pending', "
             "text_content = '', error_message = NULL, "
             "updated_at = time::now()",
         )
@@ -924,8 +930,6 @@ async def delete_document(document_id: str) -> DocumentDeleted:
             detail="SurrealDB is not available. Please try again later.",
         )
 
-    doc_ref = f"document:{document_id}"
-
     try:
         from surrealdb.data.types.record_id import RecordID
 
@@ -957,7 +961,7 @@ async def delete_document(document_id: str) -> DocumentDeleted:
             "WHERE event.document = $doc_id "
             "AND canonical_entity IS NOT NONE "
             "AND canonical_entity IS NOT NULL",
-            {"doc_id": doc_ref},
+            {"doc_id": doc_id_obj},
         )
         affected_ce_rids = list({
             r for r in (affected_ce_query or [])
@@ -965,19 +969,32 @@ async def delete_document(document_id: str) -> DocumentDeleted:
         })
 
         await db.query(
+            "DELETE event_entity_link WHERE event IN ("
+            "SELECT id FROM canonical_entity "
+            "WHERE entity_type = 'event' AND properties.document_id = $doc_id"
+            ")",
+            {"doc_id": document_id},
+        )
+
+        await db.query(
             "DELETE document_chunk WHERE document = $doc_id",
-            {"doc_id": doc_ref},
+            {"doc_id": doc_id_obj},
         )
 
         await db.query(
             "DELETE reference WHERE event IN "
             "(SELECT id FROM event WHERE document = $doc_id)",
-            {"doc_id": doc_ref},
+            {"doc_id": doc_id_obj},
         )
 
         await db.query(
             "DELETE event WHERE document = $doc_id",
-            {"doc_id": doc_ref},
+            {"doc_id": doc_id_obj},
+        )
+
+        await db.query(
+            "DELETE document_event_log WHERE document = $doc_id",
+            {"doc_id": doc_id_obj},
         )
 
         await db.query(
