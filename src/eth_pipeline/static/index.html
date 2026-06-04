@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="es">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>ETH Pipeline</title>
+  <title>ETH — Espacio Tiempo Humanos</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; }
     body { margin: 0; }
@@ -709,15 +709,15 @@
 </head>
 <body>
   <header>
-    <h1>ETH Pipeline</h1>
+    <h1>ETH — Espacio Tiempo Humanos</h1>
   </header>
 
   <nav role="tablist" aria-label="Main navigation">
-    <button role="tab" aria-selected="true" aria-controls="tab-upload" id="tab-btn-upload" data-tab="upload">Upload</button>
-    <button role="tab" aria-selected="false" aria-controls="tab-documents" id="tab-btn-documents" data-tab="documents">Documents</button>
-    <button role="tab" aria-selected="false" aria-controls="tab-entities" id="tab-btn-entities" data-tab="entities">Entities</button>
-    <button role="tab" aria-selected="false" aria-controls="tab-references" id="tab-btn-references" data-tab="references">References</button>
-    <button role="tab" aria-selected="false" aria-controls="tab-logs" id="tab-btn-logs" data-tab="logs">Logs</button>
+    <button role="tab" aria-selected="true" aria-controls="tab-upload" id="tab-btn-upload" data-tab="upload">Subir</button>
+    <button role="tab" aria-selected="false" aria-controls="tab-documents" id="tab-btn-documents" data-tab="documents">Documentos</button>
+    <button role="tab" aria-selected="false" aria-controls="tab-entities" id="tab-btn-entities" data-tab="entities">Entidades</button>
+    <button role="tab" aria-selected="false" aria-controls="tab-references" id="tab-btn-references" data-tab="references">Referencias</button>
+    <button role="tab" aria-selected="false" aria-controls="tab-logs" id="tab-btn-logs" data-tab="logs">Registros</button>
   </nav>
 
   <main>
@@ -725,13 +725,13 @@
       <div id="banner-container"></div>
       <div class="upload-area" id="upload-area">
         <div class="icon" aria-hidden="true">📄</div>
-        <h2>Upload Documents</h2>
-        <p>Select files to upload to the extraction pipeline</p>
+        <h2>Subir Documentos</h2>
+        <p>Seleccione archivos para subir al sistema de extracción</p>
         <input type="file" id="file-input" multiple hidden />
-        <button class="btn-outline" id="choose-files-btn" type="button">Choose Files</button>
+        <button class="btn-outline" id="choose-files-btn" type="button">Elegir Archivos</button>
         <ul class="file-list" id="file-list" style="display:none"></ul>
         <div class="upload-actions" style="display:none" id="upload-actions">
-          <button class="btn-primary" id="upload-btn" type="button">Upload</button>
+          <button class="btn-primary" id="upload-btn" type="button">Subir</button>
         </div>
       </div>
     </section>
@@ -739,54 +739,54 @@
     <section id="tab-documents" role="tabpanel" aria-labelledby="tab-btn-documents" class="tab-content">
       <div id="documents-container">
         <div class="documents-header">
-          <h2>Documents</h2>
+          <h2>Documentos</h2>
         </div>
         <div class="documents-toolbar">
           <div class="search-wrapper">
-            <input type="text" id="doc-search" class="search-input" placeholder="Search by filename..." aria-label="Search documents by filename" />
-            <button id="doc-search-clear" class="search-clear" aria-label="Clear search" style="display:none">&times;</button>
+            <input type="text" id="doc-search" class="search-input" placeholder="Buscar por nombre de archivo..." aria-label="Buscar documentos por nombre de archivo" />
+            <button id="doc-search-clear" class="search-clear" aria-label="Limpiar búsqueda" style="display:none">&times;</button>
           </div>
-          <select id="doc-status-filter" class="status-filter" aria-label="Filter by status">
-            <option value="">All statuses</option>
-            <option value="pending">Pending</option>
-            <option value="processing">Processing</option>
-            <option value="extracting_blob">Extracting Blob</option>
-            <option value="extracting_text">Extracting Text</option>
-            <option value="chunking">Chunking</option>
-            <option value="processed">Processed</option>
-            <option value="failed">Failed</option>
+          <select id="doc-status-filter" class="status-filter" aria-label="Filtrar por estado">
+            <option value="">Todos los estados</option>
+            <option value="pending">Pendiente</option>
+            <option value="processing">Procesando</option>
+            <option value="extracting_blob">Extrayendo Blob</option>
+            <option value="extracting_text">Extrayendo Texto</option>
+            <option value="chunking">Fragmentando</option>
+            <option value="processed">Procesado</option>
+            <option value="failed">Fallido</option>
           </select>
-          <button class="btn-icon btn-refresh" id="doc-refresh-btn" aria-label="Refresh documents" title="Refresh documents">
+          <button class="btn-icon btn-refresh" id="doc-refresh-btn" aria-label="Actualizar documentos" title="Actualizar documentos">
             <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
           </button>
         </div>
-        <div id="documents-loading" class="documents-loading">Loading documents...</div>
+        <div id="documents-loading" class="documents-loading">Cargando documentos...</div>
         <div id="documents-table-container" class="table-container" style="display:none">
           <table class="documents-table">
             <thead>
               <tr>
                 <th class="col-id">ID</th>
-                <th class="col-filename">Filename</th>
-                <th class="col-date">Upload Date</th>
-                <th class="col-status">Status</th>
+                <th class="col-filename">Archivo</th>
+                <th class="col-date">Fecha de Subida</th>
+                <th class="col-status">Estado</th>
                 <th class="col-refs">Refs</th>
                 <th class="col-ents">Ents</th>
-                <th class="col-chunks">Chunks</th>
-                <th class="col-words">Words</th>
-                <th class="col-actions">Actions</th>
+                <th class="col-chunks">Fragmentos</th>
+                <th class="col-words">Palabras</th>
+                <th class="col-actions">Acciones</th>
               </tr>
             </thead>
             <tbody id="documents-tbody"></tbody>
           </table>
         </div>
         <div id="documents-empty" class="placeholder-card" style="display:none">
-          <h2>No documents found</h2>
-          <p>Upload a document to get started</p>
+          <h2>No se encontraron documentos</h2>
+          <p>Suba un documento para comenzar</p>
         </div>
         <div id="documents-pagination" class="documents-pagination" style="display:none">
-          <button id="doc-prev-btn" class="btn-outline" disabled>&larr; Previous</button>
-          <span id="doc-page-info" class="page-info">Page 1 of 1</span>
-          <button id="doc-next-btn" class="btn-outline" disabled>Next &rarr;</button>
+          <button id="doc-prev-btn" class="btn-outline" disabled>&larr; Anterior</button>
+          <span id="doc-page-info" class="page-info">Página 1 de 1</span>
+          <button id="doc-next-btn" class="btn-outline" disabled>Siguiente &rarr;</button>
         </div>
       </div>
     </section>
@@ -794,45 +794,45 @@
     <section id="tab-entities" role="tabpanel" aria-labelledby="tab-btn-entities" class="tab-content">
       <div id="entities-container">
         <div class="documents-header">
-          <h2>Entities</h2>
+          <h2>Entidades</h2>
         </div>
         <div class="documents-toolbar">
           <div class="search-wrapper">
-            <input type="text" id="entity-search" class="search-input" placeholder="Search by name..." aria-label="Search entities by name" />
-            <button id="entity-search-clear" class="search-clear" aria-label="Clear search" style="display:none">&times;</button>
+            <input type="text" id="entity-search" class="search-input" placeholder="Buscar por nombre..." aria-label="Buscar entidades por nombre" />
+            <button id="entity-search-clear" class="search-clear" aria-label="Limpiar búsqueda" style="display:none">&times;</button>
           </div>
-          <select id="entity-type-filter" class="status-filter" aria-label="Filter by entity type">
-            <option value="">All types</option>
-            <option value="place">Place</option>
-            <option value="person">Person</option>
-            <option value="object">Object</option>
-            <option value="event">Event</option>
+          <select id="entity-type-filter" class="status-filter" aria-label="Filtrar por tipo de entidad">
+            <option value="">Todos los tipos</option>
+            <option value="place">Lugar</option>
+            <option value="person">Persona</option>
+            <option value="object">Objeto</option>
+            <option value="event">Evento</option>
           </select>
-          <button class="btn-icon btn-refresh" id="entity-refresh-btn" aria-label="Refresh entities" title="Refresh entities">
+          <button class="btn-icon btn-refresh" id="entity-refresh-btn" aria-label="Actualizar entidades" title="Actualizar entidades">
             <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
           </button>
         </div>
-        <div id="entities-loading" class="documents-loading">Loading entities...</div>
+        <div id="entities-loading" class="documents-loading">Cargando entidades...</div>
         <div id="entities-table-container" class="table-container" style="display:none">
           <table class="documents-table">
             <thead>
               <tr>
-                <th style="width:auto">Name</th>
-                <th style="width:140px">Type</th>
-                <th style="width:120px">References</th>
+                <th style="width:auto">Nombre</th>
+                <th style="width:140px">Tipo</th>
+                <th style="width:120px">Referencias</th>
               </tr>
             </thead>
             <tbody id="entities-tbody"></tbody>
           </table>
         </div>
         <div id="entities-empty" class="placeholder-card" style="display:none">
-          <h2>No entities found</h2>
-          <p>Entities will appear here after documents are processed</p>
+          <h2>No se encontraron entidades</h2>
+          <p>Las entidades aparecerán aquí después de procesar los documentos</p>
         </div>
         <div id="entities-pagination" class="documents-pagination" style="display:none">
-          <button id="entity-prev-btn" class="btn-outline" disabled>&larr; Previous</button>
-          <span id="entity-page-info" class="page-info">Page 1 of 1</span>
-          <button id="entity-next-btn" class="btn-outline" disabled>Next &rarr;</button>
+          <button id="entity-prev-btn" class="btn-outline" disabled>&larr; Anterior</button>
+          <span id="entity-page-info" class="page-info">Página 1 de 1</span>
+          <button id="entity-next-btn" class="btn-outline" disabled>Siguiente &rarr;</button>
         </div>
       </div>
     </section>
@@ -840,46 +840,46 @@
     <section id="tab-references" role="tabpanel" aria-labelledby="tab-btn-references" class="tab-content">
       <div id="references-container">
         <div class="documents-header">
-          <h2>References</h2>
+          <h2>Referencias</h2>
         </div>
         <div class="documents-toolbar">
           <div class="search-wrapper">
-            <input type="text" id="ref-search" class="search-input" placeholder="Search by verbatim text..." aria-label="Search references by text" />
-            <button id="ref-search-clear" class="search-clear" aria-label="Clear search" style="display:none">&times;</button>
+            <input type="text" id="ref-search" class="search-input" placeholder="Buscar por texto literal..." aria-label="Buscar referencias por texto" />
+            <button id="ref-search-clear" class="search-clear" aria-label="Limpiar búsqueda" style="display:none">&times;</button>
           </div>
-          <select id="ref-type-filter" class="status-filter" aria-label="Filter by reference type">
-            <option value="">All types</option>
+          <select id="ref-type-filter" class="status-filter" aria-label="Filtrar por tipo de referencia">
+            <option value="">Todos los tipos</option>
             <option value="espacio">Espacio</option>
             <option value="tiempo">Tiempo</option>
             <option value="humanos">Humanos</option>
             <option value="objetos">Objetos</option>
           </select>
-          <button class="btn-icon btn-refresh" id="ref-refresh-btn" aria-label="Refresh references" title="Refresh references">
+          <button class="btn-icon btn-refresh" id="ref-refresh-btn" aria-label="Actualizar referencias" title="Actualizar referencias">
             <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
           </button>
         </div>
-        <div id="references-loading" class="documents-loading">Loading references...</div>
+        <div id="references-loading" class="documents-loading">Cargando referencias...</div>
         <div id="references-table-container" class="table-container" style="display:none">
           <table class="documents-table">
             <thead>
               <tr>
-                <th style="width:auto">Verbatim Text</th>
-                <th style="width:110px">Type</th>
-                <th style="width:auto">Event</th>
-                <th style="width:auto">Document</th>
+                <th style="width:auto">Texto Literal</th>
+                <th style="width:110px">Tipo</th>
+                <th style="width:auto">Evento</th>
+                <th style="width:auto">Documento</th>
               </tr>
             </thead>
             <tbody id="references-tbody"></tbody>
           </table>
         </div>
         <div id="references-empty" class="placeholder-card" style="display:none">
-          <h2>No references found</h2>
-          <p>References will appear here after documents are processed</p>
+          <h2>No se encontraron referencias</h2>
+          <p>Las referencias aparecerán aquí después de procesar los documentos</p>
         </div>
         <div id="references-pagination" class="documents-pagination" style="display:none">
-          <button id="ref-prev-btn" class="btn-outline" disabled>&larr; Previous</button>
-          <span id="ref-page-info" class="page-info">Page 1 of 1</span>
-          <button id="ref-next-btn" class="btn-outline" disabled>Next &rarr;</button>
+          <button id="ref-prev-btn" class="btn-outline" disabled>&larr; Anterior</button>
+          <span id="ref-page-info" class="page-info">Página 1 de 1</span>
+          <button id="ref-next-btn" class="btn-outline" disabled>Siguiente &rarr;</button>
         </div>
       </div>
     </section>
@@ -887,46 +887,46 @@
     <section id="tab-logs" role="tabpanel" aria-labelledby="tab-btn-logs" class="tab-content">
       <div id="logs-container">
         <div class="documents-header">
-          <h2>Processing Logs</h2>
+          <h2>Registros de Procesamiento</h2>
         </div>
         <div id="logs-doc-info" style="display:none;margin-bottom:16px;padding:12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px">
           <div style="display:flex;align-items:center;gap:12px">
-            <button class="btn-outline" id="logs-back-btn" type="button" style="flex-shrink:0">&larr; Back</button>
+            <button class="btn-outline" id="logs-back-btn" type="button" style="flex-shrink:0">&larr; Volver</button>
             <div>
               <div style="font-size:14px;font-weight:600;color:#1e293b" id="logs-doc-filename"></div>
               <div style="font-size:13px;color:#64748b;font-family:monospace" id="logs-doc-id"></div>
             </div>
             <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
-              <span id="logs-poll-indicator" style="font-size:12px;color:#64748b;display:none">Auto-refreshing...</span>
-              <button class="btn-icon btn-refresh" id="logs-refresh-btn" aria-label="Refresh logs" title="Refresh logs">
+              <span id="logs-poll-indicator" style="font-size:12px;color:#64748b;display:none">Actualización automática...</span>
+              <button class="btn-icon btn-refresh" id="logs-refresh-btn" aria-label="Actualizar registros" title="Actualizar registros">
                 <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
               </button>
             </div>
           </div>
         </div>
-        <div id="logs-loading" class="documents-loading">Loading logs...</div>
+        <div id="logs-loading" class="documents-loading">Cargando registros...</div>
         <div id="logs-table-container" class="table-container" style="display:none">
           <table class="documents-table">
             <thead>
               <tr>
-                <th style="width:170px">Timestamp</th>
-                <th style="width:110px">Severity</th>
-                <th style="width:140px">Step</th>
-                <th style="width:auto">Message</th>
-                <th style="width:80px">Details</th>
+                <th style="width:170px">Marca Temporal</th>
+                <th style="width:110px">Gravedad</th>
+                <th style="width:140px">Paso</th>
+                <th style="width:auto">Mensaje</th>
+                <th style="width:80px">Detalles</th>
               </tr>
             </thead>
             <tbody id="logs-tbody"></tbody>
           </table>
         </div>
         <div id="logs-empty" class="placeholder-card" style="display:none">
-          <h2>No logs found</h2>
-          <p id="logs-empty-msg">Select a document to view its processing logs</p>
+          <h2>No se encontraron registros</h2>
+          <p id="logs-empty-msg">Seleccione un documento para ver sus registros de procesamiento</p>
         </div>
         <div id="logs-pagination" class="documents-pagination" style="display:none">
-          <button id="logs-prev-btn" class="btn-outline" disabled>&larr; Previous</button>
-          <span id="logs-page-info" class="page-info">Page 1 of 1</span>
-          <button id="logs-next-btn" class="btn-outline" disabled>Next &rarr;</button>
+          <button id="logs-prev-btn" class="btn-outline" disabled>&larr; Anterior</button>
+          <span id="logs-page-info" class="page-info">Página 1 de 1</span>
+          <button id="logs-next-btn" class="btn-outline" disabled>Siguiente &rarr;</button>
         </div>
       </div>
     </section>
@@ -1016,7 +1016,7 @@
     function showBanner(message, type, autoDismiss) {
       const div = document.createElement('div');
       div.className = 'banner banner-' + type;
-      div.innerHTML = '<span>' + escapeHtml(message) + '</span><button class="banner-close" aria-label="Dismiss">&times;</button>';
+      div.innerHTML = '<span>' + escapeHtml(message) + '</span><button class="banner-close" aria-label="Descartar">&times;</button>';
       div.querySelector('.banner-close').addEventListener('click', () => div.remove());
       bannerContainer.appendChild(div);
       if (autoDismiss) {
@@ -1046,21 +1046,21 @@
           if (res.ok && data.document_id) {
             const shortId = data.document_id.slice(0, 8);
             statusEl.innerHTML = '<span class="check">&#10003;</span>';
-            showBanner('Uploaded: ' + file.name + ' (ID: ' + shortId + ')', 'success', true);
+            showBanner('Subido: ' + file.name + ' (ID: ' + shortId + ')', 'success', true);
           } else {
             statusEl.innerHTML = '<span class="cross">&#10007;</span>';
-            showBanner('Failed: ' + file.name + ' — ' + (data.detail || 'Unknown error'), 'error', false);
+            showBanner('Falló: ' + file.name + ' — ' + (data.detail || 'Error desconocido'), 'error', false);
             allSuccess = false;
           }
         } catch (err) {
           statusEl.innerHTML = '<span class="cross">&#10007;</span>';
-          showBanner('Failed: ' + file.name + ' — ' + err.message, 'error', false);
+          showBanner('Falló: ' + file.name + ' — ' + err.message, 'error', false);
           allSuccess = false;
         }
       }
 
       if (allSuccess && files.length > 0) {
-        showBanner('All files uploaded successfully', 'success', true);
+        showBanner('Todos los archivos subidos exitosamente', 'success', true);
         setTimeout(() => {
           selectedFiles = [];
           fileInput.value = '';
@@ -1097,7 +1097,7 @@
       try {
         const d = new Date(isoStr);
         if (isNaN(d.getTime())) return isoStr;
-        return d.toLocaleDateString('en-US', {
+        return d.toLocaleDateString('es-ES', {
           year: 'numeric',
           month: 'short',
           day: 'numeric',
@@ -1114,7 +1114,18 @@
     }
 
     function statusLabel(status) {
-      if (!status) return 'Unknown';
+      if (!status) return 'Desconocido';
+      var translated = {
+        pending: 'Pendiente',
+        processing: 'Procesando',
+        extracting_blob: 'Extrayendo Blob',
+        extracting_text: 'Extrayendo Texto',
+        chunking: 'Fragmentando',
+        processed: 'Procesado',
+        failed: 'Fallido',
+        extracted: 'Extraído'
+      };
+      if (translated.hasOwnProperty(status)) return translated[status];
       return status
         .split('_')
         .map(function(word) { return word.charAt(0).toUpperCase() + word.slice(1); })
@@ -1146,7 +1157,7 @@
       try {
         const res = await fetch('/documents?' + params.toString());
         if (!res.ok) {
-          let detail = 'Failed to fetch documents';
+          let detail = 'Error al obtener documentos';
           try {
             const errData = await res.json();
             if (errData && errData.detail) detail = errData.detail;
@@ -1161,8 +1172,8 @@
         docTableContainer.style.display = 'none';
         docPagination.style.display = 'none';
         docEmpty.style.display = 'block';
-        docEmpty.querySelector('p').textContent = 'Error loading documents: ' + err.message;
-        showBanner('Failed to load documents: ' + err.message, 'error', false);
+        docEmpty.querySelector('p').textContent = 'Error al cargar documentos: ' + err.message;
+        showBanner('Error al cargar documentos: ' + err.message, 'error', false);
       } finally {
         docsLoadingFlag = false;
       }
@@ -1176,8 +1187,8 @@
         docPagination.style.display = 'none';
         docEmpty.style.display = 'block';
         docEmpty.querySelector('p').textContent = docsSearchTerm || docsStatusFilter
-          ? 'No documents match your search criteria'
-          : 'Upload a document to get started';
+          ? 'Ningún documento coincide con los criterios de búsqueda'
+          : 'Suba un documento para comenzar';
         return;
       }
 
@@ -1205,10 +1216,10 @@
           '<td class="col-count">' + (item.chunk_count ?? '-') + '</td>' +
           '<td class="col-count">' + (item.text_word_count ?? '-') + '</td>' +
           '<td class="col-actions">' +
-          '<button class="btn-icon btn-logs" data-document-id="' + escapeHtml(item.document_id) + '" data-filename="' + escapeHtml(item.filename || '') + '" aria-label="View logs" title="View processing logs">' +
+          '<button class="btn-icon btn-logs" data-document-id="' + escapeHtml(item.document_id) + '" data-filename="' + escapeHtml(item.filename || '') + '" aria-label="Ver registros" title="Ver registros de procesamiento">' +
           '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>' +
           '</button>' +
-          '<button class="btn-icon btn-delete" data-document-id="' + escapeHtml(item.document_id) + '" data-filename="' + escapeHtml(item.filename || '') + '" aria-label="Delete document" title="Delete document">' +
+          '<button class="btn-icon btn-delete" data-document-id="' + escapeHtml(item.document_id) + '" data-filename="' + escapeHtml(item.filename || '') + '" aria-label="Eliminar documento" title="Eliminar documento">' +
           '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>' +
           '</button></td>';
 
@@ -1219,7 +1230,7 @@
       var page = data.page || 1;
       var pages = data.pages || 0;
 
-      docPageInfo.textContent = 'Page ' + page + ' of ' + pages;
+      docPageInfo.textContent = 'Página ' + page + ' de ' + pages;
 
       docPrevBtn.disabled = page <= 1;
       docNextBtn.disabled = page >= pages;
@@ -1285,7 +1296,7 @@
       var filename = btn.getAttribute('data-filename');
       if (!documentId) return;
 
-      if (!confirm('Are you sure you want to delete "' + (filename || 'this document') + '"? This action cannot be undone.')) return;
+      if (!confirm('¿Está seguro de que desea eliminar "' + (filename || 'este documento') + '"? Esta acción no se puede deshacer.')) return;
 
       btn.disabled = true;
       btn.style.opacity = '0.5';
@@ -1295,13 +1306,13 @@
         .then(function(res) {
           if (!res.ok) {
             return res.json().then(function(data) {
-              throw new Error(data.detail || 'Failed to delete document');
+              throw new Error(data.detail || 'Error al eliminar el documento');
             }).catch(function(err) {
               if (err instanceof Error) throw err;
-              throw new Error('Failed to delete document');
+              throw new Error('Error al eliminar el documento');
             });
           }
-          showBanner('Document "' + (filename || documentId.slice(0, 8)) + '" deleted successfully', 'success', true);
+          showBanner('Documento "' + (filename || documentId.slice(0, 8)) + '" eliminado exitosamente', 'success', true);
           fetchDocuments();
         })
         .catch(function(err) {
@@ -1309,7 +1320,7 @@
           btn.disabled = false;
           btn.style.opacity = '';
           btn.style.cursor = '';
-          showBanner('Failed to delete document: ' + err.message, 'error', false);
+          showBanner('Error al eliminar el documento: ' + err.message, 'error', false);
         });
     });
 
@@ -1347,6 +1358,17 @@
 
     function entityTypeLabel(type) {
       if (!type) return '';
+      var translated = {
+        place: 'Lugar',
+        person: 'Persona',
+        object: 'Objeto',
+        event: 'Evento',
+        tiempo: 'Tiempo',
+        humanos: 'Humanos',
+        espacio: 'Espacio',
+        objetos: 'Objetos'
+      };
+      if (translated.hasOwnProperty(type)) return translated[type];
       return type.charAt(0).toUpperCase() + type.slice(1);
     }
 
@@ -1364,7 +1386,7 @@
       try {
         const res = await fetch('/entities?' + params.toString());
         if (!res.ok) {
-          let detail = 'Failed to fetch entities';
+          let detail = 'Error al obtener entidades';
           try {
             const errData = await res.json();
             if (errData && errData.detail) detail = errData.detail;
@@ -1379,8 +1401,8 @@
         entityTableContainer.style.display = 'none';
         entityPagination.style.display = 'none';
         entityEmpty.style.display = 'block';
-        entityEmpty.querySelector('p').textContent = 'Error loading entities: ' + err.message;
-        showBanner('Failed to load entities: ' + err.message, 'error', false);
+        entityEmpty.querySelector('p').textContent = 'Error al cargar entidades: ' + err.message;
+        showBanner('Error al cargar entidades: ' + err.message, 'error', false);
       } finally {
         entitiesLoadingFlag = false;
       }
@@ -1394,8 +1416,8 @@
         entityPagination.style.display = 'none';
         entityEmpty.style.display = 'block';
         entityEmpty.querySelector('p').textContent = entitiesSearchTerm || entitiesTypeFilter
-          ? 'No entities match your search criteria'
-          : 'Entities will appear here after documents are processed';
+          ? 'Ninguna entidad coincide con los criterios de búsqueda'
+          : 'Las entidades aparecerán aquí después de procesar los documentos';
         return;
       }
 
@@ -1418,7 +1440,7 @@
       var page = data.page || 1;
       var pages = data.pages || 0;
 
-      entityPageInfo.textContent = 'Page ' + page + ' of ' + pages;
+      entityPageInfo.textContent = 'Página ' + page + ' de ' + pages;
 
       entityPrevBtn.disabled = page <= 1;
       entityNextBtn.disabled = page >= pages;
@@ -1520,7 +1542,7 @@
       try {
         const res = await fetch('/references?' + params.toString());
         if (!res.ok) {
-          let detail = 'Failed to fetch references';
+          let detail = 'Error al obtener referencias';
           try {
             const errData = await res.json();
             if (errData && errData.detail) detail = errData.detail;
@@ -1535,8 +1557,8 @@
         refTableContainer.style.display = 'none';
         refPagination.style.display = 'none';
         refEmpty.style.display = 'block';
-        refEmpty.querySelector('p').textContent = 'Error loading references: ' + err.message;
-        showBanner('Failed to load references: ' + err.message, 'error', false);
+        refEmpty.querySelector('p').textContent = 'Error al cargar referencias: ' + err.message;
+        showBanner('Error al cargar referencias: ' + err.message, 'error', false);
       } finally {
         refsLoadingFlag = false;
       }
@@ -1550,8 +1572,8 @@
         refPagination.style.display = 'none';
         refEmpty.style.display = 'block';
         refEmpty.querySelector('p').textContent = refsSearchTerm || refsTypeFilter
-          ? 'No references match your search criteria'
-          : 'References will appear here after documents are processed';
+          ? 'Ninguna referencia coincide con los criterios de búsqueda'
+          : 'Las referencias aparecerán aquí después de procesar los documentos';
         return;
       }
 
@@ -1573,7 +1595,7 @@
       var page = data.page || 1;
       var pages = data.pages || 0;
 
-      refPageInfo.textContent = 'Page ' + page + ' of ' + pages;
+      refPageInfo.textContent = 'Página ' + page + ' de ' + pages;
 
       refPrevBtn.disabled = page <= 1;
       refNextBtn.disabled = page >= pages;
@@ -1693,12 +1715,12 @@
     function openLogEntry(docId, filename) {
       stopLogPolling();
       logsDocumentId = docId;
-      logsFilename = filename || 'Unknown';
+      logsFilename = filename || 'Desconocido';
       logsCurrentPage = 1;
       logsDocFilename.textContent = logsFilename;
       logsDocId.textContent = docId;
       logsDocInfo.style.display = '';
-      logsEmptyMsg.textContent = 'Loading logs...';
+      logsEmptyMsg.textContent = 'Cargando registros...';
       switchTab('logs');
       logsShouldPoll = true;
       fetchLogs(docId, 1);
@@ -1715,7 +1737,7 @@
       try {
         const res = await fetch('/documents/' + encodeURIComponent(docId) + '/logs?' + params.toString());
         if (!res.ok) {
-          let detail = 'Failed to fetch logs';
+          let detail = 'Error al obtener registros';
           try {
             const errData = await res.json();
             if (errData && errData.detail) detail = errData.detail;
@@ -1730,7 +1752,7 @@
         logsTableContainer.style.display = 'none';
         logsPagination.style.display = 'none';
         logsEmpty.style.display = 'block';
-        logsEmptyMsg.textContent = 'Error loading logs: ' + err.message;
+        logsEmptyMsg.textContent = 'Error al cargar registros: ' + err.message;
       } finally {
         logsLoadingFlag = false;
       }
@@ -1743,7 +1765,7 @@
         logsTableContainer.style.display = 'none';
         logsPagination.style.display = 'none';
         logsEmpty.style.display = 'block';
-        logsEmptyMsg.textContent = 'No processing logs found for this document.';
+        logsEmptyMsg.textContent = 'No se encontraron registros de procesamiento para este documento.';
         scheduleLogPoll();
         return;
       }
@@ -1760,7 +1782,7 @@
         var hasDetails = item.details && Object.keys(item.details).length > 0;
         if (hasDetails) {
           var detailsStr = JSON.stringify(item.details, null, 2);
-          detailsHtml = '<button class="log-details-toggle" data-json="' + escapeHtml(detailsStr) + '">Show</button><div class="log-details-json">' + escapeHtml(detailsStr) + '</div>';
+          detailsHtml = '<button class="log-details-toggle" data-json="' + escapeHtml(detailsStr) + '">Mostrar</button><div class="log-details-json">' + escapeHtml(detailsStr) + '</div>';
         } else {
           detailsHtml = '<span style="color:#94a3b8;font-size:12px">—</span>';
         }
@@ -1778,7 +1800,7 @@
       var page = data.page || 1;
       var pages = data.pages || 0;
 
-      logsPageInfo.textContent = 'Page ' + page + ' of ' + pages;
+      logsPageInfo.textContent = 'Página ' + page + ' de ' + pages;
 
       logsPrevBtn.disabled = page <= 1;
       logsNextBtn.disabled = page >= pages;
@@ -1801,7 +1823,7 @@
       if (!jsonDiv || !jsonDiv.classList.contains('log-details-json')) return;
       var isOpen = jsonDiv.classList.contains('open');
       jsonDiv.classList.toggle('open');
-      btn.textContent = isOpen ? 'Show' : 'Hide';
+      btn.textContent = isOpen ? 'Mostrar' : 'Ocultar';
     });
 
     // Back button
