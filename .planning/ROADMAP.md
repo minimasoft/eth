@@ -10,6 +10,7 @@
 - ✅ **v4.0 Pipeline Quality & Entity Resolution** — Phases 13-18 (shipped 2026-06-04)
 - ✅ **v5.0 LLM Cost & Usage Tracking** — Phases 19-22 (shipped 2026-06-04)
 - ✅ **v5.1 Entity Resolution Prompt & Batching Fix** — Phase 23 (shipped 2026-06-04)
+- 🚧 **v6.0 Event-Centric Data Quality & UI** — Phases 24-28 (in progress)
 
 ## Phases
 
@@ -250,6 +251,14 @@ Plans:
 - [ ] **Phase 21: UI Token Display** — Token/cost columns in document list, per-LLM-call breakdown in logs tab
 - [ ] **Phase 22: No-Regression Verification** — E2E tests for token tracking, replay safety verification, zero regressions
 
+### v6.0 — Event-Centric Data Quality & UI
+
+- [ ] **Phase 24: Schema & Data Model Foundation** — Additive SurrealDB DDL for time_window, location_point, location_place_id, event_participant junction, element_field, reference_index
+- [ ] **Phase 25: LLM Extraction & Pipeline** — Expanded extraction schema, structured date/participant/location output, pipeline activity updates, reference cap + dedup, Temporal replay safety, cascade delete
+- [ ] **Phase 26: API Endpoints** — GET /events (paginated + filters), GET /references enhancements, merge/split endpoint extensions for new fields
+- [ ] **Phase 27: References UI** — New References tab with pagination, filtering, entity grouping, element_field badges, cross-tab navigation to entities and documents
+- [ ] **Phase 28: Integration Tests & Verification** — Golden test fixture, structured field validation, cascade delete, replay safety, zero regressions (37/37 existing tests)
+
 ## Phase Details
 
 ### Phase 13: Schema Evolution
@@ -442,6 +451,72 @@ Plans:
 
 **Plans**: TBD
 
+### Phase 24: Schema & Data Model Foundation
+**Goal**: SurrealDB schema supports structured event data (time windows, geolocation, participant graph edges, reference element tagging) with additive-only changes and zero impact on existing documents
+**Depends on**: Nothing (infrastructure-first phase — additive DDL only)
+**Requirements**: SCHE-01, SCHE-02, SCHE-03, SCHE-04
+**Success Criteria** (what must be TRUE):
+  1. `event` table has `time_window` (FLEXIBLE, {start, end}), `location_point` (FLEXIBLE, {lat, lon, label}), and `location_place_id` (record<canonical_entity>) fields — all nullable DEFAULT null, existing events retained without error
+  2. New `event_participant` junction table exists as TYPE RELATION (in→event, out→canonical_entity) with `role` string field and graph-traversal index
+  3. `reference` table has `element_field` (string, which event element this ref substantiates) and `reference_index` (int, ordering within element) fields — nullable DEFAULT null, existing references unchanged
+  4. Schema changes are purely additive — no OVERWRITE directives, no destructive migrations; all existing queries return identical results on pre-v6.0 documents
+  5. GraphQL proxy exposes all new fields and tables via schema introspection after deployment
+**Plans**: TBD
+
+### Phase 25: LLM Extraction & Pipeline
+**Goal**: LLM extracts structured event data (ISO 8601 dates, participant links, location links) with confidence markers and reference capping; pipeline stores results correctly with Temporal replay safety, cascade delete, and entity resolution integration
+**Depends on**: Phase 24 (needs schema fields and event_participant table to exist)
+**Requirements**: EXTR-01, EXTR-02, EXTR-03, EXTR-04, EXTR-05, PIPE-01, PIPE-02, PIPE-03, PIPE-04
+**Success Criteria** (what must be TRUE):
+  1. LLM outputs `date_start`/`date_end` as ISO 8601 datetime alongside free-form `tiempo`, with `confidence` (0.0-1.0) and `precision` (day/month/year) markers — all new fields optional in the extraction schema, not in `required`
+  2. LLM identifies participants per event and links them to canonical person entities via `event_participant` RELATE edges with `role` (subject/object/witness)
+  3. LLM identifies location per event and links to canonical place entity via `location_place_id` record link
+  4. `store_extraction_results_activity` writes `time_window`, `location_point`, `location_place_id`, `event_participant` edges, `element_field`, and `reference_index` — all new fields populated from extraction output
+  5. LLM prompt benchmark on 5+ documents shows <10% event count change before merging (regression prevention)
+  6. Reference cap (max 5 per event field) enforced in LLM prompt + post-extraction dedup before INSERT — prevents reference explosion in high-density chunks
+  7. Temporal replay safety: nullify-then-recreate extends to `event_participant` edges — reprocessing same document produces identical results, no duplicate edges
+  8. Cascade delete (`DELETE /documents/{id}`) includes `event_participant` edges — zero orphan records after document deletion
+  9. Entity resolution (`resolve_entities_activity`) preserves `location_place_id` links for place entities and sets canonical entity IDs on participant references
+**Plans**: TBD
+
+### Phase 26: API Endpoints
+**Goal**: Users can query structured event data and enhanced reference data via REST API endpoints with pagination, filtering, and correct merge/split behavior for new fields
+**Depends on**: Phase 25 (needs structured event data stored in DB before APIs can serve it)
+**Requirements**: API-01, API-02, API-03
+**Success Criteria** (what must be TRUE):
+  1. `GET /references` accepts new filter parameters (`document`, `event_element`, `entity_type`, `entity_id`) and returns paginated envelope `{ items, total, page, per_page, pages }` — existing callers continue to work without the new params
+  2. `GET /events` returns paginated, filterable event list (by `document`, `date_range`, `entity_type`) with structured event fields (`time_window`, `location_point`, `location_place_id`, participant edges) in response
+  3. `POST /entities/merge` rewires `location_place_id` and `event_participant` edges correctly when merging entities — target entity inherits all location and participant links
+  4. `POST /entities/{type}/{id}/split` rewires `location_place_id` and `event_participant` edges correctly when splitting entities — new entities get appropriate partition of links
+  5. Timeline query (`GET /events/timeline`) returns date-ordered events within a range with response time <200ms at 500 events (JSON path index + pagination)
+**Plans**: TBD
+
+### Phase 27: References UI
+**Goal**: Users can browse references in a dedicated SPA tab with grouping by canonical entity, filtering, and cross-tab navigation between references, entities, and documents
+**Depends on**: Phase 26 (needs enhanced GET /references and GET /events endpoints)
+**Requirements**: REFS-01, REFS-02, REFS-03
+**Success Criteria** (what must be TRUE):
+  1. New References tab appears between Documents and Entities in the SPA navigation bar — clicking it shows the reference browsing interface
+  2. References tab shows paginated, filterable reference list (by type, document, entity) with verbatim text, context excerpt, page/offset provenance, color-coded type badges, and `element_field` badges
+  3. References are grouped by canonical entity — each entity section shows its accumulated references with the entity's name and type as the section header
+  4. Cross-tab navigation: clicking a reference count in the Entity tab navigates to the References tab filtered to that entity's references
+  5. Cross-tab navigation: clicking a reference in the References tab navigates to its source document in the Documents tab
+  6. Empty state: a page with no references shows a clear "No se encontraron referencias" message with filtering guidance
+**Plans**: TBD
+**UI hint**: yes
+
+### Phase 28: Integration Tests & Verification
+**Goal**: All new data structures, pipeline behavior, API endpoints, and backward compatibility are verified by integration tests; all 37 existing tests pass with zero regressions
+**Depends on**: Phases 24, 25, 26, 27 (verifies all v6.0 phases end-to-end)
+**Requirements**: TEST-01, TEST-02, TEST-03, TEST-04, TEST-05
+**Success Criteria** (what must be TRUE):
+  1. Golden test fixture — a crafted 5-10 paragraph Spanish legal document — produces correct structured extraction output: 2 events with explicit start/end dates, 3 linked person entities, 1 linked place entity, and element_field-tagged references
+  2. Integration test verifies structured event fields populated after full pipeline run: `time_window` has non-null start/end, `location_place_id` links to a canonical place entity, `event_participant` edges exist for each participant with correct roles
+  3. Cascade delete test verifies `DELETE /documents/{id}` removes `event_participant` edges and reference records — zero orphan records survive deletion
+  4. Temporal replay safety test verifies reprocessing the same document produces no duplicate `event_participant` edges or reference records — nullify-then-recreate works for all new record types
+  5. All 37 existing integration tests (M001, M002, v2.0, v3.0, v4.0, v5.0) continue to pass — zero regressions from any schema, activity, API, or UI changes
+**Plans**: TBD
+
 ## Progress
 
 | Phase | Plans Complete | Status | Completed |
@@ -467,3 +542,8 @@ Plans:
 | 21. UI Token Display | 0/0 | Complete | 2026-06-04 |
 | 22. No-Regression Verification | 0/0 | Complete | 2026-06-04 |
 | 23. Entity Resolution Prompt & Batching Fix | v5.1 | 1/1 | Complete | 2026-06-04 |
+| 24. Schema & Data Model Foundation | v6.0 | 0/0 | Not started | - |
+| 25. LLM Extraction & Pipeline | v6.0 | 0/0 | Not started | - |
+| 26. API Endpoints | v6.0 | 0/0 | Not started | - |
+| 27. References UI | v6.0 | 0/0 | Not started | - |
+| 28. Integration Tests & Verification | v6.0 | 0/0 | Not started | - |

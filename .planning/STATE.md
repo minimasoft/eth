@@ -2,11 +2,11 @@
 gsd_state_version: 1.0
 milestone: v6.0
 milestone_name: Event-Centric Data Quality & UI
-status: planning
-last_updated: "2026-06-04T21:20:37.852Z"
-last_activity: 2026-06-04
+status: roadmap
+last_updated: "2026-06-04"
+last_activity: 2026-06-04 — Roadmap created (5 phases, 23 requirements)
 progress:
-  total_phases: 0
+  total_phases: 5
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -17,77 +17,78 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-06-02)
+See: .planning/PROJECT.md (updated 2026-06-04)
 
 **Core value:** Every extracted event must be traceable to its exact source text in the original document, and every resolved entity must show its evidential references.
 
-**Current focus:** Milestone v5.1 — Entity Resolution Prompt & Batching Fix — **ALL COMPLETE ✅**
+**Current focus:** Milestone v6.0 — Event-Centric Data Quality & UI (roadmap approved, ready to plan)
 
 ## Current Position
 
-Phase: Not started (defining requirements)
+Phase: 24 of 28 (Schema & Data Model Foundation)
 Plan: —
-Status: Defining requirements
-Last activity: 2026-06-04 — Milestone v6.0 started
+Status: Roadmap created — ready for planning
+Last activity: 2026-06-04 — v6.0 roadmap created (phases 24-28)
+
+Progress: [░░░░░░░░░░] 0%
 
 ## Performance Metrics
 
-### v5.1 Entity Resolution Prompt & Batching Fix
+### v6.0 Event-Centric Data Quality & UI
 
 | Phase | Plans | Status | Completed |
 |-------|-------|--------|-----------|
-| 23. Entity Resolution Prompt & Batching Fix | 1/1 | Complete ✅ | 2026-06-04 |
+| 24. Schema & Data Model Foundation | 0/0 | Not started | — |
+| 25. LLM Extraction & Pipeline | 0/0 | Not started | — |
+| 26. API Endpoints | 0/0 | Not started | — |
+| 27. References UI | 0/0 | Not started | — |
+| 28. Integration Tests & Verification | 0/0 | Not started | — |
 
-**Totals:** 1 phase, 1 plan — **ALL COMPLETE ✅**
-**Timeline:** Started 2026-06-04, completed 2026-06-04 (same day)
+### Prior Milestones
 
-### v5.0 LLM Cost & Usage Tracking (complete)
-
-| Phase | Plans | Status | Completed |
-|-------|-------|--------|-----------|
-| 19. Token Recording & Schema | 2/2 | Complete ✅ | 2026-06-04 |
-| 20. API Aggregation Endpoints | 1/1 | Complete ✅ | 2026-06-04 |
-| 21. UI Token Display | 1/1 | Complete ✅ | 2026-06-04 |
-| 22. No-Regression Verification | 1/1 | Complete ✅ | 2026-06-04 |
-
-**Totals:** 4 phases, 5 plans — **ALL COMPLETE ✅**
-**Timeline:** Started 2026-06-04, completed 2026-06-04 (same day)
+| Milestone | Phases | Status |
+|-----------|--------|--------|
+| v5.1 Entity Resolution Prompt & Batching Fix | 23 | Complete ✅ |
+| v5.0 LLM Cost & Usage Tracking | 19-22 | Complete ✅ |
+| v4.0 Pipeline Quality & Entity Resolution | 13-18 | Complete ✅ |
+| v3.0 Web UI | 9-12 | Complete ✅ |
+| v2.0 Blob & Chunk Pipeline | 6-8 | Complete ✅ |
+| v1.x Planning, Docs, M002 Fixes | 1-5 | Complete ✅ |
 
 ## Accumulated Context
 
-### v5.0 Decisions
+### v6.0 Decisions
 
-- D030: v5.0 phases start at Phase 19 (continuing from v4.0 Phase 18)
-- D031: v5.0 has 4 phases: Token Recording → API Aggregation → UI Display → No-Regression Verification
-- D032: Token data goes to dedicated `llm_usage` table (NOT ProcessingLogger)
-- D033: Deterministic SHA256 record IDs + UPSERT for Temporal replay safety
-- D034: Token records included in nullify-then-recreate cycle
-- D035: llm_usage table uses composite index on (document, created_at)
-- D036: Cost field is float | null DEFAULT null (null when API doesn't report)
-- D037: OpenRouterProvider returns (parsed_json, usage_dict) tuple from public methods
-- D038: record_llm_usage() in dedicated llm_usage.py module with fire-and-forget pattern
-- D039: Token/cost columns in UI use tabular-nums font for alignment
-- D040: Tooltips in Spanish for all token/cost UI elements
+- D046: v6.0 phases start at Phase 24 (continuing from v5.1 Phase 23)
+- D047: v6.0 has 5 phases: Schema → Pipeline → API → UI → Tests (per research dependency chain)
+- D048: All schema changes are additive (nullable DEFAULT null) — no destructive migrations
+- D049: EXTR and PIPE requirements combined in Phase 25 (both modify extraction pipeline together)
+- D050: EXTR-01 (expanded EVENT_EXTRACTION_SCHEMA) grouped with Phase 25 Pipeline, not Phase 24 Schema — schema design and LLM prompt engineering are coupled
+- D051: Timeline, Map, and Participant views deferred to v6.1 per research recommendation — v6.0 delivers data foundation + References UI
+- D052: LLM prompt benchmark required before merge — <10% event count change gate (Pitfall 5 prevention)
 
-### v5.1 Decisions
+### v5.1 Decisions (reference)
 
-- D041: Phase 23 (v5.1) requirements (RES-01 through RES-05) were already satisfied by existing codebase — no code changes needed
+- D041: Phase 23 requirements were already satisfied by existing codebase — no code changes needed
 - D042: v5.1 scope was verification-only — confirmed 5/5 requirements met, 37/37 tests pass
-- D043: `_build_resolution_payload()` already sends only verbatim_text + reference_type (no document_context)
-- D044: Both `batch_references()` and `_estimate_tokens()` were already implemented in llm.py
-- D045: Entity grouping is LLM-driven; DB dedup is code-driven (exact NFD+casefold → fuzzy CONTAINS → create new)
 
 ### Blockers/Concerns
 
-All resolved. No open blockers.
+None. Ready to begin Phase 24 planning.
 
-### Quick Tasks Completed
+## Deferred Items
 
-| # | Description | Date | Commit | Directory |
-|---|-------------|------|--------|-----------|
-| 260604-mex | Fix 404 on /documents/{id}/logs API route — restore accidentally deleted handler | 2026-06-04 | 4724bfc | [260604-mex-fix-404-on-documents-id-logs-api-route-r](./quick/260604-mex-fix-404-on-documents-id-logs-api-route-r/) |
-| 260604-n9q | Fix document delete 405 Method Not Allowed error — restore delete_document route | 2026-06-04 | 17186b3 | [260604-n9q-fix-document-delete-405-method-not-allow](./quick/260604-n9q-fix-document-delete-405-method-not-allow/) |
+Items acknowledged and carried forward from previous milestone close:
 
-## Operator Next Steps
+| Category | Item | Status | Deferred At |
+|----------|------|--------|-------------|
+| Feature | Map View (Leaflet.js CDN) | Deferred to v6.1 | v6.0 planning |
+| Feature | Participant-Based Event Listing | Deferred to v6.1 | v6.0 planning |
+| Feature | Timeline Visualization (vis-timeline) | Deferred to v6.1 | v6.0 planning |
+| Feature | Co-occurrence Network | Deferred to v6.2 | v6.0 planning |
 
-Milestone v5.1 complete — ready for lifecycle (audit → complete → cleanup).
+## Session Continuity
+
+Last session: 2026-06-04
+Stopped at: v6.0 roadmap created — ready for Phase 24 planning
+Resume file: None

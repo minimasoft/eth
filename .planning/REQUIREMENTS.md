@@ -80,35 +80,42 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| SCHE-01 | — | Pending |
-| SCHE-02 | — | Pending |
-| SCHE-03 | — | Pending |
-| SCHE-04 | — | Pending |
-| EXTR-01 | — | Pending |
-| EXTR-02 | — | Pending |
-| EXTR-03 | — | Pending |
-| EXTR-04 | — | Pending |
-| EXTR-05 | — | Pending |
-| PIPE-01 | — | Pending |
-| PIPE-02 | — | Pending |
-| PIPE-03 | — | Pending |
-| PIPE-04 | — | Pending |
-| REFS-01 | — | Pending |
-| REFS-02 | — | Pending |
-| REFS-03 | — | Pending |
-| API-01 | — | Pending |
-| API-02 | — | Pending |
-| API-03 | — | Pending |
-| TEST-01 | — | Pending |
-| TEST-02 | — | Pending |
-| TEST-03 | — | Pending |
-| TEST-04 | — | Pending |
-| TEST-05 | — | Pending |
+| SCHE-01 | Phase 24 | Pending |
+| SCHE-02 | Phase 24 | Pending |
+| SCHE-03 | Phase 24 | Pending |
+| SCHE-04 | Phase 24 | Pending |
+| EXTR-01 | Phase 25 | Pending |
+| EXTR-02 | Phase 25 | Pending |
+| EXTR-03 | Phase 25 | Pending |
+| EXTR-04 | Phase 25 | Pending |
+| EXTR-05 | Phase 25 | Pending |
+| PIPE-01 | Phase 25 | Pending |
+| PIPE-02 | Phase 25 | Pending |
+| PIPE-03 | Phase 25 | Pending |
+| PIPE-04 | Phase 25 | Pending |
+| REFS-01 | Phase 27 | Pending |
+| REFS-02 | Phase 27 | Pending |
+| REFS-03 | Phase 27 | Pending |
+| API-01 | Phase 26 | Pending |
+| API-02 | Phase 26 | Pending |
+| API-03 | Phase 26 | Pending |
+| TEST-01 | Phase 28 | Pending |
+| TEST-02 | Phase 28 | Pending |
+| TEST-03 | Phase 28 | Pending |
+| TEST-04 | Phase 28 | Pending |
+| TEST-05 | Phase 28 | Pending |
 
 **Coverage:**
 - v6.0 requirements: 23 total
-- Mapped to phases: 0
-- Unmapped: 23 ⚠️
+- Mapped to phases: 23 ✓
+- Unmapped: 0
+
+**By Phase:**
+- Phase 24: SCHE-01, SCHE-02, SCHE-03, SCHE-04 (4 schema requirements)
+- Phase 25: EXTR-01..05, PIPE-01..04 (9 pipeline requirements)
+- Phase 26: API-01, API-02, API-03 (3 API requirements)
+- Phase 27: REFS-01, REFS-02, REFS-03 (3 UI requirements)
+- Phase 28: TEST-01..05 (5 test requirements)
 
 ---
 *Requirements defined: 2026-06-04*
