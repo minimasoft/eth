@@ -431,5 +431,81 @@ DEFINE INDEX idx_llm_usage_document_created_at ON TABLE llm_usage COLUMNS docume
     COMMENT 'Composite index for per-document time-range lookups';
 
 -- ==========================================================================
--- End of schema
+-- v6.0: Event Data Model Quality — Structured Time, Location, Participants
+-- ==========================================================================
+-- Phase 24: Schema & Data Model Foundation — additive DDL only.
+-- All statements are idempotent on re-apply.
+-- Adds structured event fields, person→event participant edges,
+-- and reference element-level tagging for traceability.
+-- ==========================================================================
+
+-- --------------------------------------------------------------------------
+-- 1. Structured event fields (SCHE-01)
+-- time_window: ISO 8601 datetime range {start, end}
+-- location_point: lat/lon coordinates {lat, lon, label}
+-- location_place_id: link to canonical place entity for map/timeline
+-- All nullable DEFAULT null — existing documents unaffected.
+-- --------------------------------------------------------------------------
+
+DEFINE FIELD time_window ON TABLE event TYPE object | null FLEXIBLE
+    DEFAULT null
+    COMMENT 'ISO 8601 datetime range {start: datetime, end: datetime} for structured event time window (v6.0)';
+
+DEFINE FIELD location_point ON TABLE event TYPE object | null FLEXIBLE
+    DEFAULT null
+    COMMENT 'Geolocation coordinates {lat: float, lon: float, label: string|null} for map display (v6.0)';
+
+DEFINE FIELD location_place_id ON TABLE event TYPE record<canonical_entity> | null
+    DEFAULT null
+    COMMENT 'Link to the canonical place entity where this event occurred (v6.0)';
+
+-- --------------------------------------------------------------------------
+-- 2. event_participant junction table (SCHE-02)
+-- TYPE RELATION graph edge: event→canonical_entity (person)
+-- Links extracted participants to person-type canonical entities.
+-- role: subject, object, witness, or free-form.
+-- --------------------------------------------------------------------------
+
+DEFINE TABLE event_participant TYPE RELATION IN record<event> OUT record<canonical_entity>
+    COMMENT 'Graph edge linking an event to a participant person entity. IN→event, OUT→canonical_entity (person type). Populated by Phase 25 extraction pipeline.';
+
+DEFINE FIELD role ON TABLE event_participant TYPE string
+    COMMENT 'Role of the participant in the event: subject, object, witness, or free-form';
+
+DEFINE FIELD confidence ON TABLE event_participant TYPE number | null
+    DEFAULT null
+    ASSERT $value IS NONE OR ($value >= 0 AND $value <= 1)
+    COMMENT 'Confidence score (0.0–1.0) for this participant link; NONE/null when not assessed';
+
+DEFINE FIELD created_at ON TABLE event_participant TYPE datetime
+    DEFAULT time::now() READONLY
+    COMMENT 'Timestamp when the participant link was created (immutable after insertion)';
+
+-- Graph-traversal indexes for bidirectional queries
+
+DEFINE INDEX idx_event_participant_in ON TABLE event_participant COLUMNS in
+    COMMENT 'Index for efficient traversal from event to participants';
+
+DEFINE INDEX idx_event_participant_out ON TABLE event_participant COLUMNS out
+    COMMENT 'Index for efficient reverse traversal from person entity to events';
+
+-- --------------------------------------------------------------------------
+-- 3. Reference element fields (SCHE-03)
+-- element_field: which event element this reference substantiates
+--   (e.g. "tiempo", "humanos", "espacio", "objetos")
+-- reference_index: ordering within the element field (0-based)
+-- Distinct from reference_type — element_field enables timeline/map/participant views.
+-- All nullable DEFAULT null — existing references unaffected.
+-- --------------------------------------------------------------------------
+
+DEFINE FIELD element_field ON TABLE reference TYPE string | null
+    DEFAULT null
+    COMMENT 'Specific event element this reference substantiates: "tiempo", "humanos", "espacio", "objetos" — enables structured event views (v6.0)';
+
+DEFINE FIELD reference_index ON TABLE reference TYPE int | null
+    DEFAULT null
+    COMMENT 'Zero-based ordering position of this reference within its element_field group (v6.0)';
+
+-- ==========================================================================
+-- End of v6.0 schema additions
 -- ==========================================================================
