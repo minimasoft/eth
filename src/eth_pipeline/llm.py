@@ -519,7 +519,7 @@ class OpenRouterProvider:
                         "con tipo de referencia, texto exacto y offsets de caracteres (0-based, exclusive end)\n\n"
                         "Los tipos de referencia pueden ser: espacio, tiempo, humanos, objetos.\n"
                         "Debes incluir al menos una referencia para que_paso (con reference_type 'humanos').\n"
-                        "Responde ÚNICAMENTE con el JSON estructurado, sin texto adicional."
+                        "Responde ÚNICAMENTE con JSON valido, sin texto adicional."
                     ),
                 },
                 {
