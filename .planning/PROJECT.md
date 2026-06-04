@@ -29,17 +29,13 @@ Every extracted event must be traceable to its exact source text in the original
 
 **v4.0: Pipeline Quality & Entity Resolution — COMPLETE.** Reference offsets (character + page), structured event objects as canonical entities, per-document processing logs, search-first entity resolution (20-50% LLM call savings), real Spanish legal document test corpus, and comprehensive README/docs.
 
-## Current Milestone: v5.0 LLM Cost & Usage Tracking
+## Current Milestone: v5.1 Entity Resolution Prompt & Batching Fix
 
-**Goal:** Track LLM token usage and cost across the pipeline, display in UI, and verify no regressions.
+**Status:** Complete ✅
 
-**Target features:**
-- Log input/output token counts per LLM call (stored in DB)
-- Per-document input/output token tracking (include cache hits if reported)
-- UI display: tokens as [cached]/input/output totals
-- OpenRouter cost reporting (bonus)
-- LLM event detail includes processing time + all token statistics
-- All e2e tests pass with token count verification
+All 5 requirements verified satisfied by existing codebase. The entity resolution prompt fix (removing full document text from LLM prompts, adding reference-only batching, and code-side DB dedup) was already fully implemented during v5.0 development. 37/37 integration tests pass with zero regressions.
+
+**Next:** Planning next milestone.
 
 ## Requirements
 
@@ -102,7 +98,8 @@ See `.planning/REQUIREMENTS.md` for the explicit capability contract, requiremen
 - [x] v2.0: Blob & Chunk Pipeline — MinIO blob storage, PDF extraction, chunking, workflow integration. 3 phases (6-8), 6 plans.
 - [x] v3.0: Web UI — Static HTML/CSS/JS SPA served at /ui with three-tab navigation, document upload, paginated document list, and paginated entity list. 4 phases (9-12), 4 plans.
 - [x] v4.0: Pipeline Quality & Entity Resolution — COMPLETE
-- [ ] v5.0: LLM Cost & Usage Tracking — IN PROGRESS
+- [x] v5.0: LLM Cost & Usage Tracking — COMPLETE
+- [x] v5.1: Entity Resolution Prompt & Batching Fix — COMPLETE
 
 ## Evolution
 
@@ -122,4 +119,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---  
-*Last updated: 2026-06-04 after v5.0 milestone start*
+*Last updated: 2026-06-04 after v5.1 milestone completion*

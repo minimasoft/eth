@@ -1,5 +1,16 @@
 # Milestones
 
+## v5.1 Entity Resolution Prompt & Batching Fix (Shipped: 2026-06-04)
+
+**Phases completed:** 1 phase, 1 plan, 0 tasks
+
+**Key accomplishments:**
+
+- Verified all 5 requirements (RES-01 through RES-05) are satisfied by existing codebase — no code changes needed
+- Confirmed 37/37 integration tests pass with zero regressions
+
+---
+
 ## v5.0 v5.0 (Shipped: 2026-06-04)
 
 **Phases completed:** 4 phases, 3 plans, 0 tasks
