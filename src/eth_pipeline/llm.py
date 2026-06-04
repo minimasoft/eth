@@ -517,8 +517,9 @@ class OpenRouterProvider:
                         "- objetos: objetos, bienes o activos mencionados\n"
                         "- references: fragmentos textuales literales que respaldan cada campo, "
                         "con tipo de referencia, texto exacto y offsets de caracteres (0-based, exclusive end)\n\n"
-                        "Los tipos de referencia pueden ser: espacio, tiempo, humanos, objetos.\n"
-                        "Debes incluir al menos una referencia para que_paso (con reference_type 'humanos').\n"
+                        "Los tipos de referencia válidos son: espacio, tiempo, humanos, objetos.\n"
+                        "Incluye al menos una referencia que respalde el campo que_paso "
+                        "(usa reference_type 'humanos' para esa referencia).\n"
                         "Responde ÚNICAMENTE con JSON valido, sin texto adicional."
                     ),
                 },
