@@ -740,6 +740,94 @@
     #documents-empty .placeholder-card {
       margin-top: 16px;
     }
+
+    /* ---- Entity detail panel ---- */
+
+    .entity-detail-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+
+    .entity-detail-header h2 {
+      font-size: 24px;
+      font-weight: 600;
+      line-height: 1.3;
+      color: #1e293b;
+      margin: 0;
+    }
+
+    .entity-detail-meta {
+      display: flex;
+      gap: 24px;
+      margin-bottom: 24px;
+      padding: 16px;
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      flex-wrap: wrap;
+    }
+
+    .entity-detail-meta-item {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .entity-detail-meta-item .label {
+      font-size: 12px;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      font-weight: 600;
+    }
+
+    .entity-detail-meta-item .value {
+      font-size: 14px;
+      font-weight: 500;
+      color: #1e293b;
+    }
+
+    .entity-properties {
+      margin-bottom: 24px;
+      padding: 16px;
+      background: #fffbeb;
+      border: 1px solid #fde68a;
+      border-radius: 8px;
+    }
+
+    .entity-properties h3 {
+      font-size: 14px;
+      font-weight: 600;
+      color: #92400e;
+      margin: 0 0 8px 0;
+    }
+
+    .entity-properties pre {
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+      font-size: 13px;
+      line-height: 1.5;
+      margin: 0;
+      white-space: pre-wrap;
+      word-break: break-all;
+      color: #1e293b;
+    }
+
+    .entity-detail-references h3 {
+      font-size: 16px;
+      font-weight: 600;
+      color: #1e293b;
+      margin: 0 0 12px 0;
+    }
+
+    .entity-ref-row-clickable {
+      cursor: pointer;
+    }
+
+    .entity-ref-row-clickable:hover {
+      background: #f8fafc;
+    }
   </style>
 </head>
 <body>
@@ -870,6 +958,54 @@
           <button id="entity-prev-btn" class="btn-outline" disabled>&larr; Anterior</button>
           <span id="entity-page-info" class="page-info">Página 1 de 1</span>
           <button id="entity-next-btn" class="btn-outline" disabled>Siguiente &rarr;</button>
+        </div>
+      </div>
+      <div id="entity-detail-panel" style="display:none">
+        <div class="entity-detail-header">
+          <button class="btn-outline" id="entity-detail-back-btn" type="button">&larr; Volver</button>
+          <h2 id="entity-detail-name"></h2>
+        </div>
+        <div class="entity-detail-meta">
+          <div class="entity-detail-meta-item">
+            <span class="label">Tipo</span>
+            <span class="value" id="entity-detail-type"></span>
+          </div>
+          <div class="entity-detail-meta-item">
+            <span class="label">Referencias</span>
+            <span class="value" id="entity-detail-ref-count">0</span>
+          </div>
+          <div class="entity-detail-meta-item">
+            <span class="label">ID</span>
+            <span class="value" id="entity-detail-id" style="font-family:monospace;font-size:13px"></span>
+          </div>
+        </div>
+        <div id="entity-detail-properties" class="entity-properties" style="display:none">
+          <h3>Propiedades</h3>
+          <pre id="entity-detail-props-json"></pre>
+        </div>
+        <div class="entity-detail-references">
+          <h3>Referencias vinculadas</h3>
+          <div id="entity-detail-refs-loading" class="documents-loading" style="display:none">
+            <div class="loading-spinner"></div>
+            Cargando referencias...
+          </div>
+          <div id="entity-detail-refs-table-container" class="table-container" style="display:none">
+            <table class="documents-table">
+              <thead>
+                <tr>
+                  <th style="width:auto">Texto Literal</th>
+                  <th style="width:110px">Tipo</th>
+                  <th style="width:auto">Evento</th>
+                  <th style="width:auto">Documento</th>
+                </tr>
+              </thead>
+              <tbody id="entity-detail-refs-tbody"></tbody>
+            </table>
+          </div>
+          <div id="entity-detail-refs-empty" class="placeholder-card" style="display:none">
+            <h2>Sin referencias</h2>
+            <p>Esta entidad no tiene referencias vinculadas</p>
+          </div>
         </div>
       </div>
     </section>
@@ -1535,6 +1671,10 @@
       entityTbody.innerHTML = '';
       data.items.forEach(function(item) {
         var tr = document.createElement('tr');
+        tr.style.cursor = 'pointer';
+        tr.addEventListener('click', function() {
+          showEntityDetail(item.entity_id);
+        });
         tr.innerHTML =
           '<td>' + escapeHtml(item.name || '') + '</td>' +
           '<td><span class="entity-type-label">' + escapeHtml(entityTypeLabel(item.entity_type)) + '</span></td>' +
@@ -1598,6 +1738,102 @@
     document.getElementById('doc-refresh-btn').addEventListener('click', fetchDocuments);
     document.getElementById('entity-refresh-btn').addEventListener('click', fetchEntities);
 
+    // ===== Entity detail panel =====
+
+    const entityDetailPanel = document.getElementById('entity-detail-panel');
+    const entityDetailName = document.getElementById('entity-detail-name');
+    const entityDetailType = document.getElementById('entity-detail-type');
+    const entityDetailRefCount = document.getElementById('entity-detail-ref-count');
+    const entityDetailId = document.getElementById('entity-detail-id');
+    const entityDetailProperties = document.getElementById('entity-detail-properties');
+    const entityDetailPropsJson = document.getElementById('entity-detail-props-json');
+    const entityDetailRefsLoading = document.getElementById('entity-detail-refs-loading');
+    const entityDetailRefsTable = document.getElementById('entity-detail-refs-table-container');
+    const entityDetailRefsTbody = document.getElementById('entity-detail-refs-tbody');
+    const entityDetailRefsEmpty = document.getElementById('entity-detail-refs-empty');
+    const entityDetailBackBtn = document.getElementById('entity-detail-back-btn');
+
+    let currentEntityId = null;
+
+    function showEntityLoadingState() {
+      entityDetailRefsLoading.style.display = 'flex';
+      entityDetailRefsTable.style.display = 'none';
+      entityDetailRefsEmpty.style.display = 'none';
+    }
+
+    async function showEntityDetail(entityId) {
+      currentEntityId = entityId;
+      document.getElementById('entities-container').style.display = 'none';
+      entityDetailPanel.style.display = 'block';
+      showEntityLoadingState();
+
+      try {
+        const res = await fetch('/entities/' + encodeURIComponent(entityId));
+        if (!res.ok) {
+          let detail = 'Error al cargar entidad';
+          try {
+            const errData = await res.json();
+            if (errData && errData.detail) detail = errData.detail;
+          } catch (_pe) {}
+          throw new Error(detail);
+        }
+        const data = await res.json();
+        renderEntityDetail(data);
+      } catch (err) {
+        console.error('showEntityDetail error:', err);
+        entityDetailRefsLoading.style.display = 'none';
+        entityDetailRefsTable.style.display = 'none';
+        entityDetailRefsEmpty.style.display = 'block';
+        entityDetailRefsEmpty.querySelector('p').textContent = 'Error: ' + err.message;
+        showBanner('Error al cargar entidad: ' + err.message, 'error', false);
+      }
+    }
+
+    function renderEntityDetail(data) {
+      entityDetailName.textContent = data.name || '';
+      entityDetailType.textContent = entityTypeLabel(data.entity_type);
+      entityDetailRefCount.textContent = String(data.reference_count || 0);
+      entityDetailId.textContent = data.entity_id || '';
+
+      // Properties section
+      if (data.properties && Object.keys(data.properties).length > 0) {
+        entityDetailProperties.style.display = 'block';
+        entityDetailPropsJson.textContent = JSON.stringify(data.properties, null, 2);
+      } else {
+        entityDetailProperties.style.display = 'none';
+      }
+
+      // References
+      entityDetailRefsLoading.style.display = 'none';
+      if (data.references && data.references.length > 0) {
+        entityDetailRefsTable.style.display = '';
+        entityDetailRefsEmpty.style.display = 'none';
+        entityDetailRefsTbody.innerHTML = '';
+        data.references.forEach(function(ref) {
+          var tr = document.createElement('tr');
+          tr.innerHTML =
+            '<td>' + escapeHtml(truncateText(ref.verbatim_text || '', 120)) + '</td>' +
+            '<td><span class="entity-type-label">' + escapeHtml(entityTypeLabel(ref.reference_type)) + '</span></td>' +
+            '<td>' + escapeHtml(truncateText(ref.event_que_paso || '', 100)) + '</td>' +
+            '<td>' + escapeHtml(ref.document_filename || '') + '</td>';
+          entityDetailRefsTbody.appendChild(tr);
+        });
+      } else {
+        entityDetailRefsTable.style.display = 'none';
+        entityDetailRefsEmpty.style.display = 'block';
+        entityDetailRefsEmpty.querySelector('p').textContent = 'Esta entidad no tiene referencias vinculadas';
+      }
+    }
+
+    function hideEntityDetail() {
+      currentEntityId = null;
+      entityDetailPanel.style.display = 'none';
+      document.getElementById('entities-container').style.display = '';
+      fetchEntities();
+    }
+
+    entityDetailBackBtn.addEventListener('click', hideEntityDetail);
+
     // ===== References tab =====
 
     const refSearch = document.getElementById('ref-search');
@@ -1634,7 +1870,7 @@
       return text.slice(0, maxLen) + '...';
     }
 
-    async function fetchReferences() {
+    async function fetchReferences(documentId) {
       if (refsLoadingFlag) return;
       refsLoadingFlag = true;
       var loader = deferredLoading('refs', showRefLoading, hideRefLoading);
@@ -1644,15 +1880,13 @@
       params.set('per_page', '20');
       if (refsSearchTerm) params.set('search', refsSearchTerm);
       if (refsTypeFilter) params.set('reference_type', refsTypeFilter);
+      if (documentId) params.set('document', documentId);
 
       try {
         const res = await fetch('/references?' + params.toString());
         if (!res.ok) {
           let detail = 'Error al obtener referencias';
-          try {
-            const errData = await res.json();
-            if (errData && errData.detail) detail = errData.detail;
-          } catch (_pe) { /* ignore parse error */ }
+          try { const errData = await res.json(); if (errData && errData.detail) detail = errData.detail; } catch (_pe) {}
           throw new Error(detail);
         }
         const data = await res.json();
@@ -1688,24 +1922,71 @@
       refTableContainer.style.display = '';
       refPagination.style.display = 'flex';
 
-      refTbody.innerHTML = '';
+      // Group by canonical entity
+      var grouped = {};
+      var ungrouped = [];
       data.items.forEach(function(item) {
-        var tr = document.createElement('tr');
-        tr.innerHTML =
-          '<td style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + escapeHtml(item.verbatim_text || '') + '">' + escapeHtml(truncateText(item.verbatim_text, 120)) + '</td>' +
-          '<td><span class="entity-type-label">' + escapeHtml(item.reference_type || '') + '</span></td>' +
-          '<td style="max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + escapeHtml(item.event_que_paso || '') + '">' + escapeHtml(truncateText(item.event_que_paso, 80)) + '</td>' +
-          '<td>' + escapeHtml(item.document_filename || '-') + '</td>';
-        refTbody.appendChild(tr);
+        var key = item.canonical_entity_id || item.canonical_entity_name || '__ungrouped__';
+        if (key === '__ungrouped__') {
+          ungrouped.push(item);
+        } else {
+          if (!grouped[key]) grouped[key] = { name: item.canonical_entity_name || key, type: item.canonical_entity_type || '', id: key, items: [] };
+          grouped[key].items.push(item);
+        }
       });
+
+      refTbody.innerHTML = '';
+
+      function renderRow(item) {
+        var tr = document.createElement('tr');
+        var elField = item.element_field || item.reference_type || '';
+        var conf = item.resolution_confidence != null ? (' ' + (item.resolution_confidence * 100).toFixed(0) + '%') : '';
+        var entityLink = '';
+        if (item.canonical_entity_name) {
+          entityLink = '<br><small style="color:var(--primary-color)">' + escapeHtml(item.canonical_entity_name) + conf + '</small>';
+        }
+        var docLink = '<span class="entity-ref-row-clickable" onclick="navigateToDocument(\'' + escapeHtml(item.document_id || '') + '\')" title="Ver documento">' + escapeHtml(item.document_filename || '-') + '</span>';
+        tr.innerHTML =
+          '<td style="max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + escapeHtml(item.verbatim_text || '') + '">' +
+            escapeHtml(truncateText(item.verbatim_text, 100)) + entityLink +
+          '</td>' +
+          '<td>' + (elField ? '<span class="entity-type-label">' + escapeHtml(elField) + '</span>' : '') + '</td>' +
+          '<td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + escapeHtml(item.event_que_paso || '') + '">' + escapeHtml(truncateText(item.event_que_paso, 60)) + '</td>' +
+          '<td>' + docLink + '</td>';
+        refTbody.appendChild(tr);
+      }
+
+      // Render grouped entities with headers, then ungrouped
+      Object.keys(grouped).forEach(function(key) {
+        var g = grouped[key];
+        var headerRow = document.createElement('tr');
+        headerRow.className = 'ref-entity-group-header';
+        headerRow.innerHTML = '<td colspan="4" style="font-weight:600;padding:10px 12px;background:var(--bg-color);border-bottom:2px solid var(--border-color)">' +
+          escapeHtml(g.name) + ' <span class="entity-type-label">' + escapeHtml(g.type) + '</span> (' + g.items.length + ' refs)</td>';
+        refTbody.appendChild(headerRow);
+        g.items.forEach(renderRow);
+      });
+
+      ungrouped.forEach(renderRow);
 
       var page = data.page || 1;
       var pages = data.pages || 0;
 
       refPageInfo.textContent = 'Página ' + page + ' de ' + pages;
-
       refPrevBtn.disabled = page <= 1;
       refNextBtn.disabled = page >= pages;
+    }
+
+    function navigateToDocument(docId) {
+      if (!docId) return;
+      // Switch to documents tab with document-specific view
+      switchTab('documents');
+      if (typeof documentSearch !== 'undefined' && documentSearch) {
+        documentSearch.value = docId;
+        documentsSearchTerm = docId;
+        documentsCurrentPage = 1;
+        fetchDocuments();
+      }
     }
 
     // Search with debounce
