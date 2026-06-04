@@ -21,6 +21,7 @@ from eth_pipeline.api.models import (
     DocumentListItem,
     DocumentListResponse,
     DocumentStatus,
+    DocumentTokenUsage,
     DocumentUploadCreated,
     EventsCleared,
     HealthResponse,
@@ -479,6 +480,60 @@ async def get_document(document_id: str) -> DocumentStatus:
 # =======================================================================
 
 
+@router.get("/documents/{document_id}/tokens", response_model=DocumentTokenUsage)
+async def get_document_tokens(document_id: str) -> DocumentTokenUsage:
+    """Retrieve aggregated token usage for a single document."""
+    db: AsyncWsSurrealConnection | None = app.state.db
+
+    if db is None:
+        logger.error("GET /documents/%s/tokens rejected — SurrealDB unavailable", document_id)
+        raise HTTPException(
+            status_code=503,
+            detail="SurrealDB is not available. Please try again later.",
+        )
+
+    from surrealdb.data.types.record_id import RecordID
+
+    doc_id_obj = RecordID("document", document_id)
+
+    try:
+        result = await db.query(
+            "SELECT "
+            "math::sum(prompt_tokens) as prompt_tokens, "
+            "math::sum(completion_tokens) as completion_tokens, "
+            "math::sum(total_tokens) as total_tokens, "
+            "math::sum(cached_tokens) as cached_tokens, "
+            "math::sum(cost) as total_cost, "
+            "math::sum(duration_ms) as duration_ms, "
+            "count() as record_count "
+            "FROM llm_usage WHERE document = $doc GROUP ALL",
+            {"doc": doc_id_obj},
+        )
+    except Exception as exc:
+        logger.error("Failed to query token usage for %s: %s", document_id, exc)
+        raise HTTPException(
+            status_code=502,
+            detail="Failed to query token usage.",
+        ) from exc
+
+    records: list[dict] = [r for r in (result or []) if isinstance(r, dict)]
+
+    if not records or records[0].get("record_count", 0) == 0:
+        logger.info("No token data for document %s", document_id)
+        return DocumentTokenUsage(has_data=False)
+
+    row = records[0]
+    return DocumentTokenUsage(
+        has_data=True,
+        prompt_tokens=row.get("prompt_tokens") or 0,
+        completion_tokens=row.get("completion_tokens") or 0,
+        total_tokens=row.get("total_tokens") or 0,
+        cached_tokens=row.get("cached_tokens") or 0,
+        total_cost=row.get("total_cost"),
+        duration_ms=row.get("duration_ms") or 0,
+    )
+
+
 @router.get("/documents", response_model=DocumentListResponse)
 async def list_documents(
     page: int = Query(1, ge=1),
@@ -564,6 +619,43 @@ async def list_documents(
         r for r in (data_result or []) if isinstance(r, dict)
     ]
 
+    # Batched token aggregation: one extra query for all documents on this page
+    document_rids: list[RecordID] = []
+    for record in data_records:
+        doc_id_val = record.get("id")
+        if isinstance(doc_id_val, RecordID):
+            document_rids.append(doc_id_val)
+        elif isinstance(doc_id_val, str):
+            parts = doc_id_val.split(":", 1)
+            doc_id = parts[1] if len(parts) > 1 else parts[0]
+            document_rids.append(RecordID("document", doc_id))
+
+    token_map: dict[str, dict] = {}
+    if document_rids:
+        try:
+            token_result = await db.query(
+                "SELECT document, "
+                "math::sum(prompt_tokens) as prompt_tokens, "
+                "math::sum(completion_tokens) as completion_tokens, "
+                "math::sum(total_tokens) as total_tokens, "
+                "math::sum(cached_tokens) as cached_tokens, "
+                "math::sum(cost) as total_cost, "
+                "math::sum(duration_ms) as duration_ms "
+                "FROM llm_usage "
+                "WHERE document INSIDE $docs "
+                "GROUP BY document",
+                {"docs": document_rids},
+            )
+            token_rows: list[dict] = [
+                r for r in (token_result or []) if isinstance(r, dict)
+            ]
+            for row in token_rows:
+                doc_ref = row.get("document")
+                if doc_ref is not None:
+                    token_map[str(doc_ref)] = row
+        except Exception as exc:
+            logger.warning("Failed to query batched token data: %s", exc)
+
     items: list[DocumentListItem] = []
     for record in data_records:
         # Parse document_id from the RecordID or string id field
@@ -619,6 +711,8 @@ async def list_documents(
         except Exception as exc:
             logger.warning("Failed to query counts for document %s: %s", doc_id, exc)
 
+        token_data = token_map.get(f"document:{doc_id}", {})
+
         items.append(DocumentListItem(
             document_id=doc_id,
             status=record.get("status", "unknown"),
@@ -629,6 +723,12 @@ async def list_documents(
             entity_count=ent_count,
             chunk_count=chunk_count,
             text_word_count=twc,
+            prompt_tokens=token_data.get("prompt_tokens") or 0 if token_data else 0,
+            completion_tokens=token_data.get("completion_tokens") or 0 if token_data else 0,
+            total_tokens=token_data.get("total_tokens") or 0 if token_data else 0,
+            cached_tokens=token_data.get("cached_tokens") or 0 if token_data else 0,
+            total_cost=token_data.get("total_cost") if token_data else None,
+            duration_ms=token_data.get("duration_ms") or 0 if token_data else 0,
         ))
 
     logger.info(

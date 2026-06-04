@@ -121,6 +121,24 @@ class DocumentListItem(BaseModel):
     text_word_count: int = 0
     """Word count of the document's extracted text content."""
 
+    prompt_tokens: int = 0
+    """Total prompt (input) tokens across all LLM calls for this document."""
+
+    completion_tokens: int = 0
+    """Total completion (output) tokens across all LLM calls."""
+
+    total_tokens: int = 0
+    """Total tokens (prompt + completion) across all LLM calls."""
+
+    cached_tokens: int = 0
+    """Total cached tokens across all LLM calls (0 when not reported)."""
+
+    total_cost: float | None = None
+    """Total monetary cost across all LLM calls (None when cost data absent)."""
+
+    duration_ms: int = 0
+    """Total wall-clock duration of all LLM calls for this document."""
+
 
 class DocumentListResponse(BaseModel):
     """Paginated response body for ``GET /documents``."""
@@ -165,6 +183,31 @@ class DocumentDeleted(BaseModel):
 
     orphaned_entities_cleaned: int = 0
     """Number of canonical_entities that were orphaned and removed."""
+
+
+class DocumentTokenUsage(BaseModel):
+    """Per-document token usage aggregation response."""
+
+    has_data: bool = False
+    """Whether this document has any llm_usage records."""
+
+    prompt_tokens: int = 0
+    """Total prompt (input) tokens across all LLM calls for this document."""
+
+    completion_tokens: int = 0
+    """Total completion (output) tokens across all LLM calls."""
+
+    total_tokens: int = 0
+    """Total tokens (prompt + completion) across all LLM calls."""
+
+    cached_tokens: int = 0
+    """Total cached tokens across all LLM calls (0 when not reported)."""
+
+    total_cost: float | None = None
+    """Total monetary cost across all LLM calls (None when cost data absent)."""
+
+    duration_ms: int = 0
+    """Total wall-clock duration of all LLM calls for this document."""
 
 
 class HealthResponse(BaseModel):
