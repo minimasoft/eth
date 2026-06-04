@@ -476,6 +476,166 @@ async def get_document(document_id: str) -> DocumentStatus:
 
 
 # =======================================================================
+# Get document processing logs (paginated)
+# =======================================================================
+
+
+@router.get(
+    "/documents/{document_id}/logs",
+    response_model=ProcessingLogListResponse,
+)
+async def get_document_logs(
+    document_id: str,
+    page: int = Query(1, ge=1),
+) -> ProcessingLogListResponse:
+    """Retrieve processing log entries for a document (paginated, newest first)."""
+    db: AsyncWsSurrealConnection | None = app.state.db
+
+    if db is None:
+        logger.error(
+            "GET /documents/%s/logs rejected — SurrealDB unavailable",
+            document_id,
+        )
+        raise HTTPException(
+            status_code=503,
+            detail="SurrealDB is not available. Please try again later.",
+        )
+
+    per_page = 50
+    offset = (page - 1) * per_page
+
+    try:
+        from surrealdb.data.types.record_id import RecordID
+
+        doc_id_obj = RecordID("document", document_id)
+        exists_result = await db.query(
+            "SELECT * FROM document WHERE id = $doc_id",
+            {"doc_id": doc_id_obj},
+        )
+    except Exception as exc:
+        logger.error(
+            "Failed to query document %s: %s", document_id, exc
+        )
+        raise HTTPException(
+            status_code=502,
+            detail="Failed to query database.",
+        ) from exc
+
+    exists_records: list[dict] = [
+        r for r in (exists_result or []) if isinstance(r, dict)
+    ]
+    if not exists_records:
+        logger.warning("Document %s not found for log query", document_id)
+        raise HTTPException(
+            status_code=404,
+            detail=f"Document {document_id} not found.",
+        )
+
+    from surrealdb.data.types.record_id import RecordID
+
+    doc_ref_obj = RecordID("document", document_id)
+
+    try:
+        count_result = await db.query(
+            "SELECT count() AS total FROM document_event_log "
+            "WHERE document = $doc_ref GROUP ALL",
+            {"doc_ref": doc_ref_obj},
+        )
+    except Exception as exc:
+        logger.error(
+            "Failed to count log entries for document %s: %s",
+            document_id,
+            exc,
+        )
+        raise HTTPException(
+            status_code=502,
+            detail="Failed to query database.",
+        ) from exc
+
+    total = _parse_count(count_result)
+
+    if total == 0:
+        pages = 0
+    else:
+        pages = max(1, (total + per_page - 1) // per_page)
+
+    try:
+        data_result = await db.query(
+            "SELECT * FROM document_event_log "
+            "WHERE document = $doc_ref "
+            "ORDER BY created_at DESC "
+            "LIMIT $limit START $offset",
+            {
+                "doc_ref": doc_ref_obj,
+                "limit": per_page,
+                "offset": offset,
+            },
+        )
+    except Exception as exc:
+        logger.error(
+            "Failed to query log entries for document %s: %s",
+            document_id,
+            exc,
+        )
+        raise HTTPException(
+            status_code=502,
+            detail="Failed to query database.",
+        ) from exc
+
+    data_records: list[dict] = [
+        r for r in (data_result or []) if isinstance(r, dict)
+    ]
+
+    items: list[ProcessingLogListItem] = []
+    for record in data_records:
+        entry_id_val = record.get("id")
+        entry_id: str = ""
+        if isinstance(entry_id_val, RecordID):
+            entry_id = str(entry_id_val.id)
+        elif isinstance(entry_id_val, str):
+            entry_id = (
+                entry_id_val.split(":", 1)[1]
+                if ":" in entry_id_val
+                else entry_id_val
+            )
+
+        created_at_raw = record.get("created_at")
+        created_at_str: str | None = None
+        if created_at_raw is not None:
+            created_at_str = (
+                created_at_raw.isoformat()
+                if hasattr(created_at_raw, "isoformat")
+                else str(created_at_raw)
+            )
+
+        items.append(ProcessingLogListItem(
+            id=entry_id,
+            document_id=document_id,
+            step_name=record.get("step_name", ""),
+            severity=record.get("severity", ""),
+            message=record.get("message", ""),
+            details=record.get("details"),
+            created_at=created_at_str,
+        ))
+
+    logger.info(
+        "Listed processing logs for document %s (page=%d) — %d items of %d total",
+        document_id,
+        page,
+        len(items),
+        total,
+    )
+
+    return ProcessingLogListResponse(
+        items=items,
+        total=total,
+        page=page,
+        per_page=per_page,
+        pages=pages,
+    )
+
+
+# =======================================================================
 # List documents (paginated)
 # =======================================================================
 
