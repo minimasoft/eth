@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v4.0
 milestone_name: milestone
 status: executing
-stopped_at: Quick task 260603-wqw completed (event entity schema fix, SurrealDB persistence, integration test fixes)
-last_updated: "2026-06-04T03:10:01.372Z"
-last_activity: 2026-06-04 -- Phase 19 execution started
+stopped_at: Quick task 260604-19g completed (Spanish UI translation + flicker-free refresh)
+last_updated: "2026-06-04T03:55:00.000Z"
+last_activity: 2026-06-04 -- Quick task 260604-19g: spanish UI + flicker-free refresh
 progress:
   total_phases: 6
   completed_phases: 6
@@ -100,6 +100,11 @@ None — milestone just started.
 - **2026-06-04** — `260603-wqw`: Fix processing log storage and event entity reference loading
   - Fixed event_entity_link schema type (record<canonical_entity>), SurrealDB persistence (--path /data), integration tests
 
+- **2026-06-04** — `260604-19g`: Spanish UI translation + flicker-free content refresh
+  - Translated all UI text in `src/eth_pipeline/static/index.html` to Spanish/Castellano (tabs, headings, buttons, status labels, column headers, placeholders, empty states, pagination, tooltips, aria-labels)
+  - Added 200ms deferred loading pattern to eliminate loading-spinner flicker on fast fetches
+  - SUMMARY: `.planning/quick/260604-19g-refactor-one-page-web-ui-to-be-in-spanis/260604-19g-01-SUMMARY.md`
+
 ## Deferred Items
 
 Items acknowledged and carried forward from previous milestone close:
@@ -111,5 +116,5 @@ Items acknowledged and carried forward from previous milestone close:
 ## Session Continuity
 
 Last session: 2026-06-04
-Stopped at: Quick task 260603-wqw completed (event entity schema fix, SurrealDB persistence, integration test fixes)
-Resume file: .planning/quick/260603-wqw-fix-processing-log-storage-and-event-ent/260603-wqw-SUMMARY.md
+Stopped at: Quick task 260604-19g completed (Spanish UI translation + flicker-free refresh)
+Resume file: .planning/quick/260604-19g-refactor-one-page-web-ui-to-be-in-spanis/260604-19g-01-SUMMARY.md
