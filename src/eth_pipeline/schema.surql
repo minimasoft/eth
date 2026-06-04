@@ -282,8 +282,8 @@ DEFINE FIELD OVERWRITE entity_type ON TABLE canonical_entity TYPE string
 DEFINE TABLE event_entity_link SCHEMAFULL
     COMMENT 'Graph edge linking an event-type canonical entity to a place/person/object entity. Populated by Phase 16 (create_event_canonical_entities_activity). Use RELATE queries: event->event_entity_link->entity';
 
-DEFINE FIELD event ON TABLE event_entity_link TYPE record<event>
-    COMMENT 'The source event record (event-type canonical entity)';
+DEFINE FIELD OVERWRITE event ON TABLE event_entity_link TYPE record<canonical_entity>
+    COMMENT 'The source event canonical entity (canonical_entity with entity_type="event")';
 
 DEFINE FIELD entity ON TABLE event_entity_link TYPE record<canonical_entity>
     COMMENT 'The target canonical entity (place, person, or object type)';
