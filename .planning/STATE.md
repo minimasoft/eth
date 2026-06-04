@@ -1,18 +1,3 @@
----
-gsd_state_version: 1.0
-milestone: v5.0
-milestone_name: LLM Cost & Usage Tracking
-status: planning
-last_updated: "2026-06-04T20:00:00.000Z"
-last_activity: 2026-06-04
-progress:
-  total_phases: 4
-  completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
-  percent: 0
----
-
 # Project State
 
 ## Project Reference
@@ -21,182 +6,49 @@ See: .planning/PROJECT.md (updated 2026-06-02)
 
 **Core value:** Every extracted event must be traceable to its exact source text in the original document, and every resolved entity must show its evidential references.
 
-**Current focus:** Milestone v5.0 — LLM Cost & Usage Tracking
+**Current focus:** Milestone v5.0 — LLM Cost & Usage Tracking — **COMPLETE ✅**
 
 ## Current Position
 
-Phase: Not started (roadmap defined)
+Phase: Complete
 Plan: —
-Status: Defining roadmap
-Last activity: 2026-06-04 — v5.0 roadmap created (phases 19-22)
+Status: Milestone complete
+Last activity: 2026-06-04 — v5.0 all 4 phases completed and verified
 
 ## Performance Metrics
-
-### v4.0 Pipeline Quality & Entity Resolution
-
-| Phase | Plans | Status | Completed |
-|-------|-------|--------|-----------|
-| 13. Schema Evolution | 2/2 | Complete | 2026-06-03 |
-| 14. Reference Offset Computation | 1/1 | Complete | 2026-06-03 |
-| 15. Per-Document Processing Logs | 1/1 | Complete | 2026-06-03 |
-| 16. Event Canonical Entities | 1/1 | Complete | 2026-06-03 |
-| 17. Search-First Entity Resolution | 2/2 | Complete | 2026-06-03 |
-| 18. Full Integration + Test Corpus + Docs | 2/2 | Plan 02 complete | - |
-
-**Totals:** 6 phases, 8 plans
-**Timeline:** Phase 13-17 completed, Phase 18 in progress
 
 ### v5.0 LLM Cost & Usage Tracking
 
 | Phase | Plans | Status | Completed |
 |-------|-------|--------|-----------|
-| 19. Token Recording & Schema | 0/0 | Planning | — |
-| 20. API Aggregation Endpoints | 0/0 | Planning | — |
-| 21. UI Token Display | 0/0 | Planning | — |
-| 22. No-Regression Verification | 0/0 | Planning | — |
+| 19. Token Recording & Schema | 2/2 | Complete ✅ | 2026-06-04 |
+| 20. API Aggregation Endpoints | 1/1 | Complete ✅ | 2026-06-04 |
+| 21. UI Token Display | 1/1 | Complete ✅ | 2026-06-04 |
+| 22. No-Regression Verification | 1/1 | Complete ✅ | 2026-06-04 |
 
-**Totals:** 4 phases, 0 plans
-**Timeline:** Planning
+**Totals:** 4 phases, 5 plans — **ALL COMPLETE ✅**
+**Timeline:** Started 2026-06-04, completed 2026-06-04 (same day)
 
 ## Accumulated Context
 
-### Decisions
+### v5.0 Decisions
 
-Decisions are logged in PROJECT.md.
-Recent decisions affecting current work:
-
-- D013: v4.0 phases start at Phase 13 (continuing from v3.0 Phase 12)
-- D014: Six-phase build order: Schema (13) → Offsets (14) → Logs (15) → Event Entities (16) → Search-First Resolution (17) → Integration (18)
-- D015: Phases 14, 15, 16 are architecturally independent (share only Phase 13 schema prerequisite) — Phase 17 requires Phase 16
-- D016: Phase 16 (Event Entities) has UI hint — entity list tab shows event-type entities
-- D017: Phase 14 uses reconstruct_page_offsets() to build page-offset array from unique page_start values in sorted document_chunk records; plain-text docs return null offsets
-- D018: Phase 15 uses UPDATE ... CONTENT with deterministic SHA256 record IDs for Temporal replay-safe log writes; fire-and-forget pattern with per-call SurrealDB connections
-- D019: Phase 16 uses DELETE (not UPDATE) for nullify step — prior event entities are deleted entirely since there is no event-entity-level merge use case yet
-- D020: Phase 16 RELATE matching uses CONTAINS both directions (entity_name CONTAINS verbatim_text AND verbatim_text CONTAINS entity_name) with deduplication for robustness
-- D021: Phase 16 extracts pure helper functions in test file for isolated unit testing of naming, properties, matching heuristic
-- D022: Phase 17 adds entity_id field on reference table (record<canonical_entity> | null) — authoritative link for search-first resolution
-- D023: Phase 17 exact match uses NFD+casefold normalization (unicodedata.normalize) for case-insensitive, accent-normalized comparison
-- D024: Phase 17 old resolve_entities_activity kept registered in worker but no longer called by workflow (backward compat)
-- D025: Phase 17 NFD normalization must strip combining marks after decomposition for true accent-insensitive comparison — unicodedata.combining() filter is necessary; NFD+casefold alone is insufficient
-- D026: Phase 18 README v4.0 features structured as brief subsections with forward links to full Processing Logs and Audit Trail sections to avoid content duplication
-- D027: Quick task 260603-wqw uses DEFINE FIELD OVERWRITE (not DEFINE FIELD) for schema migration compatibility on already-initialized schemas
-- D028: Quick task 260603-wqw uses retry loop (3x, 500ms) for DELETE chunk count check to handle race condition between worker chunking and verification
-- D029: Quick task 260604-h1i uses str(doc_rid) instead of f-string to stay DRY — RecordID already knows its format
 - D030: v5.0 phases start at Phase 19 (continuing from v4.0 Phase 18)
 - D031: v5.0 has 4 phases: Token Recording → API Aggregation → UI Display → No-Regression Verification
-- D032: Token data goes to dedicated `llm_usage` table (NOT ProcessingLogger's document_event_log) — per critical Pitfall #4 (100-entry cap)
-- D033: Deterministic SHA256 record IDs (`document_id:step_name:chunk_index`) + UPSERT for Temporal replay safety
-- D034: Token records included in nullify-then-recreate cycle (deleted on document reprocess/events-clear)
-
-### Pending Todos
-
-None — milestone just started.
+- D032: Token data goes to dedicated `llm_usage` table (NOT ProcessingLogger)
+- D033: Deterministic SHA256 record IDs + UPSERT for Temporal replay safety
+- D034: Token records included in nullify-then-recreate cycle
+- D035: llm_usage table uses composite index on (document, created_at)
+- D036: Cost field is float | null DEFAULT null (null when API doesn't report)
+- D037: OpenRouterProvider returns (parsed_json, usage_dict) tuple from public methods
+- D038: record_llm_usage() in dedicated llm_usage.py module with fire-and-forget pattern
+- D039: Token/cost columns in UI use tabular-nums font for alignment
+- D040: Tooltips in Spanish for all token/cost UI elements
 
 ### Blockers/Concerns
 
-- I-01 (CRITICAL): ProcessingLogger `$rid` syntax bug — **RESOLVED** (verified 0 occurrences in worker logs as of 2026-06-04)
-- I-03 (HIGH): SurrealDB in-memory storage — **RESOLVED** (verified rocksdb:/data persistence active as of 2026-06-04)
-- 260604-1px (MEDIUM): reference_type validation — **RESOLVED** (fix deployed; 1 stale Temporal replay remains, needs workflow termination)
-
-### Quick Tasks Completed
-
-- **2026-06-04** — `260604-hwn`: Consolidate to 3 e2e tests, remove verify scripts and unit tests
-  - Deleted 8 verify_s*.py scripts + test_llm.py (~6,500 lines of token-wasting code)
-  - Disabled 4 Python unit tests (renamed to .bak, preserved for reference)
-  - Consolidated e2e_pipeline.test.ts from 9 it() blocks to 3 essential e2e tests
-  - Updated package.json test script to target only e2e_pipeline.test.ts
-  - Commit: `537c0f2` (cleanup)
-  - SUMMARY: `.planning/quick/260604-hwn-we-have-way-too-many-tests-that-are-not-/260604-hwn-SUMMARY.md`
-
-- **2026-06-04** — `260604-h1i`: Fix doc_ref NameError in resolve_entities_with_search_activity
-  - Added missing `doc_ref = str(doc_rid)` at line 582 (fixes 48 crash instances)
-  - Rebuilt Docker worker image and restarted with fix
-  - Stuck workflow `doc-560521dc96614e1bbadd1ab37a505791` resolved (found already completed)
-  - Commit: `c96c9d2` (fix)
-  - SUMMARY: `.planning/quick/260604-h1i-review-docker-compose-worker-logs-and-fi/260604-h1i-SUMMARY.md`
-
-- **2026-06-04** — `260604-3x3`: Fix RecordID binding, IN subqueries → dot notation, remove result anti-pattern, consolidate tests
-  - Fixed silent data loss: RecordID parameter binding (strings → RecordID objects) and IN subqueries → dot notation for SurrealDB v3
-  - Removed extraction result dict from Temporal workflow payloads (activities now query DB directly)
-  - Consolidated 6 test files (43 tests) into 1 comprehensive E2E test with named entity content
-  - Commits: `a3a631d` (fix), `fc8bdd3` (test consolidation)
-  - SUMMARY: `.planning/quick/260604-3x3-review-current-document-logs-for-mini-es/260604-3x3-SUMMARY.md`
-
-- **2026-06-03** — `260603-u19`: Docker Compose log review (7 issues found: I-01 through I-07)
-  - REPORT: `.planning/quick/260603-u19-review-docker-compose-logs-and-report-po/260603-u19-REPORT.md`
-  - Blockers noted: I-01 (ProcessingLogger `$rid` syntax bug) and I-03 (SurrealDB in-memory storage) require fix before production deployment
-
-- **2026-06-04** — `260603-wqw`: Fix processing log storage and event entity schema (3 commits)
-  - I-02: Fixed `event_entity_link.event` schema from `record<event>` to `record<canonical_entity>` (DEFINE FIELD OVERWRITE)
-  - I-03: Added `--path /data` to SurrealDB start command for persistent storage
-  - I-05: Fixed integration test 4 (DELETE retry loop) and test 5 (text_content check replaces zero-chunk assertion)
-  - SUMMARY: `.planning/quick/260603-wqw-fix-processing-log-storage-and-event-ent/260603-wqw-SUMMARY.md`
-  - Residual: I-01 (ProcessingLogger `$rid` syntax bug) remains as CRITICAL blocker
-
-- **2026-06-04** — `260603-vk0`: Add document log inspection UI
-  - Added Logs tab with severity badges, pagination, expandable details, auto-refresh
-  - Direct link from Documents table via "View Logs" button
-
-- **2026-06-04** — `260603-wqw`: Fix processing log storage and event entity reference loading
-  - Fixed event_entity_link schema type (record<canonical_entity>), SurrealDB persistence (--path /data), integration tests
-
-- **2026-06-04** — `260604-19g`: Spanish UI translation + flicker-free content refresh
-  - Translated all UI text in `src/eth_pipeline/static/index.html` to Spanish/Castellano (tabs, headings, buttons, status labels, column headers, placeholders, empty states, pagination, tooltips, aria-labels)
-  - Added 200ms deferred loading pattern to eliminate loading-spinner flicker on fast fetches
-  - SUMMARY: `.planning/quick/260604-19g-refactor-one-page-web-ui-to-be-in-spanis/260604-19g-01-SUMMARY.md`
-
-- **2026-06-04** — `260604-1um`: CSS layout fixes — tab-bar vertical scrollbar + main container width
-  - Fix 1: Added `overflow-y: hidden` to nav CSS rule to prevent spurious vertical scrollbar on tab bar
-  - Fix 2: Widened `main` max-width from 960px to 1400px so 9-column documents table fits without horizontal scroll
-  - SUMMARY: `.planning/quick/260604-1um-review-full-ui-html-page-fix-that-the-ta/260604-1um-SUMMARY.md`
-
-- **2026-06-04** — `260604-1px`: Fix worker crash from invalid reference_type
-  - LLM was returning `reference_type="que_paso"` which violated SurrealDB schema assertion (`espacio|tiempo|humanos|objetos`)
-  - Clarified Spanish prompt in `llm.py` to prevent hallucination; added input validation in `store_extraction_results_activity` to skip invalid types
-  - Worker restarted successfully; 32 tests pass
-  - SUMMARY: `.planning/quick/260604-1px-fix-docker-compose-worker-crash-llm-retu/260604-1px-01-SUMMARY.md`
-
-- **2026-06-04** — `260604-279`: Worker log diagnostic — verify all fixes and find remaining errors
-  - Confirmed all 3 previous fixes deployed and functional (I-01, I-03, 260604-1px)
-  - Found 0 live code bugs; 1 stale Temporal replay (`doc-bc04801b2dfc49379a55767108eae2c9` — pre-fix `que_paso` in stored history)
-  - REPORT: `.planning/quick/260604-279-check-docker-compose-worker-logs-there-s/260604-279-REPORT.md`
-  - SUMMARY: `.planning/quick/260604-279-check-docker-compose-worker-logs-there-s/260604-279-SUMMARY.md`
-  - Recommended: terminate stuck workflow + re-upload document
-
-- **2026-06-04** — `260604-2oj`: Connect to SurrealDB and clean up orphan references
-  - Created `scripts/cleanup_orphan_references.py` — async CLI script with dry-run default mode
-  - Detected and deleted 463 orphan references (Type A: event missing)
-  - Verified: dry-run, verbose mode, and --execute all work correctly
-  - SUMMARY: `.planning/quick/260604-2oj-connect-to-surrealdb-and-clean-up-orphan/260604-2oj-SUMMARY.md`
-
-- **2026-06-04** — `260604-2v5`: Review integration tests and fix failures
-  - Fixed TS compilation error in pipeline_v4.test.ts (count result type guard)
-  - Fixed 5 test failures in 13-schema-evolution.test.ts (camelCase→snake_case field names, graceful DESCRIBE TABLE, field-based SQL)
-  - Result: 33→38 tests pass, 10→5 failures (remaining 5 are backend/Temporal infrastructure)
-  - SUMMARY: `.planning/quick/260604-2v5-review-status-of-integration-tests-and-m/260604-2v5-SUMMARY.md`
-
-- **2026-06-04** — `260604-3p8`: Fix cascade delete — RecordID bindings, event_entity_link + document_event_log cleanup, simplify tests
-  - Changed ALL DELETE query params from string `"document:{id}"` to `RecordID` objects (SurrealDB v3 fails to bind string doc refs in DELETE queries — root cause of 463 orphan references)
-  - Added `event_entity_link` cleanup to both `DELETE /documents/{id}` and `DELETE /documents/{id}/events`
-  - Added `document_event_log` cleanup to `DELETE /documents/{id}`
-  - Removed redundant retry loops and pre-delete chunk checks from tests
-  - Added comprehensive cascade-delete E2E test that verifies zero orphans
-  - Commit: `f88e54d`
-
-## Deferred Items
-
-Items acknowledged and carried forward from previous milestone close:
-
-| Category | Item | Status | Deferred At |
-|----------|------|--------|-------------|
-| *(none)* | | | |
-
-## Session Continuity
-
-Last session: 2026-06-04
-Stopped at: Quick task 260604-hwn completed (consolidated tests to 3 e2e, removed verify scripts and unit tests)
-Resume file: .planning/quick/260604-hwn-we-have-way-too-many-tests-that-are-not-/260604-hwn-SUMMARY.md
+All resolved. No open blockers.
 
 ## Operator Next Steps
 
-- Start the next milestone with /gsd-new-milestone
+- Next milestone: TBD — run `/gsd-new-milestone` to define the next project phase
