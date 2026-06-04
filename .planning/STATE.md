@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v4.0
 milestone_name: milestone
 status: executing
-stopped_at: Quick task 260603-wqw — completed
-last_updated: "2026-06-04T02:45:00.000Z"
-last_activity: 2026-06-04 - Completed quick task 260603-wqw: Fix processing log storage and event entity schema
+stopped_at: Quick task 260603-wqw completed (event entity schema fix, SurrealDB persistence, integration test fixes)
+last_updated: "2026-06-04T03:10:01.372Z"
+last_activity: 2026-06-04 -- Phase 19 execution started
 progress:
   total_phases: 6
-  completed_phases: 4
+  completed_phases: 6
   total_plans: 9
-  completed_plans: 8
-  percent: 89
+  completed_plans: 9
+  percent: 100
 ---
 
 # Project State
@@ -22,14 +22,14 @@ See: .planning/PROJECT.md (updated 2026-06-02)
 
 **Core value:** Every extracted event must be traceable to its exact source text in the original document, and every resolved entity must show its evidential references.
 
-**Current focus:** Phase 18 — README update (Plan 02 executed)
+**Current focus:** Phase 19 — api-split-and-bugfix
 
 ## Current Position
 
-Phase: 18 (full-integration-test-corpus-docs) — PLAN 02 EXECUTED
-Plan: 2 plans (Plan 01: test fixtures + integration tests — pending; Plan 02: README update — complete)
-Status: Plan 02 complete (README updated to 595 lines)
-Last activity: 2026-06-04 -- Quick task 260603-wqw completed (event entity schema fix, SurrealDB persistence, integration test fixes)
+Phase: 19 (api-split-and-bugfix) — EXECUTING
+Plan: 1 of 2
+Status: Executing Phase 19
+Last activity: 2026-06-04 -- Phase 19 execution started
 
 ## Performance Metrics
 

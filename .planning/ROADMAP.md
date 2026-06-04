@@ -282,6 +282,7 @@ Plans:
 **Plans**: 1 plan
 
 Plans:
+
 - [x] 14-01-PLAN.md — Reference offset computation (offsets.py, activity modification, unit tests)
 
 ### Phase 15: Per-Document Processing Logs
@@ -300,6 +301,7 @@ Plans:
 **Plans**: 1 plan
 
 Plans:
+
 - [x] 15-01-PLAN.md — ProcessingLogger, activity log calls, GET /documents/{id}/logs endpoint, tests
 
 ### Phase 16: Event Canonical Entities
@@ -318,6 +320,7 @@ Plans:
 **Plans**: 1 plan
 
 Plans:
+
 - [x] 16-01-PLAN.md — create_event_canonical_entities_activity, workflow/worker integration, UI Event filter, unit tests
 
 ### Phase 17: Search-First Entity Resolution
@@ -337,6 +340,7 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
+
 - [x] 17-01-PLAN.md — Schema + LLM changes + new activity + workflow/worker wiring
 - [x] 17-02-PLAN.md — Unit tests for search-first resolution logic
 
