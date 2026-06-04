@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v4.0
 milestone_name: milestone
 status: executing
-stopped_at: Quick task 260604-1um completed (CSS layout fixes: tab-bar scrollbar + main width)
-last_updated: "2026-06-04T04:24:00.000Z"
-last_activity: 2026-06-04 -- Quick task 260604-1um: CSS layout fixes — tab-bar vertical scrollbar + main container width
+stopped_at: Quick task 260604-279 completed (worker log diagnostic — all fixes verified, 0 live bugs)
+last_updated: "2026-06-04T04:43:36.000Z"
+last_activity: 2026-06-04 -- Quick task 260604-279: worker log diagnostic — all fixes verified, 0 live bugs, 1 stale Temporal replay
 progress:
   total_phases: 6
   completed_phases: 6
@@ -77,8 +77,9 @@ None — milestone just started.
 
 ### Blockers/Concerns
 
-- I-01 (CRITICAL): ProcessingLogger `$rid` syntax bug — await expression incorrectly uses `$rid` string literal instead of `f"${{{var}.id}}"` or `RecordID` object
-- See [REPORT.md](./quick/260603-u19-review-docker-compose-logs-and-report-po/260603-u19-REPORT.md) for full analysis
+- I-01 (CRITICAL): ProcessingLogger `$rid` syntax bug — **RESOLVED** (verified 0 occurrences in worker logs as of 2026-06-04)
+- I-03 (HIGH): SurrealDB in-memory storage — **RESOLVED** (verified rocksdb:/data persistence active as of 2026-06-04)
+- 260604-1px (MEDIUM): reference_type validation — **RESOLVED** (fix deployed; 1 stale Temporal replay remains, needs workflow termination)
 
 ### Quick Tasks Completed
 
@@ -116,6 +117,13 @@ None — milestone just started.
   - Worker restarted successfully; 32 tests pass
   - SUMMARY: `.planning/quick/260604-1px-fix-docker-compose-worker-crash-llm-retu/260604-1px-01-SUMMARY.md`
 
+- **2026-06-04** — `260604-279`: Worker log diagnostic — verify all fixes and find remaining errors
+  - Confirmed all 3 previous fixes deployed and functional (I-01, I-03, 260604-1px)
+  - Found 0 live code bugs; 1 stale Temporal replay (`doc-bc04801b2dfc49379a55767108eae2c9` — pre-fix `que_paso` in stored history)
+  - REPORT: `.planning/quick/260604-279-check-docker-compose-worker-logs-there-s/260604-279-REPORT.md`
+  - SUMMARY: `.planning/quick/260604-279-check-docker-compose-worker-logs-there-s/260604-279-SUMMARY.md`
+  - Recommended: terminate stuck workflow + re-upload document
+
 ## Deferred Items
 
 Items acknowledged and carried forward from previous milestone close:
@@ -127,5 +135,5 @@ Items acknowledged and carried forward from previous milestone close:
 ## Session Continuity
 
 Last session: 2026-06-04
-Stopped at: Quick task 260604-1um completed (CSS layout fixes: tab-bar scrollbar + main width)
-Resume file: .planning/quick/260604-1um-review-full-ui-html-page-fix-that-the-ta/260604-1um-SUMMARY.md
+Stopped at: Quick task 260604-279 completed (worker log diagnostic — all fixes verified, 0 live bugs)
+Resume file: .planning/quick/260604-279-check-docker-compose-worker-logs-there-s/260604-279-SUMMARY.md
