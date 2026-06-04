@@ -713,8 +713,7 @@ async def clear_document_events(document_id: str) -> EventsCleared:
         )
 
         await db.query(
-            "DELETE reference WHERE event IN "
-            "(SELECT id FROM event WHERE document = $doc_id)",
+            "DELETE reference WHERE event.document = $doc_id",
             {"doc_id": doc_id_obj},
         )
 
@@ -963,10 +962,21 @@ async def delete_document(document_id: str) -> DocumentDeleted:
             "AND canonical_entity IS NOT NULL",
             {"doc_id": doc_id_obj},
         )
-        affected_ce_rids = list({
-            r for r in (affected_ce_query or [])
-            if isinstance(r, str)
-        })
+        affected_ce_raw = await db.query(
+            "SELECT VALUE canonical_entity FROM reference "
+            "WHERE event.document = $doc_id "
+            "AND canonical_entity IS NOT NONE "
+            "AND canonical_entity IS NOT NULL",
+            {"doc_id": doc_id_obj},
+        )
+        from surrealdb.data.types.record_id import RecordID
+        affected_ce_rids: list[str] = []
+        for r in (affected_ce_raw or []):
+            if isinstance(r, str) and ":" in r:
+                parts = r.split(":", 1)
+                affected_ce_rids.append(RecordID(parts[0], parts[1]))
+            elif r is not None:
+                affected_ce_rids.append(str(r) if not isinstance(r, RecordID) else r)
 
         await db.query(
             "DELETE event_entity_link WHERE event IN ("
@@ -982,8 +992,7 @@ async def delete_document(document_id: str) -> DocumentDeleted:
         )
 
         await db.query(
-            "DELETE reference WHERE event IN "
-            "(SELECT id FROM event WHERE document = $doc_id)",
+            "DELETE reference WHERE event.document = $doc_id",
             {"doc_id": doc_id_obj},
         )
 
@@ -1002,17 +1011,25 @@ async def delete_document(document_id: str) -> DocumentDeleted:
             {"doc_id": doc_id_obj},
         )
 
+        # Delete event-type canonical entities created for this document
+        await db.query(
+            "DELETE canonical_entity "
+            "WHERE entity_type = 'event' AND properties.document_id = $doc_id",
+            {"doc_id": document_id},
+        )
+
         orphaned = 0
         if affected_ce_rids:
+            deduplicated = list({str(r) for r in affected_ce_rids})
             params = {f"ce_{i}": rid for i, rid in enumerate(affected_ce_rids)}
             rid_list = ", ".join(f"$ce_{i}" for i in range(len(affected_ce_rids)))
 
-            result = await db.query(
-                f"DELETE canonical_entity WHERE id IN [{rid_list}] "
-                f"AND count((SELECT id FROM reference WHERE canonical_entity = parent.id)) = 0",
+            orphaned = len(deduplicated)
+
+            await db.query(
+                f"DELETE canonical_entity WHERE id IN [{rid_list}]",
                 params,
             )
-            orphaned = result[0].get("count", 0) if result and isinstance(result[0], dict) else 0
 
         logger.info(
             "Deleted document %s (cascade complete, %d orphaned entities cleaned)",

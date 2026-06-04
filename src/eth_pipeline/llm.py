@@ -488,7 +488,7 @@ class OpenRouterProvider:
         if prior_events:
             user_parts.append(
                 "Ya has extraído los siguientes eventos de partes anteriores del documento:\n"
-                f"{json.dumps(prior_events, ensure_ascii=False, indent=2)}\n\n"
+                f"{json.dumps(prior_events, ensure_ascii=False, indent=2, default=str)}\n\n"
                 "A continuación se muestra una NUEVA parte del documento. "
                 "Extrae ÚNICAMENTE los eventos NUEVOS que no aparecen en la lista anterior. "
                 "No repitas eventos ya extraídos.\n"
@@ -543,15 +543,24 @@ class OpenRouterProvider:
     ) -> dict:
         """Build the API payload for entity resolution."""
         schema_json = json.dumps(ENTITY_RESOLUTION_SCHEMA, indent=2, ensure_ascii=False)
+        def _sanitize(obj):
+            if isinstance(obj, dict):
+                return {k: _sanitize(v) for k, v in obj.items()}
+            if isinstance(obj, list):
+                return [_sanitize(v) for v in obj]
+            return obj
+
+        sanitized_refs = _sanitize(references)
+        sanitized_entities = _sanitize(existing_entities)
         user_content = (
             f"Responde ÚNICAMENTE con un objeto JSON que se ajuste a este esquema:\n"
             f"```json\n{schema_json}\n```\n\n"
             "DOCUMENTO (contexto):\n"
             f"{document_context}\n\n"
             "REFERENCIAS A RESOLVER:\n"
-            f"{json.dumps(references, ensure_ascii=False, indent=2)}\n\n"
+            f"{json.dumps(sanitized_refs, ensure_ascii=False, indent=2, default=str)}\n\n"
              "ENTIDADES CANÓNICAS CANDIDATAS (PRE-FILTRADAS):\n"
-             f"{json.dumps(existing_entities, ensure_ascii=False, indent=2)}\n\n"
+             f"{json.dumps(sanitized_entities, ensure_ascii=False, indent=2, default=str)}\n\n"
              "Nota: Estas entidades candidatas han sido pre-filtradas de los resultados de búsqueda "
              "y representan las coincidencias más probables. Prioriza la coincidencia con un candidato "
              "antes de crear una nueva entidad."

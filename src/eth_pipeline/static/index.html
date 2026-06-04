@@ -987,6 +987,13 @@
       tabButton.setAttribute('aria-selected', 'true');
     }
 
+    let logsDocumentId = null;
+    let logsFilename = '';
+    let logsCurrentPage = 1;
+    let logsLoadingFlag = false;
+    let logsPollTimer = null;
+    let logsShouldPoll = false;
+
     switchTab('upload');
     updateLogsTabState();
 
@@ -1696,13 +1703,6 @@
     const logsPrevBtn = document.getElementById('logs-prev-btn');
     const logsNextBtn = document.getElementById('logs-next-btn');
     const logsPageInfo = document.getElementById('logs-page-info');
-
-    let logsDocumentId = null;
-    let logsFilename = '';
-    let logsCurrentPage = 1;
-    let logsLoadingFlag = false;
-    let logsPollTimer = null;
-    let logsShouldPoll = false;
 
     function updateLogsTabState() {
       const logsTabBtn = document.querySelector('nav button[data-tab="logs"]');

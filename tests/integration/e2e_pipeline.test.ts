@@ -69,14 +69,15 @@ const COMPREHENSIVE_CASE = [
 // Configuration
 // ---------------------------------------------------------------------------
 
-const POLL_INTERVAL = 2_000;
-const PROCESSING_TIMEOUT = 120_000;
+const POLL_INTERVAL = 3_000;
+const PROCESSING_TIMEOUT = 180_000;
 
 // ---------------------------------------------------------------------------
 // Test state
 // ---------------------------------------------------------------------------
 
 const testDocIds: string[] = [];
+let documentWasProcessed = false;
 
 // ---------------------------------------------------------------------------
 // Test suite — 3 focused e2e tests
@@ -126,12 +127,14 @@ describe("e2e — full pipeline (events, entities, references, delete)", () => {
         }
 
         if (currentStatus === "processed") {
+          documentWasProcessed = true;
           console.log(`✓ Document processed in ${PROCESSING_TIMEOUT - (deadline - Date.now())}ms`);
           break;
         }
 
         if (currentStatus === "failed") {
           console.log("ℹ  Document processing failed (LLM/Temporal may be unavailable)");
+          documentWasProcessed = false;
           return;
         }
 
@@ -139,12 +142,13 @@ describe("e2e — full pipeline (events, entities, references, delete)", () => {
           pendingPolls++;
           if (pendingPolls >= 3) {
             console.log("ℹ  No worker detected — document still pending after 3 polls");
+            documentWasProcessed = false;
             return;
           }
         }
       }
 
-      if (lastStatus !== "processed") {
+      if (!documentWasProcessed) {
         console.log("ℹ  Document not processed — skipping event verification");
         return;
       }
@@ -154,6 +158,10 @@ describe("e2e — full pipeline (events, entities, references, delete)", () => {
       );
       const eventCnt = rows.length > 0 ? ((rows[0] as any).cnt ?? 0) : 0;
       console.log(`✓ SurrealDB: ${eventCnt} total events`);
+
+      if (eventCnt === 0) {
+        console.log("ℹ  No events extracted (LLM may have returned empty result) — skipping entity assertions");
+      }
     });
   });
 
@@ -162,11 +170,77 @@ describe("e2e — full pipeline (events, entities, references, delete)", () => {
   // ===================================================================
   it("2. Entities + references generated", async () => {
     await skipIfDegraded(`${API_BASE}/health`, async () => {
+      if (!documentWasProcessed) {
+        console.log("ℹ  Document was not processed — skipping entity verification");
+        return;
+      }
+
       const docId = testDocIds[0];
       if (!docId) {
         console.log("ℹ  No document — skipping entity verification");
         return;
       }
+
+      // Check if events exist — LLM may return empty results
+      const eventCheck = await surrealQuery(
+        "SELECT count() as cnt FROM event",
+      );
+      const totalEvents = eventCheck.length > 0 ? ((eventCheck[0] as any).cnt ?? 0) : 0;
+      if (totalEvents === 0) {
+        console.log("ℹ  No events in DB — LLM returned empty result, skipping entity assertions");
+        return;
+      }
+
+      // SurrealDB: event canonical entities
+      const eventEntityRows = await surrealQuery(
+        "SELECT count() as cnt FROM canonical_entity WHERE entity_type = 'event'",
+      );
+      const ecnt = eventEntityRows.length > 0 ? ((eventEntityRows[0] as any).cnt ?? 0) : 0;
+      console.log(`✓ SurrealDB: ${ecnt} event canonical entities`);
+      assert.ok(ecnt > 0, `Expected >0 event canonical entities, got ${ecnt}`);
+
+      // SurrealDB: person canonical entities
+      const personRows = await surrealQuery(
+        "SELECT count() as cnt FROM canonical_entity WHERE entity_type = 'person'",
+      );
+      const pcnt = personRows.length > 0 ? ((personRows[0] as any).cnt ?? 0) : 0;
+      console.log(`✓ SurrealDB: ${pcnt} person canonical entities`);
+      assert.ok(pcnt > 0, `Expected >0 person canonical entities, got ${pcnt}`);
+
+      // SurrealDB: place canonical entities
+      const placeRows = await surrealQuery(
+        "SELECT count() as cnt FROM canonical_entity WHERE entity_type = 'place'",
+      );
+      const placeCnt = placeRows.length > 0 ? ((placeRows[0] as any).cnt ?? 0) : 0;
+      console.log(`✓ SurrealDB: ${placeCnt} place canonical entities`);
+      assert.ok(placeCnt > 0, `Expected >0 place canonical entities, got ${placeCnt}`);
+
+      // SurrealDB: object canonical entities
+      const objRows = await surrealQuery(
+        "SELECT count() as cnt FROM canonical_entity WHERE entity_type = 'object'",
+      );
+      const ocnt = objRows.length > 0 ? ((objRows[0] as any).cnt ?? 0) : 0;
+      console.log(`✓ SurrealDB: ${ocnt} object canonical entities`);
+      assert.ok(ocnt > 0, `Expected >0 object canonical entities, got ${ocnt}`);
+
+      // SurrealDB: references WITH canonical_entity set (resolved)
+      const resolvedRows = await surrealQuery(
+        "SELECT count() as cnt FROM reference "
+        + "WHERE event.document = $doc_rid "
+        + "AND canonical_entity IS NOT NONE",
+        { doc_rid: `document:${docId}` },
+      );
+      const resolvedCnt = resolvedRows.length > 0 ? ((resolvedRows[0] as any).cnt ?? 0) : 0;
+      console.log(`✓ SurrealDB: ${resolvedCnt} resolved references (canonical_entity set)`);
+      assert.ok(resolvedCnt > 0, `Expected >0 resolved references, got ${resolvedCnt}`);
+
+      // SurrealDB: event_entity_link edges
+      const edgeRows = await surrealQuery(
+        "SELECT count() as cnt FROM event_entity_link",
+      );
+      const edgeCnt = edgeRows.length > 0 ? ((edgeRows[0] as any).cnt ?? 0) : 0;
+      console.log(`✓ SurrealDB: ${edgeCnt} event_entity_link edges`);
+      // event_entity_link is optional (depends on CONTAINS matching) — just log
 
       // GraphQL: events
       const [, eventsParsed] = await graphqlQuery<{
@@ -178,6 +252,7 @@ describe("e2e — full pipeline (events, entities, references, delete)", () => {
       );
       const events = eventsParsed?.data?.event ?? [];
       console.log(`✓ GraphQL: ${events.length} events`);
+      assert.ok(events.length > 0, `Expected >0 events via GraphQL, got ${events.length}`);
 
       // GraphQL: references
       const [, refsParsed] = await graphqlQuery<{
@@ -189,20 +264,7 @@ describe("e2e — full pipeline (events, entities, references, delete)", () => {
       );
       const refs = refsParsed?.data?.reference ?? [];
       console.log(`✓ GraphQL: ${refs.length} references`);
-
-      // SurrealDB: event canonical entities
-      const entityRows = await surrealQuery(
-        "SELECT count() as cnt FROM canonical_entity WHERE entity_type = 'event'",
-      );
-      const ecnt = entityRows.length > 0 ? ((entityRows[0] as any).cnt ?? 0) : 0;
-      console.log(`✓ SurrealDB: ${ecnt} event canonical entities`);
-
-      // SurrealDB: event_entity_link edges
-      const edgeRows = await surrealQuery(
-        "SELECT count() as cnt FROM event_entity_link",
-      );
-      const edgeCnt = edgeRows.length > 0 ? ((edgeRows[0] as any).cnt ?? 0) : 0;
-      console.log(`✓ SurrealDB: ${edgeCnt} event_entity_link edges`);
+      assert.ok(refs.length > 0, `Expected >0 references via GraphQL, got ${refs.length}`);
 
       // SurrealDB: references via dot notation
       const refRows = await surrealQuery(
@@ -211,6 +273,7 @@ describe("e2e — full pipeline (events, entities, references, delete)", () => {
       );
       const refCnt = refRows.length > 0 ? ((refRows[0] as any).cnt ?? 0) : 0;
       console.log(`✓ SurrealDB: ${refCnt} references for document via dot notation`);
+      assert.ok(refCnt > 0, `Expected >0 references via dot notation, got ${refCnt}`);
     });
   });
 
@@ -227,6 +290,16 @@ describe("e2e — full pipeline (events, entities, references, delete)", () => {
 
       const [delStatus] = await httpDelete(`${API_BASE}/documents/${docId}`, 10_000);
       console.log(`✓ DELETE /documents/${docId} → HTTP ${delStatus}`);
+      assert.ok(delStatus === 200, `Expected HTTP 200 on delete, got ${delStatus}`);
+
+      // Document should be gone
+      const docRows = await surrealQuery(
+        "SELECT count() as cnt FROM document WHERE id = $rid",
+        { rid: `document:${docId}` },
+      );
+      const docCnt = docRows.length > 0 ? ((docRows[0] as any).cnt ?? 0) : 0;
+      console.log(`  Document records remaining: ${docCnt}`);
+      assert.equal(docCnt, 0, `Document should be fully deleted, got ${docCnt} remaining`);
 
       const eventRows = await surrealQuery(
         "SELECT count() as cnt FROM event WHERE document = $doc_rid",
@@ -234,6 +307,7 @@ describe("e2e — full pipeline (events, entities, references, delete)", () => {
       );
       const eventCnt = eventRows.length > 0 ? ((eventRows[0] as any).cnt ?? 0) : 0;
       console.log(`  Events remaining: ${eventCnt}`);
+      assert.equal(eventCnt, 0, `Events should be cascade-deleted, got ${eventCnt} remaining`);
 
       const refRows = await surrealQuery(
         "SELECT count() as cnt FROM reference WHERE event.document = $doc_rid",
@@ -241,6 +315,7 @@ describe("e2e — full pipeline (events, entities, references, delete)", () => {
       );
       const refCnt = refRows.length > 0 ? ((refRows[0] as any).cnt ?? 0) : 0;
       console.log(`  References remaining: ${refCnt}`);
+      assert.equal(refCnt, 0, `References should be cascade-deleted, got ${refCnt} remaining`);
 
       const logRows = await surrealQuery(
         "SELECT count() as cnt FROM document_event_log WHERE document = $doc_rid",
@@ -248,10 +323,9 @@ describe("e2e — full pipeline (events, entities, references, delete)", () => {
       );
       const logCnt = logRows.length > 0 ? ((logRows[0] as any).cnt ?? 0) : 0;
       console.log(`  Document logs remaining: ${logCnt}`);
+      assert.equal(logCnt, 0, `Logs should be cascade-deleted, got ${logCnt} remaining`);
 
-      if (eventCnt > 0 || refCnt > 0 || logCnt > 0) {
-        console.log("ℹ  Some records remain after delete (may be degraded-mode race condition)");
-      }
+      console.log("✓ Full cascade delete confirmed — zero orphans");
 
       // Remove from testDocIds since we already deleted it
       const idx = testDocIds.indexOf(docId);

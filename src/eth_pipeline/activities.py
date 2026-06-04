@@ -195,6 +195,8 @@ async def extract_events_activity(document_id: str) -> dict:
             len(all_events),
         )
         chunk_result = await provider.extract_events(chunk, prior_events=prior)
+        if isinstance(chunk_result, list):
+            chunk_result = {"events": chunk_result}
         chunk_events = chunk_result.get("events", [])
         activity.logger.info(
             "Chunk %d/%d returned %d events [document_id=%s]",
@@ -388,7 +390,8 @@ async def resolve_entities_activity(document_id: str) -> dict:
 
                 # Query existing canonical entities of this type
                 existing_raw = await db.query(
-                    "SELECT * FROM canonical_entity WHERE entity_type = $type",
+                    "SELECT id, name, entity_type, properties "
+                    "FROM canonical_entity WHERE entity_type = $type",
                     {"type": entity_type},
                 )
                 existing_entities = _extract_query_results(existing_raw)
@@ -724,7 +727,8 @@ async def resolve_entities_with_search_activity(document_id: str) -> dict:
 
                 # Query existing canonical entities of this type
                 existing_raw = await db.query(
-                    "SELECT * FROM canonical_entity WHERE entity_type = $type",
+                    "SELECT id, name, entity_type, properties "
+                    "FROM canonical_entity WHERE entity_type = $type",
                     {"type": entity_type},
                 )
                 existing_entities = _extract_query_results(existing_raw)
@@ -830,8 +834,9 @@ async def resolve_entities_with_search_activity(document_id: str) -> dict:
 
                                 for cand in _extract_query_results(candidate_raw):
                                     cand_id = cand.get("id")
-                                    if cand_id and cand_id not in seen_candidate_ids:
-                                        seen_candidate_ids.add(cand_id)
+                                    cand_key = str(cand_id) if cand_id else None
+                                    if cand_key and cand_key not in seen_candidate_ids:
+                                        seen_candidate_ids.add(cand_key)
                                         candidates.append(cand)
 
                         # Cap at 5, sorted by name length (shortest first)

@@ -116,20 +116,35 @@ class ProcessingLogger:
                 # updates on Temporal replay; created_at omitted because it has
                 # READONLY constraint and DEFAULT time::now()).
                 doc_record = RecordID("document", document_id)
-                await db.query(
-                    "UPSERT type::record('document_event_log', $rid) CONTENT { "
-                    "document: $doc, step_name: $step, "
-                    "severity: $sev, message: $msg, details: $det "
-                    "}",
-                    {
-                        "rid": record_id,
-                        "doc": doc_record,
-                        "step": step_name,
-                        "sev": severity,
-                        "msg": message,
-                        "det": details,
-                    },
-                )
+                if details is None:
+                    await db.query(
+                        "UPSERT type::record('document_event_log', $rid) CONTENT { "
+                        "document: $doc, step_name: $step, "
+                        "severity: $sev, message: $msg, details: null "
+                        "}",
+                        {
+                            "rid": record_id,
+                            "doc": doc_record,
+                            "step": step_name,
+                            "sev": severity,
+                            "msg": message,
+                        },
+                    )
+                else:
+                    await db.query(
+                        "UPSERT type::record('document_event_log', $rid) CONTENT { "
+                        "document: $doc, step_name: $step, "
+                        "severity: $sev, message: $msg, details: $det "
+                        "}",
+                        {
+                            "rid": record_id,
+                            "doc": doc_record,
+                            "step": step_name,
+                            "sev": severity,
+                            "msg": message,
+                            "det": details,
+                        },
+                    )
         except ConnectionError:
             logger.warning(
                 "ProcessingLogger: SurrealDB unavailable for document %s",
