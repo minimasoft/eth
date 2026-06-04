@@ -773,8 +773,11 @@ describe("v4.0 pipeline — offsets, logs, events, search-first", () => {
             if (totalResult) {
               const totalRows = extractSqlRows(totalResult);
               if (totalRows.length > 0) {
-                total = Number((totalRows[0].cnt as number | { value: number })?.value ??
-                  totalRows[0].cnt as number ?? 0);
+                const cntRaw = totalRows[0].cnt;
+                const cntVal = cntRaw && typeof cntRaw === "object"
+                  ? (cntRaw as Record<string, unknown>).value
+                  : cntRaw;
+                total = Number(cntVal ?? 0);
               }
             }
             totalRefs = total > 0 ? total : rows.length;
