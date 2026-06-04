@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v4.0
 milestone_name: milestone
 status: executing
-stopped_at: Phase 18 — plans created
-last_updated: "2026-06-04T00:45:00.000Z"
-last_activity: 2026-06-04 - Completed quick task 260603-vk0: Add document log inspection UI
+stopped_at: Quick task 260603-wqw — completed
+last_updated: "2026-06-04T02:45:00.000Z"
+last_activity: 2026-06-04 - Completed quick task 260603-wqw: Fix processing log storage and event entity schema
 progress:
   total_phases: 6
   completed_phases: 4
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-06-02)
 Phase: 18 (full-integration-test-corpus-docs) — PLAN 02 EXECUTED
 Plan: 2 plans (Plan 01: test fixtures + integration tests — pending; Plan 02: README update — complete)
 Status: Plan 02 complete (README updated to 595 lines)
-Last activity: 2026-06-03 -- Phase 18 Plan 02 executed (README update with v4.0 features, processing logs, audit trail)
+Last activity: 2026-06-04 -- Quick task 260603-wqw completed (event entity schema fix, SurrealDB persistence, integration test fixes)
 
 ## Performance Metrics
 
@@ -68,6 +68,8 @@ Recent decisions affecting current work:
 - D024: Phase 17 old resolve_entities_activity kept registered in worker but no longer called by workflow (backward compat)
 - D025: Phase 17 NFD normalization must strip combining marks after decomposition for true accent-insensitive comparison — unicodedata.combining() filter is necessary; NFD+casefold alone is insufficient
 - D026: Phase 18 README v4.0 features structured as brief subsections with forward links to full Processing Logs and Audit Trail sections to avoid content duplication
+- D027: Quick task 260603-wqw uses DEFINE FIELD OVERWRITE (not DEFINE FIELD) for schema migration compatibility on already-initialized schemas
+- D028: Quick task 260603-wqw uses retry loop (3x, 500ms) for DELETE chunk count check to handle race condition between worker chunking and verification
 
 ### Pending Todos
 
@@ -75,7 +77,7 @@ None — milestone just started.
 
 ### Blockers/Concerns
 
-- I-03 (MEDIUM): SurrealDB in-memory-only storage despite `/data` volume mount — all data lost on container restart
+- I-01 (CRITICAL): ProcessingLogger `$rid` syntax bug — await expression incorrectly uses `$rid` string literal instead of `f"${{{var}.id}}"` or `RecordID` object
 - See [REPORT.md](./quick/260603-u19-review-docker-compose-logs-and-report-po/260603-u19-REPORT.md) for full analysis
 
 ### Quick Tasks Completed
@@ -84,9 +86,19 @@ None — milestone just started.
   - REPORT: `.planning/quick/260603-u19-review-docker-compose-logs-and-report-po/260603-u19-REPORT.md`
   - Blockers noted: I-01 (ProcessingLogger `$rid` syntax bug) and I-03 (SurrealDB in-memory storage) require fix before production deployment
 
+- **2026-06-04** — `260603-wqw`: Fix processing log storage and event entity schema (3 commits)
+  - I-02: Fixed `event_entity_link.event` schema from `record<event>` to `record<canonical_entity>` (DEFINE FIELD OVERWRITE)
+  - I-03: Added `--path /data` to SurrealDB start command for persistent storage
+  - I-05: Fixed integration test 4 (DELETE retry loop) and test 5 (text_content check replaces zero-chunk assertion)
+  - SUMMARY: `.planning/quick/260603-wqw-fix-processing-log-storage-and-event-ent/260603-wqw-SUMMARY.md`
+  - Residual: I-01 (ProcessingLogger `$rid` syntax bug) remains as CRITICAL blocker
+
 - **2026-06-04** — `260603-vk0`: Add document log inspection UI
   - Added Logs tab with severity badges, pagination, expandable details, auto-refresh
   - Direct link from Documents table via "View Logs" button
+
+- **2026-06-04** — `260603-wqw`: Fix processing log storage and event entity reference loading
+  - Fixed event_entity_link schema type (record<canonical_entity>), SurrealDB persistence (--path /data), integration tests
 
 ## Deferred Items
 
@@ -98,6 +110,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-03
-Stopped at: Phase 18 Plan 02 completed (README update)
-Resume file: .planning/phases/18-full-integration-test-corpus-docs/18-02-SUMMARY.md
+Last session: 2026-06-04
+Stopped at: Quick task 260603-wqw completed (event entity schema fix, SurrealDB persistence, integration test fixes)
+Resume file: .planning/quick/260603-wqw-fix-processing-log-storage-and-event-ent/260603-wqw-SUMMARY.md
