@@ -243,7 +243,7 @@ async def extract_events_activity(document_id: str) -> dict:
 
 @activity.defn
 async def resolve_entities_activity(document_id: str) -> dict:
-    """Resolve verbatim references to canonical entities using LLM matching.
+    """Resolve verbatim references to canonical entities using LLM grouping + DB dedup.
 
     **Replay-safe**: First nullifies any prior ``canonical_entity`` and
     ``resolution_confidence`` links on all references for this document, then
@@ -258,20 +258,19 @@ async def resolve_entities_activity(document_id: str) -> dict:
                   canonical entity category in this model)
 
     For each present reference type, the activity:
-      1. Queries existing ``canonical_entity`` records of that type.
-      2. Calls ``OpenRouterProvider.resolve_references()`` (batched per type).
-      3. Applies results: creates new canonical entities when the LLM says
-         ``create_new``, links references to existing entities via
-         ``match_existing``, or creates tentative entities for ``uncertain``.
-      4. Updates each reference's ``canonical_entity`` and
-         ``resolution_confidence`` fields.
+      1. Batches references by estimated token count (≤~240K tokens per batch).
+      2. Calls ``OpenRouterProvider.resolve_references()`` to group references
+         into entities (LLM infers entity names/types — no document context sent).
+      3. For each LLM entity group, programmatically matches against existing
+         ``canonical_entity`` records (NFD+casefold exact match → fuzzy
+         bidirectional CONTAINS → create new).
+      4. Links each reference to the matched or created entity.
 
-    LLM failures for individual type batches are logged but do **not** block
+    LLM failures for individual batches are logged but do **not** block
     resolution of other reference types.
 
     Queries event count and references directly from SurrealDB — does NOT
-    accept the LLM extraction result dict.  The document's ``text_content``
-    is queried directly from SurrealDB for the LLM context window.
+    accept the LLM extraction result dict.
 
     Parameters
     ----------
@@ -374,16 +373,7 @@ async def resolve_entities_activity(document_id: str) -> dict:
             )
 
             # ------------------------------------------------------------------
-            # Fetch document context for LLM prompts
-            # ------------------------------------------------------------------
-            doc_raw = await db.query(
-                f"SELECT text_content FROM {doc_ref}",
-            )
-            doc_rows = _extract_query_results(doc_raw)
-            document_context = doc_rows[0].get("text_content", "") if doc_rows else ""
-
-            # ------------------------------------------------------------------
-            # 4. Resolve each type group via LLM
+            # 4. Resolve each type group via batched LLM grouping + code-side DB dedup
             # ------------------------------------------------------------------
             api_key = os.environ.get("OPENROUTER_API_KEY")
             if not api_key:
@@ -403,11 +393,66 @@ async def resolve_entities_activity(document_id: str) -> dict:
             total_resolved = 0
             total_created = 0
 
+            def _normalize(text: str) -> str:
+                nfd = unicodedata.normalize("NFD", text)
+                stripped = "".join(c for c in nfd if unicodedata.combining(c) == 0)
+                return stripped.casefold()
+
+            async def _dedup_and_link(
+                db_conn,
+                entity_name: str,
+                entity_type: str,
+                ref_ids: list[str],
+                existing_entities_list: list[dict],
+            ) -> int:
+                nonlocal total_created
+                norm_name = _normalize(entity_name)
+                matched_ce_id = None
+
+                for ent in existing_entities_list:
+                    ent_name = ent.get("name", "")
+                    if ent_name and _normalize(ent_name) == norm_name:
+                        matched_ce_id = ent.get("id")
+                        break
+
+                if matched_ce_id is None and existing_entities_list:
+                    for ent in existing_entities_list:
+                        ent_name = ent.get("name", "") or ""
+                        if norm_name in _normalize(ent_name) or _normalize(ent_name) in norm_name:
+                            matched_ce_id = ent.get("id")
+                            break
+
+                if matched_ce_id is None:
+                    created_id = await _create_canonical_entity(
+                        db_conn, entity_name, entity_type, {},
+                    )
+                    if created_id:
+                        matched_ce_id = created_id
+                        total_created += 1
+
+                linked = 0
+                if matched_ce_id:
+                    for rid in ref_ids:
+                        try:
+                            await db_conn.query(
+                                f"UPDATE {rid} SET "
+                                f"entity_id = $eid, "
+                                f"canonical_entity = $ce, "
+                                f"resolution_confidence = 1.0",
+                                {"eid": matched_ce_id, "ce": matched_ce_id},
+                            )
+                            linked += 1
+                        except Exception as exc:
+                            activity.logger.error(
+                                "Failed to update reference %s: %s",
+                                rid, exc,
+                            )
+                return linked
+
             for entity_type, refs in groups.items():
                 if not refs:
                     continue
 
-                # Query existing canonical entities of this type
                 existing_raw = await db.query(
                     "SELECT id, name, entity_type, properties "
                     "FROM canonical_entity WHERE entity_type = $type",
@@ -416,130 +461,108 @@ async def resolve_entities_activity(document_id: str) -> dict:
                 existing_entities = _extract_query_results(existing_raw)
 
                 activity.logger.info(
-                    "Resolving %d %s references against %d existing entities "
-                    "[document_id=%s]",
-                    len(refs),
-                    entity_type,
-                    len(existing_entities),
-                    document_id,
+                    "Resolving %d %s references [document_id=%s]",
+                    len(refs), entity_type, document_id,
                 )
                 await _log.log(document_id, "resolve_entities", "info",
                                f"Resolving {len(refs)} {entity_type} references")
 
-                # ---- LLM batch resolution ----
-                try:
-                    resolution, usage = await provider.resolve_references(
-                        references=refs,
-                        existing_entities=existing_entities,
-                        document_context=document_context,
-                    )
-                except Exception as exc:
-                    activity.logger.error(
-                        "LLM resolution failed for %s references "
-                        "[document_id=%s]: %s",
-                        entity_type,
-                        document_id,
-                        exc,
-                    )
-                    await _log.log(document_id, "resolve_entities", "warning",
-                                   f"LLM resolution failed for {entity_type} references",
-                                   {"error": str(exc)[:200]})
-                    continue
+                # Batch refs and call LLM for grouping
+                batches = OpenRouterProvider.batch_references(refs)
 
-                if usage is not None:
-                    await record_llm_usage(
-                        db_params=params,
-                        document_id=document_id,
-                        step_name="resolve_entities",
-                        chunk_index=0,
-                        model=model,
-                        prompt_tokens=usage["prompt_tokens"],
-                        completion_tokens=usage["completion_tokens"],
-                        total_tokens=usage["total_tokens"],
-                        duration_ms=usage["duration_ms"],
-                        cached_tokens=usage.get("cached_tokens"),
-                        cache_write_tokens=usage.get("cache_write_tokens"),
-                        reasoning_tokens=usage.get("reasoning_tokens"),
-                        cost=usage.get("cost"),
-                        cost_source="openrouter" if usage.get("cost") is not None else None,
-                    )
-
-                resolutions = resolution.get("resolutions", [])
-                if not resolutions:
-                    activity.logger.warning(
-                        "LLM returned empty resolutions for %s references "
+                for batch_idx, batch in enumerate(batches):
+                    activity.logger.info(
+                        "LLM grouping batch %d/%d [type=%s] [refs=%d] "
                         "[document_id=%s]",
-                        entity_type,
-                        document_id,
+                        batch_idx + 1, len(batches), entity_type,
+                        len(batch), document_id,
                     )
-                    await _log.log(document_id, "resolve_entities", "warning",
-                                   f"LLM returned empty resolutions for {entity_type} references")
-                    continue
 
-                # Build verbatim_text → [ref_id] lookup
-                verbatim_to_refs: dict[str, list[str]] = {}
-                for r in refs:
-                    vt = r.get("verbatim_text", "")
-                    rid = r.get("id")
-                    if vt and rid:
-                        verbatim_to_refs.setdefault(vt, []).append(rid)
-
-                # ---- Apply each resolution ----
-                for res in resolutions:
-                    ref_text = res.get("reference_verbatim", "")
-                    action = res.get("action", "uncertain")
-                    confidence = float(res.get("confidence", 0.5))
-                    matched_ids = verbatim_to_refs.get(ref_text, [])
-
-                    if not matched_ids:
-                        activity.logger.debug(
-                            "No matching reference for verbatim '%s' "
-                            "[document_id=%s]",
-                            ref_text,
-                            document_id,
+                    try:
+                        resolution, usage = await provider.resolve_references(
+                            references=batch,
                         )
+                    except Exception as exc:
+                        activity.logger.error(
+                            "LLM grouping failed for %s batch %d/%d "
+                            "[document_id=%s]: %s",
+                            entity_type, batch_idx + 1, len(batches),
+                            document_id, exc,
+                        )
+                        await _log.log(document_id, "resolve_entities", "warning",
+                                       f"LLM grouping failed for {entity_type} "
+                                       f"batch {batch_idx + 1}/{len(batches)}",
+                                       {"error": str(exc)[:200]})
                         continue
 
-                    if action == "create_new":
-                        ce_id = await _create_canonical_entity(
-                            db,
-                            res.get("new_entity_name", ref_text),
-                            res.get("new_entity_type", entity_type),
-                            res.get("new_entity_properties") or {},
-                        )
-                    elif action == "match_existing":
-                        ce_id = res.get("matched_entity_id")
-                    else:  # uncertain
-                        # Create a tentative entity for later human review
-                        ce_id = await _create_canonical_entity(
-                            db,
-                            res.get("new_entity_name", ref_text),
-                            res.get("new_entity_type", entity_type),
-                            res.get("new_entity_properties") or {},
+                    if usage is not None:
+                        await record_llm_usage(
+                            db_params=params,
+                            document_id=document_id,
+                            step_name="resolve_entities",
+                            chunk_index=batch_idx,
+                            model=model,
+                            prompt_tokens=usage["prompt_tokens"],
+                            completion_tokens=usage["completion_tokens"],
+                            total_tokens=usage["total_tokens"],
+                            duration_ms=usage["duration_ms"],
+                            cached_tokens=usage.get("cached_tokens"),
+                            cache_write_tokens=usage.get("cache_write_tokens"),
+                            reasoning_tokens=usage.get("reasoning_tokens"),
+                            cost=usage.get("cost"),
+                            cost_source="openrouter" if usage.get("cost") is not None else None,
                         )
 
-                    if ce_id:
-                        total_created += 1 if action in ("create_new", "uncertain") else 0
-                        for rid in matched_ids:
-                            try:
-                                # SurrealDB Python SDK supports UPDATE with
-                                # variable binding for SET values even when
-                                # the target uses an f-string record ref.
-                                await db.query(
-                                    f"UPDATE {rid} SET "
-                                    f"canonical_entity = $ce, "
-                                    f"resolution_confidence = $conf",
-                                    {"ce": ce_id, "conf": confidence},
+                    groups_from_llm = resolution.get("groups", [])
+                    if not groups_from_llm:
+                        activity.logger.warning(
+                            "LLM returned no groups for %s batch %d/%d "
+                            "[document_id=%s] — treating each reference "
+                            "as its own entity",
+                            entity_type, batch_idx + 1, len(batches),
+                            document_id,
+                        )
+                        for ref in batch:
+                            vt = ref.get("verbatim_text", "") or "unknown"
+                            rid = ref.get("id")
+                            if rid:
+                                linked = await _dedup_and_link(
+                                    db, vt, entity_type, [rid],
+                                    existing_entities,
                                 )
-                                total_resolved += 1
-                            except Exception as exc:
-                                activity.logger.error(
-                                    "Failed to update reference %s with "
-                                    "canonical_entity %s: %s",
-                                    rid,
-                                    ce_id,
-                                    exc,
-                                )
+                                total_resolved += linked
+                        continue
+
+                    # Build verbatim_text → [ref_id] lookup
+                    verbatim_to_refs: dict[str, list[str]] = {}
+                    for r in batch:
+                        vt = r.get("verbatim_text", "")
+                        rid = r.get("id")
+                        if vt and rid:
+                            verbatim_to_refs.setdefault(vt, []).append(rid)
+
+                    # Apply LLM groups: match/merge with DB per group
+                    for ent_group in groups_from_llm:
+                        entity_name = ent_group.get("entity_name", "").strip()
+                        inferred_type = ent_group.get("entity_type", entity_type)
+                        verbatim_texts = ent_group.get("verbatim_texts", [])
+
+                        if not entity_name or not verbatim_texts:
+                            continue
+
+                        group_ref_ids: list[str] = []
+                        for vt in verbatim_texts:
+                            ids = verbatim_to_refs.get(vt, [])
+                            group_ref_ids.extend(ids)
+
+                        if not group_ref_ids:
+                            continue
+
+                        linked = await _dedup_and_link(
+                            db, entity_name, inferred_type,
+                            group_ref_ids, existing_entities,
+                        )
+                        total_resolved += linked
 
             activity.logger.info(
                 "resolve_entities_activity completed [document_id=%s] "
@@ -582,21 +605,23 @@ async def resolve_entities_activity(document_id: str) -> dict:
 
 @activity.defn
 async def resolve_entities_with_search_activity(document_id: str) -> dict:
-    """Resolve verbatim references to canonical entities using search-first resolution.
+    """Resolve verbatim references to canonical entities using grouping + DB dedup.
 
     **Replay-safe**: First nullifies any prior ``canonical_entity``,
     ``entity_id``, and ``resolution_confidence`` links on all references
     for this document, then re-resolves from scratch.
 
-    **Search-first flow:**
+    **Flow:**
       1. Exact match (NFD+casefold normalized) — if a reference's verbatim
          text matches an existing entity name exactly, set ``entity_id``
          and ``canonical_entity`` directly without an LLM call.
-      2. Fuzzy candidate search — for remaining references, use bidirectional
-         CONTAINS to find up to 5 candidate entities.
-      3. LLM candidate resolution — remaining references are sent to the LLM
-         with the candidate list. The LLM can ``match_existing`` (with
-         ``matched_candidate_id``), ``create_new``, or ``uncertain``.
+      2. LLM grouping — remaining references are sent to the LLM in batches
+         (each batch ≤ ~240K estimated tokens). The LLM groups references
+         that refer to the same entity and infers entity names/types.
+      3. DB dedup — for each LLM entity group, programmatically match
+         against existing ``canonical_entity`` records (exact NFD+casefold
+         match → fuzzy bidirectional CONTAINS → create new). This avoids
+         sending the full document text or existing entity lists to the LLM.
 
     References are grouped by ``reference_type`` with the same mapping as
     ``resolve_entities_activity``.
@@ -619,7 +644,6 @@ async def resolve_entities_with_search_activity(document_id: str) -> dict:
     params = _db_params()
     _log = ProcessingLogger(params)
     doc_rid = RecordID("document", document_id)
-    doc_ref = str(doc_rid)
 
     activity.logger.info(
         "resolve_entities_with_search_activity called "
@@ -723,14 +747,7 @@ async def resolve_entities_with_search_activity(document_id: str) -> dict:
             )
 
             # ------------------------------------------------------------------
-            # Fetch document context for LLM prompts
-            # ------------------------------------------------------------------
-            doc_raw = await db.query(f"SELECT text_content FROM {doc_ref}")
-            doc_rows = _extract_query_results(doc_raw)
-            document_context = doc_rows[0].get("text_content", "") if doc_rows else ""
-
-            # ------------------------------------------------------------------
-            # 4. Resolve each type group via search-first resolution
+            # 4. Resolve each type group via batched LLM grouping + code-side DB dedup
             # ------------------------------------------------------------------
             api_key = os.environ.get("OPENROUTER_API_KEY")
             if not api_key:
@@ -752,11 +769,70 @@ async def resolve_entities_with_search_activity(document_id: str) -> dict:
             total_llm_calls = 0
             total_exact_matches = 0
 
-            # Internal helper for accent-normalized comparison
             def _normalize(text: str) -> str:
                 nfd = unicodedata.normalize("NFD", text)
                 stripped = "".join(c for c in nfd if unicodedata.combining(c) == 0)
                 return stripped.casefold()
+
+            async def _dedup_and_link(
+                db_conn,
+                entity_name: str,
+                entity_type: str,
+                ref_ids: list[str],
+                existing_entities_list: list[dict],
+            ) -> int:
+                """Match entity_name against DB, create if new, link all ref_ids.
+
+                Returns the number of references resolved.
+                """
+                nonlocal total_created
+                norm_name = _normalize(entity_name)
+                matched_ce_id = None
+
+                # 1. Exact match (NFD+casefold) against existing entities
+                for ent in existing_entities_list:
+                    ent_name = ent.get("name", "")
+                    if ent_name and _normalize(ent_name) == norm_name:
+                        matched_ce_id = ent.get("id")
+                        break
+
+                # 2. Fuzzy match (bidirectional CONTAINS) if no exact match
+                if matched_ce_id is None and existing_entities_list:
+                    for ent in existing_entities_list:
+                        ent_name = ent.get("name", "") or ""
+                        if norm_name in _normalize(ent_name) or _normalize(ent_name) in norm_name:
+                            matched_ce_id = ent.get("id")
+                            break
+
+                # 3. Create new entity if no match
+                if matched_ce_id is None:
+                    created_id = await _create_canonical_entity(
+                        db_conn, entity_name, entity_type, {},
+                    )
+                    if created_id:
+                        matched_ce_id = created_id
+                        total_created += 1
+
+                # 4. Link all references to the matched/created entity
+                linked = 0
+                if matched_ce_id:
+                    for rid in ref_ids:
+                        try:
+                            await db_conn.query(
+                                f"UPDATE {rid} SET "
+                                f"entity_id = $eid, "
+                                f"canonical_entity = $ce, "
+                                f"resolution_confidence = 1.0",
+                                {"eid": matched_ce_id, "ce": matched_ce_id},
+                            )
+                            linked += 1
+                        except Exception as exc:
+                            activity.logger.error(
+                                "Failed to update reference %s with "
+                                "entity_id %s: %s",
+                                rid, matched_ce_id, exc,
+                            )
+                return linked
 
             for entity_type, refs in groups.items():
                 if not refs:
@@ -771,7 +847,7 @@ async def resolve_entities_with_search_activity(document_id: str) -> dict:
                 existing_entities = _extract_query_results(existing_raw)
 
                 activity.logger.info(
-                    "Search-first resolution [type=%s] [refs=%d] "
+                    "Grouping resolution [type=%s] [refs=%d] "
                     "[existing_entities=%d] [document_id=%s]",
                     entity_type,
                     len(refs),
@@ -779,11 +855,11 @@ async def resolve_entities_with_search_activity(document_id: str) -> dict:
                     document_id,
                 )
                 await _log.log(document_id, "resolve_entities_search", "info",
-                               f"Search-first resolution for {len(refs)} "
+                               f"Grouping resolution for {len(refs)} "
                                f"{entity_type} references")
 
                 # ---------------------------------------------------------------
-                # 4a. Exact match pass (NFD + casefold)
+                # 4a. Exact match pass (NFD + casefold) — no LLM needed
                 # ---------------------------------------------------------------
                 remaining_refs: list[dict] = []
                 exact_match_count = 0
@@ -800,7 +876,6 @@ async def resolve_entities_with_search_activity(document_id: str) -> dict:
                     for entity in existing_entities:
                         entity_name = entity.get("name", "")
                         if entity_name and _normalize(entity_name) == norm_vt:
-                            # Exact match — auto-assign without LLM
                             entity_id_val = entity.get("id")
                             if entity_id_val:
                                 try:
@@ -834,199 +909,132 @@ async def resolve_entities_with_search_activity(document_id: str) -> dict:
                     if not matched:
                         remaining_refs.append(ref)
 
-                # ---------------------------------------------------------------
-                # 4b. Fuzzy candidate pass for remaining references
-                # ---------------------------------------------------------------
-                candidates: list[dict] = []
-                if remaining_refs and existing_entities:
-                    # Build candidate pool from verbatim texts of remaining refs
-                    verbatim_texts = [
-                        r.get("verbatim_text", "") for r in remaining_refs
-                        if r.get("verbatim_text")
-                    ]
-
-                    if verbatim_texts:
-                        # We need to query candidates for each verbatim text
-                        # and deduplicate
-                        seen_candidate_ids: set[str] = set()
-                        for vt in verbatim_texts:
-                            # Bidirectional CONTAINS
-                            for direction in ["forward", "reverse"]:
-                                if direction == "forward":
-                                    candidate_raw = await db.query(
-                                        "SELECT id, name, entity_type, properties "
-                                        "FROM canonical_entity "
-                                        "WHERE entity_type = $type "
-                                        "AND name CONTAINS $vt",
-                                        {"type": entity_type, "vt": vt},
-                                    )
-                                else:
-                                    candidate_raw = await db.query(
-                                        "SELECT id, name, entity_type, properties "
-                                        "FROM canonical_entity "
-                                        "WHERE entity_type = $type "
-                                        "AND $vt CONTAINS name",
-                                        {"type": entity_type, "vt": vt},
-                                    )
-
-                                for cand in _extract_query_results(candidate_raw):
-                                    cand_id = cand.get("id")
-                                    cand_key = str(cand_id) if cand_id else None
-                                    if cand_key and cand_key not in seen_candidate_ids:
-                                        seen_candidate_ids.add(cand_key)
-                                        candidates.append(cand)
-
-                        # Cap at 5, sorted by name length (shortest first)
-                        candidates.sort(key=lambda c: len(c.get("name", "") or ""))
-                        candidates = candidates[:5]
-
                 activity.logger.info(
-                    "Search-first resolution [type=%s]: %d exact matches, "
-                    "%d references for LLM, %d candidates provided "
-                    "[document_id=%s]",
+                    "Grouping resolution [type=%s]: %d exact matches, "
+                    "%d references for LLM grouping [document_id=%s]",
                     entity_type,
                     exact_match_count,
                     len(remaining_refs),
-                    len(candidates),
                     document_id,
                 )
                 await _log.log(document_id, "resolve_entities_search", "info",
                                f"{entity_type}: {exact_match_count} exact matches, "
-                               f"{len(remaining_refs)} for LLM, "
-                               f"{len(candidates)} candidates",
+                               f"{len(remaining_refs)} for LLM grouping",
                                {
                                    "entity_type": entity_type,
                                    "exact_matches": exact_match_count,
                                    "llm_refs": len(remaining_refs),
-                                   "candidates": len(candidates),
                                })
 
                 # ---------------------------------------------------------------
-                # 4c. LLM call (if remaining references exist)
+                # 4b. Batch remaining refs and call LLM for grouping
                 # ---------------------------------------------------------------
                 if not remaining_refs:
                     continue
 
-                try:
-                    resolution, usage = await provider.resolve_references(
-                        references=remaining_refs,
-                        existing_entities=candidates,
-                        document_context=document_context,
-                    )
-                    total_llm_calls += 1
-                except Exception as exc:
-                    activity.logger.error(
-                        "LLM resolution failed for %s references "
-                        "[document_id=%s]: %s",
-                        entity_type,
-                        document_id,
-                        exc,
-                    )
-                    await _log.log(document_id, "resolve_entities_search",
-                                   "warning",
-                                   f"LLM resolution failed for {entity_type} "
-                                   f"references",
-                                   {"error": str(exc)[:200]})
-                    continue
+                batches = OpenRouterProvider.batch_references(remaining_refs)
 
-                if usage is not None:
-                    await record_llm_usage(
-                        db_params=params,
-                        document_id=document_id,
-                        step_name="resolve_entities_with_search",
-                        chunk_index=0,
-                        model=model,
-                        prompt_tokens=usage["prompt_tokens"],
-                        completion_tokens=usage["completion_tokens"],
-                        total_tokens=usage["total_tokens"],
-                        duration_ms=usage["duration_ms"],
-                        cached_tokens=usage.get("cached_tokens"),
-                        cache_write_tokens=usage.get("cache_write_tokens"),
-                        reasoning_tokens=usage.get("reasoning_tokens"),
-                        cost=usage.get("cost"),
-                        cost_source="openrouter" if usage.get("cost") is not None else None,
-                    )
-
-                resolutions = resolution.get("resolutions", [])
-                if not resolutions:
-                    activity.logger.warning(
-                        "LLM returned empty resolutions for %s references "
+                for batch_idx, batch in enumerate(batches):
+                    activity.logger.info(
+                        "LLM grouping batch %d/%d [type=%s] [refs=%d] "
                         "[document_id=%s]",
-                        entity_type,
-                        document_id,
+                        batch_idx + 1, len(batches), entity_type,
+                        len(batch), document_id,
                     )
-                    await _log.log(
-                        document_id, "resolve_entities_search", "warning",
-                        f"LLM returned empty resolutions for "
-                        f"{entity_type} references",
-                    )
-                    continue
 
-                # Build verbatim_text → [ref_id] lookup for remaining refs
-                verbatim_to_refs: dict[str, list[str]] = {}
-                for r in remaining_refs:
-                    vt = r.get("verbatim_text", "")
-                    rid = r.get("id")
-                    if vt and rid:
-                        verbatim_to_refs.setdefault(vt, []).append(rid)
-
-                # ---------------------------------------------------------------
-                # 4d. Apply LLM results
-                # ---------------------------------------------------------------
-                for res in resolutions:
-                    ref_text = res.get("reference_verbatim", "")
-                    action = res.get("action", "uncertain")
-                    confidence = float(res.get("confidence", 0.5))
-                    matched_ids = verbatim_to_refs.get(ref_text, [])
-
-                    if not matched_ids:
-                        activity.logger.debug(
-                            "No matching reference for verbatim '%s' "
-                            "[document_id=%s]",
-                            ref_text,
-                            document_id,
+                    try:
+                        resolution, usage = await provider.resolve_references(
+                            references=batch,
                         )
+                        total_llm_calls += 1
+                    except Exception as exc:
+                        activity.logger.error(
+                            "LLM grouping failed for %s batch %d/%d "
+                            "[document_id=%s]: %s",
+                            entity_type, batch_idx + 1, len(batches),
+                            document_id, exc,
+                        )
+                        await _log.log(document_id, "resolve_entities_search",
+                                       "warning",
+                                       f"LLM grouping failed for {entity_type} "
+                                       f"batch {batch_idx + 1}/{len(batches)}",
+                                       {"error": str(exc)[:200]})
                         continue
 
-                    if action == "create_new":
-                        ce_id = await _create_canonical_entity(
-                            db,
-                            res.get("new_entity_name", ref_text),
-                            res.get("new_entity_type", entity_type),
-                            res.get("new_entity_properties") or {},
-                        )
-                    elif action == "match_existing":
-                        # Try matched_candidate_id first, fall back to
-                        # matched_entity_id for backward compatibility
-                        ce_id = res.get("matched_candidate_id") or res.get("matched_entity_id")
-                    else:  # uncertain
-                        ce_id = await _create_canonical_entity(
-                            db,
-                            res.get("new_entity_name", ref_text),
-                            res.get("new_entity_type", entity_type),
-                            res.get("new_entity_properties") or {},
+                    if usage is not None:
+                        await record_llm_usage(
+                            db_params=params,
+                            document_id=document_id,
+                            step_name="resolve_entities_with_search",
+                            chunk_index=batch_idx,
+                            model=model,
+                            prompt_tokens=usage["prompt_tokens"],
+                            completion_tokens=usage["completion_tokens"],
+                            total_tokens=usage["total_tokens"],
+                            duration_ms=usage["duration_ms"],
+                            cached_tokens=usage.get("cached_tokens"),
+                            cache_write_tokens=usage.get("cache_write_tokens"),
+                            reasoning_tokens=usage.get("reasoning_tokens"),
+                            cost=usage.get("cost"),
+                            cost_source="openrouter" if usage.get("cost") is not None else None,
                         )
 
-                    if ce_id:
-                        total_created += 1 if action in ("create_new", "uncertain") else 0
-                        for rid in matched_ids:
-                            try:
-                                await db.query(
-                                    f"UPDATE {rid} SET "
-                                    f"entity_id = $eid, "
-                                    f"canonical_entity = $ce, "
-                                    f"resolution_confidence = $conf",
-                                    {"eid": ce_id, "ce": ce_id, "conf": confidence},
+                    groups_from_llm = resolution.get("groups", [])
+                    if not groups_from_llm:
+                        activity.logger.warning(
+                            "LLM returned no groups for %s batch %d/%d "
+                            "[document_id=%s] — treating each reference "
+                            "as its own entity",
+                            entity_type, batch_idx + 1, len(batches),
+                            document_id,
+                        )
+                        # Fallback: treat each reference as its own entity
+                        for ref in batch:
+                            vt = ref.get("verbatim_text", "") or "unknown"
+                            rid = ref.get("id")
+                            if rid:
+                                linked = await _dedup_and_link(
+                                    db, vt, entity_type, [rid],
+                                    existing_entities,
                                 )
-                                total_resolved += 1
-                            except Exception as exc:
-                                activity.logger.error(
-                                    "Failed to update reference %s with "
-                                    "entity_id %s: %s",
-                                    rid,
-                                    ce_id,
-                                    exc,
-                                )
+                                total_resolved += linked
+                        continue
+
+                    # ---------------------------------------------------------------
+                    # 4c. Build verbatim_text → [ref_id] lookup
+                    # ---------------------------------------------------------------
+                    verbatim_to_refs: dict[str, list[str]] = {}
+                    for r in batch:
+                        vt = r.get("verbatim_text", "")
+                        rid = r.get("id")
+                        if vt and rid:
+                            verbatim_to_refs.setdefault(vt, []).append(rid)
+
+                    # ---------------------------------------------------------------
+                    # 4d. Apply LLM groups: match/merge with DB per group
+                    # ---------------------------------------------------------------
+                    for ent_group in groups_from_llm:
+                        entity_name = ent_group.get("entity_name", "").strip()
+                        inferred_type = ent_group.get("entity_type", entity_type)
+                        verbatim_texts = ent_group.get("verbatim_texts", [])
+
+                        if not entity_name or not verbatim_texts:
+                            continue
+
+                        # Collect all ref IDs that match this group's verbatim texts
+                        group_ref_ids: list[str] = []
+                        for vt in verbatim_texts:
+                            ids = verbatim_to_refs.get(vt, [])
+                            group_ref_ids.extend(ids)
+
+                        if not group_ref_ids:
+                            continue
+
+                        linked = await _dedup_and_link(
+                            db, entity_name, inferred_type,
+                            group_ref_ids, existing_entities,
+                        )
+                        total_resolved += linked
 
             activity.logger.info(
                 "resolve_entities_with_search_activity completed "
@@ -1601,13 +1609,14 @@ async def store_extraction_results_activity(
     try:
         async with get_db(**params) as db:
             # ---- Idempotent: delete existing events+references ----
+            # NOTE: llm_usage records are intentionally NOT deleted here.
+            # They are a separate audit/telemetry concern (Phase 19) and
+            # must survive extraction-result replays. Deleting them would
+            # wipe token/cost tracking data accumulated by earlier LLM
+            # call activities (extract_events, resolve_entities, etc.).
             activity.logger.info(
                 "Clearing prior extraction results [document_id=%s]",
                 document_id,
-            )
-            await db.query(
-                "DELETE llm_usage WHERE document = $doc_rid",
-                {"doc_rid": doc_rid},
             )
             await db.query(
                 "DELETE reference WHERE event IN "

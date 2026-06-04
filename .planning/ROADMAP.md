@@ -8,7 +8,8 @@
 - ✅ **v2.0 Blob & Chunk Pipeline** — Phases 6-8 (shipped 2026-06-01)
 - ✅ **v3.0 Web UI** — Phases 9-12 (shipped 2026-06-02)
 - ✅ **v4.0 Pipeline Quality & Entity Resolution** — Phases 13-18 (shipped 2026-06-04)
-- 🚧 **v5.0 LLM Cost & Usage Tracking** — Phases 19-22 (in progress)
+- ✅ **v5.0 LLM Cost & Usage Tracking** — Phases 19-22 (shipped 2026-06-04)
+- 🚧 **v5.1 Entity Resolution Prompt & Batching Fix** — Phase 23 (in progress)
 
 ## Phases
 
@@ -461,7 +462,8 @@ Plans:
 | 16. Event Canonical Entities | 1/1 | Complete | 2026-06-03 |
 | 17. Search-First Entity Resolution | 2/2 | Complete   | 2026-06-03 |
 | 18. Full Integration + Test Corpus + Docs | 2/2 | Complete | 2026-06-04 |
-| 19. Token Recording & Schema | 0/0 | Planning | — |
-| 20. API Aggregation Endpoints | 0/0 | Planning | — |
-| 21. UI Token Display | 0/0 | Planning | — |
-| 22. No-Regression Verification | 0/0 | Planning | — |
+| 19. Token Recording & Schema | 0/0 | Complete | 2026-06-04 |
+| 20. API Aggregation Endpoints | 0/0 | Complete | 2026-06-04 |
+| 21. UI Token Display | 0/0 | Complete | 2026-06-04 |
+| 22. No-Regression Verification | 0/0 | Complete | 2026-06-04 |
+| 23. Entity Resolution Prompt & Batching Fix | — | In Progress | — |

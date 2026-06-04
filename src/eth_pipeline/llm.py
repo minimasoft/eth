@@ -108,76 +108,66 @@ EVENT_EXTRACTION_SCHEMA: dict = {
 ENTITY_RESOLUTION_SCHEMA: dict = {
     "type": "object",
     "properties": {
-        "resolutions": {
+        "groups": {
             "type": "array",
             "items": {
                 "type": "object",
                 "properties": {
-                    "reference_verbatim": {
+                    "entity_name": {
                         "type": "string",
-                        "description": "Exact verbatim text of the reference as it appears in the document",
+                        "description": "Inferred canonical name of the entity (e.g. 'Juzgado de Primera Instancia', 'María González')",
                     },
-                    "action": {
+                    "entity_type": {
                         "type": "string",
-                        "enum": ["match_existing", "create_new", "uncertain"],
-                        "description": "Resolution action: match to existing entity, create new entity, or flag uncertainty",
+                        "enum": ["place", "person", "object"],
+                        "description": "Type of entity: place (location), person (individual/organization), object (thing)",
                     },
-                    "matched_entity_id": {
-                        "type": "string",
-                        "description": "ID of the matched existing canonical entity (only used when action is match_existing)",
-                    },
-                    "matched_candidate_id": {
-                        "type": "string",
-                        "description": "ID of the matched candidate entity from the Candidate Entities list (only used when action is match_existing and the entity was in the candidate list)",
-                    },
-                    "new_entity_name": {
-                        "type": "string",
-                        "description": "Inferred name for the new canonical entity (only used when action is create_new)",
-                    },
-                    "new_entity_type": {
-                        "type": "string",
-                        "enum": ["place", "person", "object", "event"],
-                        "description": "Inferred type of the new canonical entity (only used when action is create_new)",
-                    },
-                    "new_entity_properties": {
-                        "type": "object",
-                        "description": "Additional inferred properties for the new entity (context-derived key-value pairs)",
+                    "verbatim_texts": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "The verbatim_text values of all references that belong to this entity group",
                     },
                     "confidence": {
                         "type": "number",
                         "minimum": 0,
                         "maximum": 1,
-                        "description": "Confidence score for the resolution (0.0 uncertain, 1.0 certain)",
+                        "description": "Confidence that these references form a coherent entity (0.0 uncertain, 1.0 certain)",
                     },
                 },
-                "required": ["reference_verbatim", "action", "confidence"],
+                "required": ["entity_name", "entity_type", "verbatim_texts"],
                 "additionalProperties": False,
             },
         },
     },
-    "required": ["resolutions"],
+    "required": ["groups"],
     "additionalProperties": False,
 }
 
 ENTITY_RESOLUTION_SYSTEM_PROMPT: str = (
-    "Eres un asistente especializado en resolver referencias textuales a entidades canónicas "
-    "en documentos legales y judiciales en español.\n\n"
-    "Se te proporcionará una lista de referencias extraídas del documento y una lista de "
-    "entidades canónicas existentes (lugares, personas y objetos). Tu tarea es:\n\n"
-    "1. MATCH_EXISTING: Si una referencia coincide claramente con una entidad canónica existente "
-    "(mismo lugar, persona u objeto), asígnala a esa entidad con alta confianza (>= 0.9).\n"
-    "2. CREATE_NEW: Si una referencia no coincide con ninguna entidad existente, crea una nueva "
-    "entidad canónica infiriendo su nombre, tipo (place/person/object) y propiedades adicionales "
-    "del contexto del documento.\n"
-     "3. UNCERTAIN: Si no puedes determinar si corresponde a una entidad existente o es nueva, "
-     "márcalo como incierto con baja confianza (< 0.7).\n\n"
-     "4. CANDIDATE MATCHING: Cuando se proporcionen entidades candidatas en la sección ## Candidate Entities, "
-     "evalúa si cada referencia coincide con alguno de los candidatos. Si una referencia coincide con un "
-     "candidato, usa la acción \"match_existing\" y establece matched_candidate_id al id del candidato. "
-     "Si una referencia no coincide con ningún candidato, usa la acción \"create_new\" para crear una nueva "
-     "entidad canónica. La coincidencia con candidatos tiene prioridad sobre la creación de nuevas entidades "
-     "cuando exista una coincidencia razonable.\n\n"
-     "Responde ÚNICAMENTE con el JSON estructurado, sin texto adicional."
+    "Eres un asistente especializado en agrupar referencias textuales extraídas "
+    "de documentos legales y judiciales en español en entidades canónicas.\n\n"
+    "Se te proporcionará una lista de referencias textuales (fragmentos literales "
+    "extraídos del documento). Tu tarea es:\n\n"
+    "1. IDENTIFICAR qué referencias se refieren a la MISMA entidad (misma persona, "
+    "mismo lugar, mismo objeto). Las referencias pueden usar distintas palabras "
+    "para referirse al mismo concepto (ej. 'el juzgado', 'Juzgado de Primera "
+    "Instancia', 'este tribunal' → todas refieren al mismo lugar).\n"
+    "2. AGRUPAR las referencias que corresponden a la misma entidad bajo un único "
+    "nombre canónico.\n"
+    "3. INFERIR el tipo de entidad (place/person/object) basado en el contexto "
+    "de las referencias.\n\n"
+    "IMPORTANTE:\n"
+    "- No incluyas el texto de la referencia como nombre de entidad. Infiere un "
+    "nombre canónico apropiado.\n"
+    "- Si todas las referencias son claramente independientes (cada una se refiere "
+    "a una entidad diferente), crea un grupo separado para cada una.\n"
+    "- Si hay demasiadas referencias para agrupar (más de ~50), sé conservador: "
+    "agrupa solo las que están claramente relacionadas deja el resto como grupos "
+    "individuales.\n"
+    "- No crees grupos de entidades genéricas o de relleno. Si una referencia "
+    "es demasiado genérica (ej. 'el día', 'la noche'), inclúyela en el grupo "
+    "más relevante o créala como grupo individual.\n\n"
+    "Responde ÚNICAMENTE con el JSON estructurado, sin texto adicional."
 )
 
 # ---------------------------------------------------------------------------
@@ -217,23 +207,13 @@ class LLMProvider(Protocol):
     async def resolve_references(
         self,
         references: list[dict],
-        existing_entities: list[dict],
-        document_context: str,
     ) -> tuple[dict, dict | None]:
-        """Resolve verbatim references against existing canonical entities.
+        """Group verbatim references into canonical entities.
 
-        Parameters
-        ----------
-        references:
-            List of reference dicts (each with at least ``verbatim_text`` and
-            ``reference_type``).
-        existing_entities:
-            List of existing canonical entity dicts (each with at least
-            ``id``, ``name``, and ``entity_type``). When used with
-            search-first resolution (Phase 17), this contains pre-filtered
-            candidate entities — not all entities of the type.
-        document_context:
-            Surrounding document text providing context for entity inference.
+        Takes a list of reference dicts (each with ``verbatim_text``,
+        ``reference_type``) and returns entity groupings. The LLM's job
+        is to group references that refer to the same entity and infer
+        the entity name and type.
 
         Returns
         -------
@@ -419,43 +399,35 @@ class OpenRouterProvider:
     async def resolve_references(
         self,
         references: list[dict],
-        existing_entities: list[dict],
-        document_context: str,
     ) -> tuple[dict, dict | None]:
-        """Resolve verbatim references against existing canonical entities.
+        """Group verbatim references into canonical entities via LLM.
 
-        Builds a user prompt that includes the references, existing entities,
-        and document context, then calls OpenRouter with
-        ``ENTITY_RESOLUTION_SCHEMA`` as the response format.
+        Builds a user prompt that includes only the reference verbatim_texts
+        (no document context), then calls OpenRouter with
+        ``ENTITY_RESOLUTION_SCHEMA`` as the response format. The LLM groups
+        references that refer to the same entity and infers entity names/types.
+        DB-side deduplication is handled by the caller.
 
         Parameters
         ----------
         references:
             List of reference dicts (each with ``verbatim_text``,
-            ``reference_type``, etc.).
-        existing_entities:
-            List of existing canonical entity dicts (each with ``id``,
-            ``name``, ``entity_type``). When used with search-first
-            resolution (Phase 17), this contains pre-filtered candidate
-            entities — not all entities of the type.
-        document_context:
-            Surrounding document text providing context for entity inference.
+            ``reference_type``, etc.) to group into entities.
 
         Returns
         -------
         tuple[dict, dict | None]
             (parsed JSON response body matching ``ENTITY_RESOLUTION_SCHEMA``, usage dict from OpenRouter response or None).
         """
-        payload = self._build_resolution_payload(references, existing_entities, document_context)
+        payload = self._build_resolution_payload(references)
         url = f"{self._base_url}/api/v1/chat/completions"
         headers = self._headers()
 
         logger.info(
-            "LLM resolution request [model=%s] [url=%s] [ref_count=%d] [entity_count=%d]",
+            "LLM resolution request [model=%s] [url=%s] [ref_count=%d]",
             self._model,
             url,
             len(references),
-            len(existing_entities),
         )
         logger.debug("LLM resolution payload: %s", json.dumps(payload, indent=2, ensure_ascii=False)[:2000])
         logger.debug("LLM resolution headers (key suffix): ...%s", headers.get("Authorization", "")[-8:])
@@ -605,10 +577,8 @@ class OpenRouterProvider:
     def _build_resolution_payload(
         self,
         references: list[dict],
-        existing_entities: list[dict],
-        document_context: str,
     ) -> dict:
-        """Build the API payload for entity resolution."""
+        """Build the API payload for entity resolution (reference grouping)."""
         schema_json = json.dumps(ENTITY_RESOLUTION_SCHEMA, indent=2, ensure_ascii=False)
         def _sanitize(obj):
             if isinstance(obj, dict):
@@ -618,19 +588,21 @@ class OpenRouterProvider:
             return obj
 
         sanitized_refs = _sanitize(references)
-        sanitized_entities = _sanitize(existing_entities)
+
+        # Build a compact reference list — only verbatim_text and reference_type
+        ref_summary = [
+            {"verbatim_text": r.get("verbatim_text", ""), "reference_type": r.get("reference_type", "")}
+            for r in sanitized_refs
+        ]
+
         user_content = (
             f"Responde ÚNICAMENTE con un objeto JSON que se ajuste a este esquema:\n"
             f"```json\n{schema_json}\n```\n\n"
-            "DOCUMENTO (contexto):\n"
-            f"{document_context}\n\n"
-            "REFERENCIAS A RESOLVER:\n"
-            f"{json.dumps(sanitized_refs, ensure_ascii=False, indent=2, default=str)}\n\n"
-             "ENTIDADES CANÓNICAS CANDIDATAS (PRE-FILTRADAS):\n"
-             f"{json.dumps(sanitized_entities, ensure_ascii=False, indent=2, default=str)}\n\n"
-             "Nota: Estas entidades candidatas han sido pre-filtradas de los resultados de búsqueda "
-             "y representan las coincidencias más probables. Prioriza la coincidencia con un candidato "
-             "antes de crear una nueva entidad."
+            "REFERENCIAS A AGRUPAR:\n"
+            f"{json.dumps(ref_summary, ensure_ascii=False, indent=2, default=str)}\n\n"
+            "Agrupa las referencias que se refieren a la MISMA entidad (persona, lugar u objeto). "
+            "Infiere un nombre canónico apropiado para cada grupo. "
+            "No incluyas referencias en el grupo si no están claramente relacionadas."
         )
 
         return {
@@ -645,6 +617,58 @@ class OpenRouterProvider:
             "max_tokens": 64000,
             "temperature": 0.7,
         }
+
+    # Reference: ~4 chars per token for Spanish text.
+    _CHARS_PER_TOKEN = 4
+    # Max estimated tokens per batch (leaves headroom for system prompt + schema).
+    _BATCH_MAX_TOKENS = 240_000
+
+    @staticmethod
+    def _estimate_tokens(text: str) -> int:
+        """Crude token estimate: len/4 for Spanish text."""
+        return len(text) // OpenRouterProvider._CHARS_PER_TOKEN
+
+    @staticmethod
+    def batch_references(
+        references: list[dict],
+        max_tokens: int | None = None,
+    ) -> list[list[dict]]:
+        """Split references into token-sized batches for LLM processing.
+
+        Each batch is estimated to stay under *max_tokens* tokens
+        (default: ``_BATCH_MAX_TOKENS``).  Keeps references with the same
+        ``verbatim_text`` together in the same batch when possible.
+        """
+        if max_tokens is None:
+            max_tokens = OpenRouterProvider._BATCH_MAX_TOKENS
+
+        if not references:
+            return []
+
+        # Serialize each ref to estimate its token cost
+        ref_tokens: list[tuple[int, dict]] = []
+        for ref in references:
+            vt = ref.get("verbatim_text", "")
+            # Estimate: JSON structure overhead (~80 chars) + verbatim length
+            estimated = OpenRouterProvider._estimate_tokens(vt + "reference_type")
+            ref_tokens.append((max(estimated, 1), ref))
+
+        batches: list[list[dict]] = []
+        current_batch: list[dict] = []
+        current_tokens = 0
+
+        for tokens, ref in ref_tokens:
+            if current_tokens + tokens > max_tokens and current_batch:
+                batches.append(current_batch)
+                current_batch = []
+                current_tokens = 0
+            current_batch.append(ref)
+            current_tokens += tokens
+
+        if current_batch:
+            batches.append(current_batch)
+
+        return batches
 
     @staticmethod
     def _parse_choice(data: dict) -> dict:
@@ -731,11 +755,9 @@ async def extract_events(text: str, provider: LLMProvider | None = None) -> tupl
 
 async def resolve_references(
     references: list[dict],
-    existing_entities: list[dict],
-    document_context: str,
     provider: LLMProvider | None = None,
 ) -> tuple[dict, dict | None]:
-    """Resolve verbatim references against existing canonical entities.
+    """Group verbatim references into canonical entities via LLM.
 
     If *provider* is ``None``, creates an ``OpenRouterProvider`` using the
     ``OPENROUTER_API_KEY`` and ``OPENROUTER_MODEL`` (optional) environment
@@ -745,12 +767,7 @@ async def resolve_references(
     ----------
     references:
         List of reference dicts (each with ``verbatim_text``,
-        ``reference_type``, etc.) to resolve.
-    existing_entities:
-        List of existing canonical entity dicts (each with ``id``,
-        ``name``, ``entity_type``).
-    document_context:
-        Surrounding document text providing context for entity inference.
+        ``reference_type``, etc.) to group.
     provider:
         Optional ``LLMProvider`` instance.  Uses ``OpenRouterProvider`` with
         env-var defaults when ``None``.
@@ -761,7 +778,7 @@ async def resolve_references(
         (parsed JSON matching ``ENTITY_RESOLUTION_SCHEMA``, usage dict from OpenRouter response or None).
     """
     if provider is not None:
-        return await provider.resolve_references(references, existing_entities, document_context)
+        return await provider.resolve_references(references)
 
     api_key = os.environ.get("OPENROUTER_API_KEY")
     if not api_key:
@@ -773,4 +790,4 @@ async def resolve_references(
 
     model = os.environ.get("OPENROUTER_MODEL", DEFAULT_MODEL)
     default_provider = OpenRouterProvider(api_key=api_key, model=model)
-    return await default_provider.resolve_references(references, existing_entities, document_context)
+    return await default_provider.resolve_references(references)

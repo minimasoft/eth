@@ -1,16 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v5.0
-milestone_name: LLM Cost & Usage Tracking
-status: Awaiting next milestone
+milestone: v5.1
+milestone_name: Entity Resolution Prompt & Batching Fix
+status: Phase 23 in progress
 last_updated: "2026-06-04T19:08:19.452Z"
-last_activity: 2026-06-04 — Completed quick task 260604-mex: Fix 404 on /documents/{id}/logs API route — restore accidentally deleted handler
+last_activity: 2026-06-04 — Started Phase 23: Entity Resolution Prompt & Batching Fix
 progress:
-  total_phases: 10
-  completed_phases: 1
-  total_plans: 3
-  completed_plans: 3
-  percent: 10
+  total_phases: 1
+  completed_phases: 0
+  total_plans: 1
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -21,18 +21,26 @@ See: .planning/PROJECT.md (updated 2026-06-02)
 
 **Core value:** Every extracted event must be traceable to its exact source text in the original document, and every resolved entity must show its evidential references.
 
-**Current focus:** Milestone v5.0 — LLM Cost & Usage Tracking — **COMPLETE ✅**
+**Current focus:** Milestone v5.1 — Entity Resolution Prompt & Batching Fix — **Phase 23 in progress 🚧**
 
 ## Current Position
 
-Phase: Milestone v5.0 complete
-Plan: —
-Status: Awaiting next milestone
-Last activity: 2026-06-04 — Completed quick task 260604-mex: Fix 404 on /documents/{id}/logs API route
+Phase: 23. Entity Resolution Prompt & Batching Fix
+Plan: 1 plan
+Status: In progress
+Last activity: 2026-06-04 — Started Phase 23: Entity Resolution Prompt & Batching Fix
 
 ## Performance Metrics
 
-### v5.0 LLM Cost & Usage Tracking
+### v5.1 Entity Resolution Prompt & Batching Fix
+
+| Phase | Plans | Status | Completed |
+|-------|-------|--------|-----------|
+| 23. Entity Resolution Prompt & Batching Fix | — | In Progress 🚧 | — |
+
+**Totals:** 1 phase, 0 plans — **IN PROGRESS 🚧**
+
+### v5.0 LLM Cost & Usage Tracking (complete)
 
 | Phase | Plans | Status | Completed |
 |-------|-------|--------|-----------|
