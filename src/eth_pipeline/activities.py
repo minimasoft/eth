@@ -564,13 +564,82 @@ async def resolve_entities_activity(document_id: str) -> dict:
                         )
                         total_resolved += linked
 
+            # ------------------------------------------------------------------
+            # 6. Post-resolution: link places to events, persons to events
+            #    Set location_place_id on events from place references.
+            #    Create event_participant edges from person references.
+            # ------------------------------------------------------------------
+            place_refs_raw = await db.query(
+                "SELECT event, canonical_entity FROM reference "
+                "WHERE event.document = $doc_rid "
+                "AND reference_type = 'espacio' "
+                "AND canonical_entity IS NOT NULL "
+                "AND canonical_entity IS NOT NONE",
+                {"doc_rid": doc_rid},
+            )
+            place_refs = _extract_query_results(place_refs_raw)
+            if place_refs:
+                # Group by event → set location_place_id
+                event_to_place: dict[str, str] = {}
+                for pr in place_refs:
+                    evt = pr.get("event")
+                    ce = pr.get("canonical_entity")
+                    if evt and ce:
+                        event_to_place[str(evt)] = ce
+                for eid, ce_id in event_to_place.items():
+                    try:
+                        await db.query(
+                            "UPDATE $eid SET location_place_id = $ce_id",
+                            {"eid": RecordID("event", eid), "ce_id": ce_id},
+                        )
+                    except Exception as exc:
+                        activity.logger.warning(
+                            "Failed to set location_place_id on event %s: %s",
+                            eid, exc,
+                        )
+
+            person_refs_raw = await db.query(
+                "SELECT event, canonical_entity, verbatim_text FROM reference "
+                "WHERE event.document = $doc_rid "
+                "AND reference_type = 'humanos' "
+                "AND canonical_entity IS NOT NULL "
+                "AND canonical_entity IS NOT NONE",
+                {"doc_rid": doc_rid},
+            )
+            person_refs = _extract_query_results(person_refs_raw)
+            if person_refs:
+                event_person_pairs = set()
+                for pr in person_refs:
+                    evt = pr.get("event")
+                    ce = pr.get("canonical_entity")
+                    if evt and ce:
+                        event_person_pairs.add((str(evt), str(ce)))
+                for eid, ce_id in event_person_pairs:
+                    try:
+                        e_rid = RecordID("event", eid)
+                        ce_rid = RecordID("canonical_entity", ce_id)
+                        await db.query(
+                            "RELATE $in->event_participant->$out "
+                            "SET role = 'subject', confidence = 1.0",
+                            {"in": e_rid, "out": ce_rid},
+                        )
+                    except Exception as exc:
+                        activity.logger.warning(
+                            "Failed to RELATE event_participant "
+                            "event=%s entity=%s: %s",
+                            eid, ce_id, exc,
+                        )
+
             activity.logger.info(
                 "resolve_entities_activity completed [document_id=%s] "
-                "[resolved=%d] [created=%d] [skipped=%d]",
+                "[resolved=%d] [created=%d] [skipped=%d] "
+                "[location_links=%d] [participant_edges=%d]",
                 document_id,
                 total_resolved,
                 total_created,
                 skipped_count,
+                len(event_to_place) if place_refs else 0,
+                len(event_person_pairs) if person_refs else 0,
             )
             await _log.log(document_id, "resolve_entities", "info",
                            f"Resolution completed: {total_resolved} resolved, "
@@ -1620,6 +1689,11 @@ async def store_extraction_results_activity(
                 document_id,
             )
             await db.query(
+                "DELETE event_participant WHERE in IN "
+                "(SELECT id FROM event WHERE document = $doc_rid)",
+                {"doc_rid": doc_rid},
+            )
+            await db.query(
                 "DELETE reference WHERE event IN "
                 "(SELECT id FROM event WHERE document = $doc_rid)",
                 {"doc_rid": doc_rid},
@@ -1660,11 +1734,71 @@ async def store_extraction_results_activity(
 
             # ---- Create events and collect their IDs ----
             total_references = 0
-            for event_data in events:
-                # Use raw SQL CREATE with explicit null for nullable fields.
-                # SurrealDB Python SDK's db.create() converts Python None to
-                # NONE (field-with-no-value) instead of null, which SCHEMAFULL
-                # rejects for nullable string|record fields.
+            dedup_refs_skipped = 0
+            seen_refs: set[tuple[str, str, str]] = set()
+            for event_idx, event_data in enumerate(events):
+                # Build structured time_window from LLM date fields
+                time_window = None
+                ds = event_data.get("date_start")
+                de = event_data.get("date_end")
+                if ds or de:
+                    time_window = {}
+                    if ds:
+                        time_window["start"] = ds
+                    if de:
+                        time_window["end"] = de
+                    dp = event_data.get("date_precision")
+                    if dp:
+                        time_window["precision"] = dp
+
+                # Build location_point from LLM location data
+                location_point = None
+                loc = event_data.get("location")
+                if loc and isinstance(loc, dict):
+                    location_point = {}
+                    if loc.get("place_name"):
+                        location_point["label"] = str(loc["place_name"])
+                    if loc.get("lat") is not None:
+                        location_point["lat"] = float(loc["lat"])
+                    if loc.get("lon") is not None:
+                        location_point["lon"] = float(loc["lon"])
+
+                # Link location to canonical place entity
+                location_place_id = None
+                if location_point and location_point.get("label"):
+                    loc_query = await db.query(
+                        "SELECT id FROM canonical_entity "
+                        "WHERE entity_type = 'place' AND name = $name "
+                        "LIMIT 1",
+                        {"name": str(location_point["label"])},
+                    )
+                    loc_rows = _extract_query_results(loc_query)
+                    if loc_rows:
+                        location_place_id = RecordID(
+                            "canonical_entity", loc_rows[0]["id"]
+                        )
+                    else:
+                        # Create canonical place entity on the fly
+                        loc_create = await db.query(
+                            "CREATE canonical_entity CONTENT { "
+                            "entity_type: 'place', "
+                            "name: $name, "
+                            "properties: $props "
+                            "} RETURN id",
+                            {
+                                "name": str(location_point["label"]),
+                                "props": {
+                                    "lat": location_point.get("lat"),
+                                    "lon": location_point.get("lon"),
+                                },
+                            },
+                        )
+                        loc_created = _extract_query_results(loc_create)
+                        if loc_created:
+                            location_place_id = RecordID(
+                                "canonical_entity", loc_created[0]["id"]
+                            )
+
                 event_result = await db.query(
                     "CREATE event CONTENT { "
                     "que_paso: $que_paso, "
@@ -1672,6 +1806,9 @@ async def store_extraction_results_activity(
                     "tiempo: $tiempo, "
                     "humanos: $humanos, "
                     "objetos: $objetos, "
+                    "time_window: $tw, "
+                    "location_point: $lp, "
+                    "location_place_id: $lpi, "
                     "document: $document, "
                     "extraction_confidence: 1.0 "
                     "} RETURN id",
@@ -1681,6 +1818,9 @@ async def store_extraction_results_activity(
                         "tiempo": event_data.get("tiempo") or "",
                         "humanos": event_data.get("humanos") or "",
                         "objetos": event_data.get("objetos") or "",
+                        "tw": time_window,
+                        "lp": location_point,
+                        "lpi": location_place_id,
                         "document": doc_record,
                     },
                 )
@@ -1698,9 +1838,52 @@ async def store_extraction_results_activity(
                     )
                     continue
 
+                # ---- Create participant RELATE edges ----
+                participants = event_data.get("participants") or []
+                for p in participants:
+                    p_name = str(p.get("name", "")).strip()
+                    p_role = str(p.get("role", "subject"))
+                    if not p_name:
+                        continue
+                    try:
+                        # Find or create person canonical entity
+                        p_query = await db.query(
+                            "SELECT id FROM canonical_entity "
+                            "WHERE entity_type = 'person' AND name = $name "
+                            "LIMIT 1",
+                            {"name": p_name},
+                        )
+                        p_rows = _extract_query_results(p_query)
+                        if p_rows:
+                            p_rid = RecordID("canonical_entity", p_rows[0]["id"])
+                        else:
+                            p_create = await db.query(
+                                "CREATE canonical_entity CONTENT { "
+                                "entity_type: 'person', "
+                                "name: $name, "
+                                "properties: {} "
+                                "} RETURN id",
+                                {"name": p_name},
+                            )
+                            p_created = _extract_query_results(p_create)
+                            if not p_created:
+                                continue
+                            p_rid = RecordID("canonical_entity", p_created[0]["id"])
+                        await db.query(
+                            "RELATE $in->event_participant->$out "
+                            "SET role = $role, confidence = 1.0",
+                            {"in": event_rid, "out": p_rid, "role": p_role},
+                        )
+                    except Exception as exc:
+                        activity.logger.warning(
+                            "Failed to create event_participant edge "
+                            "[event=%s] [participant=%s]: %s",
+                            event_rid, p_name, exc,
+                        )
+
                 # ---- Create references linked to this event ----
                 references = event_data.get("references", [])
-                for ref in references:
+                for ref_idx, ref in enumerate(references):
                     raw_ss = ref.get("span_start")
                     raw_se = ref.get("span_end")
                     ss = int(raw_ss) if raw_ss is not None else 0
@@ -1720,6 +1903,16 @@ async def store_extraction_results_activity(
                                        f"{(ref.get('verbatim_text', '') or '')[:80]}")
                         continue
 
+                    element_field = ref.get("element_field", ref_type)
+
+                    # Dedup: skip duplicate (verbatim_text, event_rid, element_field)
+                    vt = ref.get("verbatim_text", "") or ""
+                    dedup_key = (_normalize(vt), str(event_rid), element_field)
+                    if dedup_key in seen_refs:
+                        dedup_refs_skipped += 1
+                        continue
+                    seen_refs.add(dedup_key)
+
                     if chunk_rows:
                         offset_result = compute_reference_offsets(
                             span_start=ss,
@@ -1734,7 +1927,6 @@ async def store_extraction_results_activity(
                             "page_offset_end": None,
                         }
 
-                    # Log warning for out-of-range spans
                     if (
                         offset_result["page_number"] is None
                         and not is_plain_text
@@ -1761,16 +1953,20 @@ async def store_extraction_results_activity(
                         "page_number: $pn, "
                         "page_offset_start: $pos, "
                         "page_offset_end: $poe, "
+                        "element_field: $ef, "
+                        "reference_index: $ri, "
                         "event: $evt "
                         "}",
                         {
                             "ref_type": ref_type,
-                            "vt": ref.get("verbatim_text", ""),
+                            "vt": vt,
                             "ss": ss,
                             "se": se,
                             "pn": offset_result["page_number"],
                             "pos": offset_result["page_offset_start"],
                             "poe": offset_result["page_offset_end"],
+                            "ef": element_field,
+                            "ri": ref_idx,
                             "evt": event_rid,
                         },
                     )
@@ -1778,14 +1974,19 @@ async def store_extraction_results_activity(
 
             events_stored = len(events)
             activity.logger.info(
-                "Stored %d events and %d references [document_id=%s]",
+                "Stored %d events and %d references [document_id=%s] "
+                "[dedup_skipped=%d]",
                 events_stored,
                 total_references,
                 document_id,
+                dedup_refs_skipped,
             )
             await _log.log(document_id, "store_results", "info",
                            f"Stored {events_stored} events and {total_references} references",
-                           {"events_stored": events_stored, "references_stored": total_references})
+                           {"events_stored": events_stored,
+                            "references_stored": total_references,
+                            "participant_edges_created": len(participants) if 'participants' in dir() else 0,
+                            "dedup_skipped": dedup_refs_skipped})
     except ConnectionError as exc:
         activity.logger.error(
             "SurrealDB connection failed in store_extraction_results_activity: "

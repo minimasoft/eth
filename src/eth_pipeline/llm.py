@@ -49,7 +49,7 @@ EVENT_EXTRACTION_SCHEMA: dict = {
                     },
                     "espacio": {
                         "type": "string",
-                        "description": "Location or spatial context where the event occurred",
+                        "description": "Location or spatial context where the event occurred (free-form)",
                     },
                     "tiempo": {
                         "type": "string",
@@ -57,11 +57,68 @@ EVENT_EXTRACTION_SCHEMA: dict = {
                     },
                     "humanos": {
                         "type": "string",
-                        "description": "People or organizations involved in the event",
+                        "description": "People or organizations involved in the event (free-form)",
                     },
                     "objetos": {
                         "type": "string",
-                        "description": "Objects, assets, or physical items involved in the event",
+                        "description": "Objects, assets, or physical items involved in the event (free-form)",
+                    },
+                    "date_start": {
+                        "type": "string",
+                        "description": "ISO 8601 datetime when the event started (e.g. '2024-01-12T00:00:00Z'). Omit if unclear.",
+                    },
+                    "date_end": {
+                        "type": "string",
+                        "description": "ISO 8601 datetime when the event ended (e.g. '2024-01-12T23:59:59Z'). Omit if unclear.",
+                    },
+                    "date_precision": {
+                        "type": "string",
+                        "enum": ["day", "month", "year"],
+                        "description": "Precision of the extracted dates: day (exact date), month (only month known), year (only year known). Omit alongside date_start.",
+                    },
+                    "location": {
+                        "type": "object",
+                        "properties": {
+                            "verbatim_text": {
+                                "type": "string",
+                                "description": "Verbatim text from the document describing the location",
+                            },
+                            "place_name": {
+                                "type": "string",
+                                "description": "Inferred canonical place name (e.g. 'Apple Store Nueva York'), cleaned from the verbatim text",
+                            },
+                            "lat": {
+                                "type": "number",
+                                "description": "Latitude if inferrable from context, otherwise omit",
+                            },
+                            "lon": {
+                                "type": "number",
+                                "description": "Longitude if inferrable from context, otherwise omit",
+                            },
+                        },
+                        "required": ["verbatim_text", "place_name"],
+                        "additionalProperties": False,
+                        "description": "Structured location data for the event (optional — omit if no clear location)",
+                    },
+                    "participants": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "name": {
+                                    "type": "string",
+                                    "description": "Canonical name of the participant person",
+                                },
+                                "role": {
+                                    "type": "string",
+                                    "enum": ["subject", "object", "witness"],
+                                    "description": "Role in the event: subject (active doer), object (recipient), witness (observer)",
+                                },
+                            },
+                            "required": ["name", "role"],
+                            "additionalProperties": False,
+                        },
+                        "description": "Structured participant data — one entry per person involved (optional)",
                     },
                     "references": {
                         "type": "array",
@@ -85,11 +142,16 @@ EVENT_EXTRACTION_SCHEMA: dict = {
                                     "type": "integer",
                                     "description": "Character offset (exclusive) where the verbatim span ends in the document text",
                                 },
+                                "element_field": {
+                                    "type": "string",
+                                    "enum": ["tiempo", "humanos", "espacio", "objetos"],
+                                    "description": "Specific event element this reference substantiates: tiempo (time), humanos (participants), espacio (location), objetos (objects)",
+                                },
                             },
                             "required": ["reference_type", "verbatim_text", "span_start", "span_end"],
                             "additionalProperties": False,
                         },
-                        "description": "Verbatim text references substantiating each event field",
+                        "description": "Verbatim text references substantiating each event field. No cap — include ALL relevant references.",
                     },
                 },
                 "required": ["que_paso", "references"],

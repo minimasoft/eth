@@ -920,7 +920,18 @@ async def list_documents(
     response_model=DocumentDeleted,
 )
 async def delete_document(document_id: str) -> DocumentDeleted:
-    """Delete a document and all its associated data (full cascade)."""
+    """Delete a document and all its associated data (full cascade).
+
+    Deletion order enforces referential integrity:
+      1. event_entity_link  (graph edges referencing event entities)
+      2. reference          (verbatim spans referencing events)
+      3. event              (extracted events belonging to this doc)
+      4. document_chunk     (text chunks of this doc)
+      5. document_event_log (processing logs for this doc)
+      6. llm_usage          (LLM token usage for this doc)
+      7. canonical_entity   (orphaned entities with zero remaining references)
+      8. document           (the document record itself)
+    """
     db: AsyncWsSurrealConnection | None = app.state.db
 
     if db is None:
@@ -959,6 +970,39 @@ async def delete_document(document_id: str) -> DocumentDeleted:
         )
 
     try:
+        # --- Step 0: Collect event-type canonical entity IDs for this doc ---
+        event_ce_ids_result = await db.query(
+            "SELECT id FROM canonical_entity "
+            "WHERE entity_type = 'event' AND properties.document_id = $doc_id",
+            {"doc_id": document_id},
+        )
+        event_ce_rows: list[dict] = [
+            r for r in (event_ce_ids_result or []) if isinstance(r, dict)
+        ]
+
+        # --- Step 1: Delete event_participant edges (v6.0) ---
+        try:
+            await db.query(
+                "DELETE event_participant WHERE in IN "
+                "(SELECT id FROM event WHERE document = $doc_id)",
+                {"doc_id": doc_id_obj},
+            )
+        except Exception as exc:
+            logger.warning(
+                "event_participant cleanup skipped (table may not exist yet): %s",
+                exc,
+            )
+
+        # --- Step 1b: Delete event_entity_link edges ---
+        await db.query(
+            "DELETE event_entity_link WHERE event IN ("
+            "SELECT id FROM canonical_entity "
+            "WHERE entity_type = 'event' AND properties.document_id = $doc_id"
+            ")",
+            {"doc_id": document_id},
+        )
+
+        # --- Step 2: Collect affected canonical_entities from references ---
         affected_ce_query = await db.query(
             "SELECT VALUE canonical_entity FROM reference "
             "WHERE event.document = $doc_id "
@@ -971,51 +1015,81 @@ async def delete_document(document_id: str) -> DocumentDeleted:
             if isinstance(r, str)
         })
 
-        await db.query(
-            "DELETE event_entity_link WHERE event IN ("
-            "SELECT id FROM canonical_entity "
-            "WHERE entity_type = 'event' AND properties.document_id = $doc_id"
-            ")",
-            {"doc_id": document_id},
-        )
-
-        await db.query(
-            "DELETE document_chunk WHERE document = $doc_id",
-            {"doc_id": doc_id_obj},
-        )
-
+        # --- Step 3: Delete references ---
         await db.query(
             "DELETE reference WHERE event IN "
             "(SELECT id FROM event WHERE document = $doc_id)",
             {"doc_id": doc_id_obj},
         )
 
+        # --- Step 4: Delete events ---
         await db.query(
             "DELETE event WHERE document = $doc_id",
             {"doc_id": doc_id_obj},
         )
 
+        # --- Step 5: Delete document chunks ---
+        await db.query(
+            "DELETE document_chunk WHERE document = $doc_id",
+            {"doc_id": doc_id_obj},
+        )
+
+        # --- Step 6: Delete processing logs and LLM usage ---
         await db.query(
             "DELETE document_event_log WHERE document = $doc_id",
             {"doc_id": doc_id_obj},
         )
 
         await db.query(
-            "DELETE document WHERE id = $doc_id",
+            "DELETE llm_usage WHERE document = $doc_id",
             {"doc_id": doc_id_obj},
         )
 
+        # --- Step 7: Delete event-type canonical entities for this doc ---
+        await db.query(
+            "DELETE canonical_entity WHERE entity_type = 'event' "
+            "AND properties.document_id = $doc_id",
+            {"doc_id": document_id},
+        )
+
+        # --- Step 8: Delete orphaned canonical entities (no refs remain) ---
         orphaned = 0
         if affected_ce_rids:
-            params = {f"ce_{i}": rid for i, rid in enumerate(affected_ce_rids)}
-            rid_list = ", ".join(f"$ce_{i}" for i in range(len(affected_ce_rids)))
+            rids_to_check: list[str] = []
+            for rid_str in affected_ce_rids:
+                parts = rid_str.split(":")
+                ent_id = parts[1] if len(parts) > 1 else rid_str
+                rids_to_check.append(ent_id)
 
-            result = await db.query(
-                f"DELETE canonical_entity WHERE id IN [{rid_list}] "
-                f"AND count((SELECT id FROM reference WHERE canonical_entity = parent.id)) = 0",
-                params,
-            )
-            orphaned = result[0].get("count", 0) if result and isinstance(result[0], dict) else 0
+            for ent_id in rids_to_check:
+                count_result = await db.query(
+                    "SELECT count() AS total FROM reference "
+                    "WHERE canonical_entity = $entity_ref GROUP ALL",
+                    {"entity_ref": RecordID("canonical_entity", ent_id)},
+                )
+                count_rows: list[dict] = [
+                    r for r in (count_result or []) if isinstance(r, dict)
+                ]
+                remaining = 0
+                if count_rows:
+                    cv = count_rows[0].get("total")
+                    if isinstance(cv, dict):
+                        remaining = int(cv.get("value", 0))
+                    elif cv is not None:
+                        remaining = int(cv)
+
+                if remaining == 0:
+                    await db.query(
+                        "DELETE canonical_entity WHERE id = $entity_ref",
+                        {"entity_ref": RecordID("canonical_entity", ent_id)},
+                    )
+                    orphaned += 1
+
+        # --- Step 9: Delete the document ---
+        await db.query(
+            "DELETE document WHERE id = $doc_id",
+            {"doc_id": doc_id_obj},
+        )
 
         logger.info(
             "Deleted document %s (cascade complete, %d orphaned entities cleaned)",
@@ -1107,6 +1181,28 @@ async def clear_document_events(document_id: str) -> EventsCleared:
         )
 
     try:
+        # Delete event_participant edges for events of this doc (v6.0)
+        try:
+            await db.query(
+                "DELETE event_participant WHERE in IN "
+                "(SELECT id FROM event WHERE document = $doc_id)",
+                {"doc_id": doc_id_obj},
+            )
+        except Exception as exc:
+            logger.warning(
+                "event_participant cleanup skipped (table may not exist yet): %s",
+                exc,
+            )
+
+        # Delete event_entity_link edges for event-type entities of this doc
+        await db.query(
+            "DELETE event_entity_link WHERE event IN ("
+            "SELECT id FROM canonical_entity "
+            "WHERE entity_type = 'event' AND properties.document_id = $doc_id"
+            ")",
+            {"doc_id": document_id},
+        )
+
         await db.query(
             "DELETE document_chunk WHERE document = $doc_id",
             {"doc_id": doc_id_obj},
@@ -1131,6 +1227,13 @@ async def clear_document_events(document_id: str) -> EventsCleared:
         await db.query(
             "DELETE llm_usage WHERE document = $doc_id",
             {"doc_id": doc_id_obj},
+        )
+
+        # Delete event-type canonical entities for this doc
+        await db.query(
+            "DELETE canonical_entity WHERE entity_type = 'event' "
+            "AND properties.document_id = $doc_id",
+            {"doc_id": document_id},
         )
 
         await db.query(
