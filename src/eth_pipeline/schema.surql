@@ -345,7 +345,7 @@ DEFINE FIELD created_at ON TABLE document_event_log TYPE datetime
     COMMENT 'Timestamp when the log entry was created (immutable after insertion)';
 
 -- -----------------------------------------------------------------------
--- 5. Indexes (the agent's Discretion)
+-- 5. Indexes (the agents Discretion)
 -- document_event_log: index on document field for efficient per-document queries
 -- event_entity_link: index on event and entity for graph traversal performance
 -- -----------------------------------------------------------------------
@@ -359,8 +359,6 @@ DEFINE INDEX idx_event_entity_link_event ON TABLE event_entity_link COLUMNS even
 DEFINE INDEX idx_event_entity_link_entity ON TABLE event_entity_link COLUMNS entity
     COMMENT 'Index for efficient reverse graph traversal from entity to linked events';
 
--- ==========================================================================
--- v5.0: LLM Cost & Usage Tracking
 -- ==========================================================================
 -- Phase 19: Token Recording & Schema — additive DDL for llm_usage table.
 -- All statements are idempotent on re-apply.
@@ -466,8 +464,14 @@ DEFINE FIELD location_place_id ON TABLE event TYPE record<canonical_entity> | nu
 -- role: subject, object, witness, or free-form.
 -- --------------------------------------------------------------------------
 
-DEFINE TABLE event_participant TYPE RELATION IN record<event> OUT record<canonical_entity>
-    COMMENT 'Graph edge linking an event to a participant person entity. IN→event, OUT→canonical_entity (person type). Populated by Phase 25 extraction pipeline.';
+DEFINE TABLE event_participant SCHEMAFULL
+    COMMENT 'Graph edge linking an event to a participant person entity. Populated by Phase 25 extraction pipeline. RELATE queries: event->event_participant->canonical_entity';
+
+DEFINE FIELD OVERWRITE in ON TABLE event_participant TYPE record<event>
+    COMMENT 'The source event record';
+
+DEFINE FIELD OVERWRITE out ON TABLE event_participant TYPE record<canonical_entity>
+    COMMENT 'The target participant canonical entity (person type)';
 
 DEFINE FIELD role ON TABLE event_participant TYPE string
     COMMENT 'Role of the participant in the event: subject, object, witness, or free-form';
@@ -509,3 +513,4 @@ DEFINE FIELD reference_index ON TABLE reference TYPE int | null
 -- ==========================================================================
 -- End of v6.0 schema additions
 -- ==========================================================================
+;
