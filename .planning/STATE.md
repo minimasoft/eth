@@ -4,7 +4,7 @@ milestone: v6.0
 milestone_name: Event-Centric Data Quality & UI
 status: roadmap
 last_updated: "2026-06-05"
-last_activity: 2026-06-05 — Completed quick task 260605-lmg: Split activities.py into individual files under activities/ directory
+last_activity: 2026-06-05 — Completed quick task 260605-rm0: Fix orphan entity bug in delete_document ordering + reference_count + test
 progress:
   total_phases: 5
   completed_phases: 0
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-06-04)
 Phase: 24 of 28 (Schema & Data Model Foundation)
 Plan: —
 Status: Roadmap created — ready for planning
-Last activity: 2026-06-05 — Completed quick task 260605-lmg: Split activities.py into individual files under activities/ directory
+Last activity: 2026-06-05 — Completed quick task 260605-rm0: Fix orphan entity bug in delete_document ordering + reference_count + test
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -85,6 +85,7 @@ None. Ready to begin Phase 24 planning.
 | 260604-u5y | review docker compose logs — why entities remain after document deletion | 2026-06-05 | — | [260604-u5y-review-logs-in-docker-compose-is-there-a](./quick/260604-u5y-review-logs-in-docker-compose-is-there-a/) |
 | 260604-taa | review docker compose up logs and fix it. Then wait for tests to run and report back if there's any other issue and what's the plan to fix it. | 2026-06-05 | 5bcf7aa | [260604-taa-review-docker-compose-up-logs-and-fix-it](./quick/260604-taa-review-docker-compose-up-logs-and-fix-it/) |
 | 260605-lmg | Split activities.py into individual files under activities/ directory | 2026-06-05 | 3a39920 | [260605-lmg-split-activities-py-2479-lines-into-indi](./quick/260605-lmg-split-activities-py-2479-lines-into-indi/) |
+| 260605-rm0 | Fix orphan entity bug in delete_document ordering, fix list_entities reference_count, enforce no-orphan axiom in e2e test | 2026-06-05 | 7c7bb13 | [260605-rm0-there-are-still-orphan-entities-after-de](./quick/260605-rm0-there-are-still-orphan-entities-after-de/) |
 
 ## Deferred Items
 
