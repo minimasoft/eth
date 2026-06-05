@@ -4,7 +4,7 @@ milestone: v6.0
 milestone_name: Event-Centric Data Quality & UI
 status: roadmap
 last_updated: "2026-06-05"
-last_activity: 2026-06-05 — Completed quick task 260604-taa: review docker compose up logs and fix it. Then wait for tests to run and report back if there's any other issue and what's the plan to fix it.
+last_activity: 2026-06-05 — Completed quick task 260604-u5y: Diagnosed orphan entity accumulation — 62 canonical_entity, 272 references, 43 event_entity_link records remain after document deletion due to broken graph traversal in delete cascade Step 2 (documents.py:1006-1011).
 progress:
   total_phases: 5
   completed_phases: 0
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-06-04)
 Phase: 24 of 28 (Schema & Data Model Foundation)
 Plan: —
 Status: Roadmap created — ready for planning
-Last activity: 2026-06-04 — v6.0 roadmap created (phases 24-28)
+Last activity: 2026-06-04 — Completed quick task 260604-u5y: diagnosed orphan entity accumulation after document deletion
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -80,6 +80,7 @@ None. Ready to begin Phase 24 planning.
 
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
+| 260604-u5y | review docker compose logs — why entities remain after document deletion | 2026-06-05 | — | [260604-u5y-review-logs-in-docker-compose-is-there-a](./quick/260604-u5y-review-logs-in-docker-compose-is-there-a/) |
 | 260604-taa | review docker compose up logs and fix it. Then wait for tests to run and report back if there's any other issue and what's the plan to fix it. | 2026-06-05 | 5bcf7aa | [260604-taa-review-docker-compose-up-logs-and-fix-it](./quick/260604-taa-review-docker-compose-up-logs-and-fix-it/) |
 
 ## Deferred Items
@@ -95,6 +96,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-04
-Stopped at: v6.0 roadmap created — ready for Phase 24 planning
+Last session: 2026-06-05
+Stopped at: Completed quick task 260604-u5y — root cause analysis of orphan entities complete
 Resume file: None
