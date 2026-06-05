@@ -338,6 +338,19 @@ describe("e2e — full pipeline (events, entities, references, delete, tokens)",
       const [evStatus] = await httpGet(`${API_BASE}/documents/${docId}/events`, 5_000);
       console.log(`  Events endpoint after delete: HTTP ${evStatus}`);
 
+      // AXIOM: No entity can exist without at least one reference.
+      // After deleting a document, verify zero entities have reference_count === 0.
+      const entitiesAfter = await listEntities({ per_page: "200" });
+      assertNonNull(entitiesAfter, "Entities list should be available after delete");
+      const zeroRefEntities = entitiesAfter.items.filter((e) => e.reference_count === 0);
+      assert.equal(
+        zeroRefEntities.length,
+        0,
+        `Expected 0 entities with reference_count=0, found ${zeroRefEntities.length}: ` +
+        zeroRefEntities.map((e) => `${e.name} (${e.entity_id})`).join(", "),
+      );
+      console.log(`✓ Zero orphan entities after delete (axiom verified)`);
+
       const idx = testDocIds.indexOf(docId);
       if (idx !== -1) testDocIds.splice(idx, 1);
 
