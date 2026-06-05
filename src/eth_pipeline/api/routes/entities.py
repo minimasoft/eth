@@ -100,6 +100,19 @@ async def list_entities(
                 )
                 for cr in count_rows:
                     ref_counts[str(cr["canonical_entity_id"])] = cr["cnt"]
+
+                # Also count references via entity_id column (Phase 17 search-first resolution)
+                eid_placeholders = ", ".join(f"${i + 1 + len(entity_ids)}" for i in range(len(entity_ids)))
+                eid_rows = await db.fetch(
+                    f"SELECT entity_id AS eid, COUNT(*) AS cnt FROM reference "
+                    f"WHERE entity_id IN ({eid_placeholders}) "
+                    f"AND entity_id IS NOT NULL "
+                    f"GROUP BY entity_id",
+                    *entity_ids,
+                )
+                for er in eid_rows:
+                    eid = str(er["eid"])
+                    ref_counts[eid] = ref_counts.get(eid, 0) + er["cnt"]
         except Exception as exc:
             logger.warning("Failed to batch-count references: %s", exc)
 
