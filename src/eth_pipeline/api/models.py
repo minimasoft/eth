@@ -1,21 +1,6 @@
 from __future__ import annotations
 
 from pydantic import BaseModel
-
-
-def _parse_count(raw_result: list | dict | None) -> int:
-    """Extract count integer from a SurrealDB count query result."""
-    records = [r for r in (raw_result or []) if isinstance(r, dict)]
-    if not records:
-        return 0
-    cnt = records[0].get("total")
-    if isinstance(cnt, dict):
-        return int(cnt.get("value", 0))
-    if cnt is not None:
-        return int(cnt)
-    return 0
-
-
 # =======================================================================
 # Pydantic models
 # =======================================================================
@@ -216,6 +201,12 @@ class HealthResponse(BaseModel):
     status: str = "ok"
 
 
+class EntityDeleted(BaseModel):
+    entity_id: str
+    entity_deleted: bool = True
+    references_affected: int = 0
+
+
 class EntityListItem(BaseModel):
     """A single entity entry in the paginated entity list."""
 
@@ -272,24 +263,6 @@ class EntityListResponse(BaseModel):
 
     pages: int
     """Total number of pages available."""
-
-
-class GraphQLRequest(BaseModel):
-    """Request body for ``POST /graphql``.
-
-    SurrealDB's auto-GraphQL endpoint accepts standard GraphQL POST bodies
-    (``query`` + optional ``variables``).  We forward the body as-is.
-    """
-
-    query: str
-    """The GraphQL query string."""
-
-    variables: dict | None = None
-    """Optional variables for the GraphQL query."""
-
-    operationName: str | None = None
-    """Optional operation name for the GraphQL request."""
-
 
 class ReferenceListItem(BaseModel):
     """A single reference entry in the paginated reference list."""
@@ -573,6 +546,7 @@ __all__ = [
     "DocumentListResponse",
     "DocumentStatus",
     "DocumentUploadCreated",
+    "EntityDeleted",
     "EntityDetailReference",
     "EntityDetailResponse",
     "EntityListItem",
@@ -580,8 +554,7 @@ __all__ = [
     "EventListItem",
     "EventListResponse",
     "EventsCleared",
-    "GraphQLRequest",
-    "HealthResponse",
+
     "MergeRequest",
     "MergeResponse",
     "ProcessingLogListItem",
@@ -591,5 +564,4 @@ __all__ = [
     "SplitPartition",
     "SplitRequest",
     "SplitResponse",
-    "_parse_count",
 ]

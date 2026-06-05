@@ -7,11 +7,11 @@ import logging
 import os
 import uuid
 
+import asyncpg
 from fastapi import APIRouter, File, HTTPException, Query, UploadFile
 
-from surrealdb import AsyncWsSurrealConnection
-
 from eth_pipeline.api import app
+from eth_pipeline.db import get_db
 
 from eth_pipeline.api.models import (
     APIInfo,
@@ -27,7 +27,6 @@ from eth_pipeline.api.models import (
     HealthResponse,
     ProcessingLogListItem,
     ProcessingLogListResponse,
-    _parse_count,
 )
 
 from eth_pipeline.storage import get_storage_async
@@ -51,11 +50,10 @@ async def root() -> APIInfo:
     return APIInfo(
         name="eth-pipeline",
         version="0.1.0",
-        description="Document processing pipeline with Temporal and SurrealDB",
+        description="Document processing pipeline with Temporal and PostgreSQL",
         endpoints={
             "/": "This information",
             "/health": "Liveness check",
-            "/graphql": "Proxy to SurrealDB auto-GraphQL (POST)",
             "/documents": "List documents (GET) or submit for processing (POST)",
             "/documents/upload": "Upload a binary document file (POST, multipart)",
             "/documents/{document_id}": "Get document status (GET)",
@@ -93,43 +91,33 @@ async def health() -> HealthResponse:
 async def create_document(input: DocumentInput) -> DocumentCreated:
     """Ingest a new document into the pipeline.
 
-    The document is stored in SurrealDB with status ``"pending"`` for
-    later extraction by the Temporal workflow.  If SurrealDB is not
+    The document is stored in PostgreSQL with status ``"pending"`` for
+    later extraction by the Temporal workflow.  If the database is not
     available the endpoint returns HTTP 503.
 
     When Temporal is connected, a workflow is started automatically to
     process the document.  If Temporal is unavailable the document is
     still stored and can be processed later.
     """
-    db: AsyncWsSurrealConnection | None = app.state.db
+    doc_id = str(uuid.uuid4().hex)
 
-    if db is None:
-        logger.error("POST /documents rejected — SurrealDB unavailable")
-        raise HTTPException(
-            status_code=503,
-            detail="SurrealDB is not available. Please try again later.",
-        )
-
-    doc_id = str(uuid.uuid4().hex)  # hex = no dashes (SurrealDB SQL parser limitation)
-
-    # For plain-text documents the original blob is a base64-encoded
-    # version of the text content (the schema requires a string value).
     original_blob = base64.b64encode(input.text.encode("utf-8")).decode("ascii")
 
     try:
-        await db.create(
-            f"document:{doc_id}",
-            {
-                "text_content": input.text,
-                "original_blob": original_blob,
-                "filename": input.filename,
-                "mime_type": input.mime_type or "text/plain",
-                "status": "pending",
-                "error_message": None,
-            },
-        )
+        async with get_db() as conn:
+            await conn.execute(
+                "INSERT INTO document (id, text_content, original_blob, filename, mime_type, status, error_message) "
+                "VALUES ($1, $2, $3, $4, $5, $6, $7)",
+                doc_id,
+                input.text,
+                original_blob,
+                input.filename,
+                input.mime_type or "text/plain",
+                "pending",
+                None,
+            )
     except Exception as exc:
-        logger.error("Failed to create document in SurrealDB: %s", exc)
+        logger.error("Failed to create document in PostgreSQL: %s", exc)
         raise HTTPException(
             status_code=502,
             detail="Failed to store document in database.",
@@ -181,23 +169,14 @@ async def upload_document(file: UploadFile = File(...)) -> DocumentUploadCreated
 
     Accepts a multipart file upload, stores the binary blob in MinIO
     (with fallback to base64-encoded inline storage if MinIO is
-    unavailable), creates a SurrealDB document record with
+    unavailable), creates a PostgreSQL document record with
     ``blob_format="minio"``, and triggers Temporal processing
     (best-effort).
 
     Returns HTTP 201 with ``{document_id, status}`` on success.
     Returns HTTP 413 if the file exceeds 50 MB.
-    Returns HTTP 503 if SurrealDB is unavailable.
+    Returns HTTP 503 if the database is unavailable.
     """
-    db: AsyncWsSurrealConnection | None = app.state.db
-
-    if db is None:
-        logger.error("POST /documents/upload rejected — SurrealDB unavailable")
-        raise HTTPException(
-            status_code=503,
-            detail="SurrealDB is not available. Please try again later.",
-        )
-
     # 1. Validate file
     if not file.filename:
         raise HTTPException(
@@ -273,24 +252,25 @@ async def upload_document(file: UploadFile = File(...)) -> DocumentUploadCreated
         blob_format = None
         stored_blob_path = None
 
-    # 7. Create document record in SurrealDB
+    # 7. Create document record in PostgreSQL
     try:
-        await db.create(
-            f"document:{doc_id}",
-            {
-                "text_content": None,
-                "original_blob": original_blob,
-                "blob_format": blob_format,
-                "blob_path": stored_blob_path,
-                "filename": file.filename or f"unnamed_{doc_id}",
-                "mime_type": file.content_type or "application/octet-stream",
-                "status": "pending",
-                "error_message": None,
-            },
-        )
+        async with get_db() as conn:
+            await conn.execute(
+                "INSERT INTO document (id, text_content, original_blob, blob_format, blob_path, filename, mime_type, status, error_message) "
+                "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
+                doc_id,
+                None,
+                original_blob,
+                blob_format,
+                stored_blob_path,
+                file.filename or f"unnamed_{doc_id}",
+                file.content_type or "application/octet-stream",
+                "pending",
+                None,
+            )
     except Exception as exc:
-        logger.error("Failed to create document in SurrealDB: %s", exc)
-        # Clean up MinIO blob if SurrealDB failed after storage
+        logger.error("Failed to create document in PostgreSQL: %s", exc)
+        # Clean up MinIO blob if database failed after storage
         if minio_available:
             try:
                 async with get_storage_async() as cleanup_client:
@@ -359,36 +339,19 @@ async def upload_document(file: UploadFile = File(...)) -> DocumentUploadCreated
 async def get_document(document_id: str) -> DocumentStatus:
     """Retrieve document status and metadata.
 
-    Queries SurrealDB for the document record identified by ``document_id``
+    Queries PostgreSQL for the document record identified by ``document_id``
     and returns its current status, filename, error message, and creation
     timestamp.
 
     Returns HTTP 404 if the document does not exist and HTTP 503 if the
     database is unavailable.
     """
-    db: AsyncWsSurrealConnection | None = app.state.db
-
-    if db is None:
-        logger.error("GET /documents/%s rejected — SurrealDB unavailable", document_id)
-        raise HTTPException(
-            status_code=503,
-            detail="SurrealDB is not available. Please try again later.",
-        )
-
-    doc_ref = f"document:{document_id}"
-
     try:
-        # Use WHERE id = $doc_id with a RecordID parameter to avoid
-        # SurrealDB v3's "Cannot perform subtraction with 'record'
-        # and 'table'" error that occurs when the record does not
-        # exist in a SCHEMAFULL table with inline FROM {doc_ref}.
-        from surrealdb.data.types.record_id import RecordID
-
-        doc_id_obj = RecordID("document", document_id)
-        result = await db.query(
-            "SELECT * FROM document WHERE id = $doc_id",
-            {"doc_id": doc_id_obj},
-        )
+        async with get_db() as conn:
+            row = await conn.fetchrow(
+                "SELECT * FROM document WHERE id = $1",
+                document_id,
+            )
     except Exception as exc:
         logger.error("Failed to query document %s: %s", document_id, exc)
         raise HTTPException(
@@ -396,25 +359,15 @@ async def get_document(document_id: str) -> DocumentStatus:
             detail="Failed to query database.",
         ) from exc
 
-    # query() returns a flat list of dicts when records exist,
-    # or an empty list when no records match.
-    records: list[dict] = [
-        r for r in (result or []) if isinstance(r, dict)
-    ]
-
-    if not records:
+    if row is None:
         logger.warning("Document %s not found", document_id)
         raise HTTPException(
             status_code=404,
             detail=f"Document {document_id} not found.",
         )
 
-    record = records[0]
-
-    created_at_raw = record.get("created_at")
+    created_at_raw = row.get("created_at")
     if created_at_raw is not None:
-        # SurrealDB returns a datetime object; convert to ISO string
-        # for the Pydantic model (which expects str | None).
         created_at_str = (
             created_at_raw.isoformat()
             if hasattr(created_at_raw, "isoformat")
@@ -424,50 +377,46 @@ async def get_document(document_id: str) -> DocumentStatus:
         created_at_str = None
 
     # Query visibility counts (non-fatal — defaults to 0 on failure)
-    from surrealdb.data.types.record_id import RecordID
-
-    doc_id_obj = RecordID("document", document_id)
     ref_count = 0
     ent_count = 0
     chunk_count = 0
     text_word_count = 0
     try:
-        ref_result = await db.query(
-            "SELECT count() AS total FROM reference "
-            "WHERE event.document = $doc_ref GROUP ALL",
-            {"doc_ref": doc_id_obj},
-        )
-        ref_count = _parse_count(ref_result)
+        async with get_db() as conn:
+            ref_row = await conn.fetchrow(
+                "SELECT COUNT(*) AS total FROM reference "
+                "WHERE event IN (SELECT id FROM event WHERE document = $1)",
+                document_id,
+            )
+            ref_count = ref_row["total"] if ref_row else 0
 
-        ent_result = await db.query(
-            "SELECT count() AS total FROM reference "
-            "WHERE event.document = $doc_ref "
-            "AND canonical_entity IS NOT NONE "
-            "AND canonical_entity IS NOT NULL "
-            "GROUP ALL",
-            {"doc_ref": doc_id_obj},
-        )
-        ent_count = _parse_count(ent_result)
+            ent_row = await conn.fetchrow(
+                "SELECT COUNT(*) AS total FROM reference "
+                "WHERE event IN (SELECT id FROM event WHERE document = $1) "
+                "AND canonical_entity IS NOT NULL",
+                document_id,
+            )
+            ent_count = ent_row["total"] if ent_row else 0
 
-        chunk_result = await db.query(
-            "SELECT count() AS total FROM document_chunk WHERE document = $doc_ref GROUP ALL",
-            {"doc_ref": doc_id_obj},
-        )
-        chunk_count = _parse_count(chunk_result)
+            chunk_row = await conn.fetchrow(
+                "SELECT COUNT(*) AS total FROM document_chunk WHERE document = $1",
+                document_id,
+            )
+            chunk_count = chunk_row["total"] if chunk_row else 0
 
-        text_content = record.get("text_content", "") or ""
-        text_word_count = len(text_content.split()) if text_content.strip() else 0
+            text_content = row.get("text_content", "") or ""
+            text_word_count = len(text_content.split()) if text_content.strip() else 0
     except Exception as exc:
         logger.warning("Failed to query document counts for %s: %s", document_id, exc)
 
     return DocumentStatus(
         document_id=document_id,
-        status=record.get("status", "unknown"),
-        filename=record.get("filename", ""),
-        error_message=record.get("error_message"),
+        status=row.get("status", "unknown"),
+        filename=row.get("filename", ""),
+        error_message=row.get("error_message"),
         created_at=created_at_str,
-        blob_format=record.get("blob_format"),
-        blob_path=record.get("blob_path"),
+        blob_format=row.get("blob_format"),
+        blob_path=row.get("blob_path"),
         reference_count=ref_count,
         entity_count=ent_count,
         chunk_count=chunk_count,
@@ -489,29 +438,16 @@ async def get_document_logs(
     page: int = Query(1, ge=1),
 ) -> ProcessingLogListResponse:
     """Retrieve processing log entries for a document (paginated, newest first)."""
-    db: AsyncWsSurrealConnection | None = app.state.db
-
-    if db is None:
-        logger.error(
-            "GET /documents/%s/logs rejected — SurrealDB unavailable",
-            document_id,
-        )
-        raise HTTPException(
-            status_code=503,
-            detail="SurrealDB is not available. Please try again later.",
-        )
-
     per_page = 50
     offset = (page - 1) * per_page
 
+    # Verify document exists
     try:
-        from surrealdb.data.types.record_id import RecordID
-
-        doc_id_obj = RecordID("document", document_id)
-        exists_result = await db.query(
-            "SELECT * FROM document WHERE id = $doc_id",
-            {"doc_id": doc_id_obj},
-        )
+        async with get_db() as conn:
+            doc_row = await conn.fetchrow(
+                "SELECT id FROM document WHERE id = $1",
+                document_id,
+            )
     except Exception as exc:
         logger.error(
             "Failed to query document %s: %s", document_id, exc
@@ -521,26 +457,21 @@ async def get_document_logs(
             detail="Failed to query database.",
         ) from exc
 
-    exists_records: list[dict] = [
-        r for r in (exists_result or []) if isinstance(r, dict)
-    ]
-    if not exists_records:
+    if doc_row is None:
         logger.warning("Document %s not found for log query", document_id)
         raise HTTPException(
             status_code=404,
             detail=f"Document {document_id} not found.",
         )
 
-    from surrealdb.data.types.record_id import RecordID
-
-    doc_ref_obj = RecordID("document", document_id)
-
     try:
-        count_result = await db.query(
-            "SELECT count() AS total FROM document_event_log "
-            "WHERE document = $doc_ref GROUP ALL",
-            {"doc_ref": doc_ref_obj},
-        )
+        async with get_db() as conn:
+            total_row = await conn.fetchrow(
+                "SELECT COUNT(*) AS total FROM document_event_log "
+                "WHERE document = $1",
+                document_id,
+            )
+            total = total_row["total"] if total_row else 0
     except Exception as exc:
         logger.error(
             "Failed to count log entries for document %s: %s",
@@ -552,25 +483,22 @@ async def get_document_logs(
             detail="Failed to query database.",
         ) from exc
 
-    total = _parse_count(count_result)
-
     if total == 0:
         pages = 0
     else:
         pages = max(1, (total + per_page - 1) // per_page)
 
     try:
-        data_result = await db.query(
-            "SELECT * FROM document_event_log "
-            "WHERE document = $doc_ref "
-            "ORDER BY created_at DESC "
-            "LIMIT $limit START $offset",
-            {
-                "doc_ref": doc_ref_obj,
-                "limit": per_page,
-                "offset": offset,
-            },
-        )
+        async with get_db() as conn:
+            rows = await conn.fetch(
+                "SELECT * FROM document_event_log "
+                "WHERE document = $1 "
+                "ORDER BY created_at DESC "
+                "LIMIT $2 OFFSET $3",
+                document_id,
+                per_page,
+                offset,
+            )
     except Exception as exc:
         logger.error(
             "Failed to query log entries for document %s: %s",
@@ -582,22 +510,9 @@ async def get_document_logs(
             detail="Failed to query database.",
         ) from exc
 
-    data_records: list[dict] = [
-        r for r in (data_result or []) if isinstance(r, dict)
-    ]
-
     items: list[ProcessingLogListItem] = []
-    for record in data_records:
-        entry_id_val = record.get("id")
-        entry_id: str = ""
-        if isinstance(entry_id_val, RecordID):
-            entry_id = str(entry_id_val.id)
-        elif isinstance(entry_id_val, str):
-            entry_id = (
-                entry_id_val.split(":", 1)[1]
-                if ":" in entry_id_val
-                else entry_id_val
-            )
+    for record in rows:
+        entry_id: str = record.get("id", "")
 
         created_at_raw = record.get("created_at")
         created_at_str: str | None = None
@@ -643,32 +558,20 @@ async def get_document_logs(
 @router.get("/documents/{document_id}/tokens", response_model=DocumentTokenUsage)
 async def get_document_tokens(document_id: str) -> DocumentTokenUsage:
     """Retrieve aggregated token usage for a single document."""
-    db: AsyncWsSurrealConnection | None = app.state.db
-
-    if db is None:
-        logger.error("GET /documents/%s/tokens rejected — SurrealDB unavailable", document_id)
-        raise HTTPException(
-            status_code=503,
-            detail="SurrealDB is not available. Please try again later.",
-        )
-
-    from surrealdb.data.types.record_id import RecordID
-
-    doc_id_obj = RecordID("document", document_id)
-
     try:
-        result = await db.query(
-            "SELECT "
-            "math::sum(prompt_tokens) as prompt_tokens, "
-            "math::sum(completion_tokens) as completion_tokens, "
-            "math::sum(total_tokens) as total_tokens, "
-            "math::sum(cached_tokens) as cached_tokens, "
-            "math::sum(cost) as total_cost, "
-            "math::sum(duration_ms) as duration_ms, "
-            "count() as record_count "
-            "FROM llm_usage WHERE document = $doc GROUP ALL",
-            {"doc": doc_id_obj},
-        )
+        async with get_db() as conn:
+            row = await conn.fetchrow(
+                "SELECT "
+                "SUM(prompt_tokens) as prompt_tokens, "
+                "SUM(completion_tokens) as completion_tokens, "
+                "SUM(total_tokens) as total_tokens, "
+                "SUM(cached_tokens) as cached_tokens, "
+                "SUM(cost) as total_cost, "
+                "SUM(duration_ms) as duration_ms, "
+                "COUNT(*) as record_count "
+                "FROM llm_usage WHERE document = $1",
+                document_id,
+            )
     except Exception as exc:
         logger.error("Failed to query token usage for %s: %s", document_id, exc)
         raise HTTPException(
@@ -676,13 +579,10 @@ async def get_document_tokens(document_id: str) -> DocumentTokenUsage:
             detail="Failed to query token usage.",
         ) from exc
 
-    records: list[dict] = [r for r in (result or []) if isinstance(r, dict)]
-
-    if not records or records[0].get("record_count", 0) == 0:
+    if not row or row.get("record_count", 0) == 0:
         logger.info("No token data for document %s", document_id)
         return DocumentTokenUsage(has_data=False)
 
-    row = records[0]
     return DocumentTokenUsage(
         has_data=True,
         prompt_tokens=row.get("prompt_tokens") or 0,
@@ -702,39 +602,29 @@ async def list_documents(
     status: str | None = Query(None),
 ) -> DocumentListResponse:
     """List documents with pagination, search, and status filtering."""
-    db: AsyncWsSurrealConnection | None = app.state.db
-
-    if db is None:
-        logger.error("GET /documents rejected — SurrealDB unavailable")
-        raise HTTPException(
-            status_code=503,
-            detail="SurrealDB is not available. Please try again later.",
-        )
-
     offset = (page - 1) * per_page
 
-    # Build dynamic WHERE clause — bind values via $params (safe).
+    # Build dynamic WHERE clause with positional params
+    params: list[object] = []
     where_parts: list[str] = ["1 = 1"]
-    query_params: dict[str, object] = {}
 
     if search:
-        where_parts.append("filename LIKE $search")
-        query_params["search"] = f"%{search}%"
+        params.append(f"%{search}%")
+        where_parts.append(f"filename LIKE ${len(params)}")
 
     if status:
-        where_parts.append("status = $status")
-        query_params["status"] = status
+        params.append(status)
+        where_parts.append(f"status = ${len(params)}")
 
     where_clause = " AND ".join(where_parts)
-    query_params["per_page"] = per_page
-    query_params["offset"] = offset
 
     try:
-        # Count total matching documents
-        count_result = await db.query(
-            f"SELECT count() AS total FROM document WHERE {where_clause} GROUP ALL",
-            query_params,
-        )
+        async with get_db() as conn:
+            total_row = await conn.fetchrow(
+                f"SELECT COUNT(*) AS total FROM document WHERE {where_clause}",
+                *params,
+            )
+            total = total_row["total"] if total_row else 0
     except Exception as exc:
         logger.error("Failed to count documents: %s", exc)
         raise HTTPException(
@@ -742,30 +632,23 @@ async def list_documents(
             detail="Failed to query database.",
         ) from exc
 
-    # Parse count from SurrealDB response
-    total = 0
-    count_records: list[dict] = [
-        r for r in (count_result or []) if isinstance(r, dict)
-    ]
-    if count_records:
-        cnt_val = count_records[0].get("total")
-        if isinstance(cnt_val, dict):
-            total = int(cnt_val.get("value", 0))
-        elif cnt_val is not None:
-            total = int(cnt_val)
-
     if total == 0:
         pages = 0
     else:
         pages = max(1, (total + per_page - 1) // per_page)
 
+    # Build data query with additional pagination params
+    data_params = params.copy()
+    data_params.append(per_page)
+    data_params.append(offset)
+
     try:
-        # Fetch paginated document records
-        data_result = await db.query(
-            f"SELECT * FROM document WHERE {where_clause} "
-            "ORDER BY created_at DESC LIMIT $per_page START $offset",
-            query_params,
-        )
+        async with get_db() as conn:
+            rows = await conn.fetch(
+                f"SELECT * FROM document WHERE {where_clause} "
+                "ORDER BY created_at DESC LIMIT $1 OFFSET $2",
+                *data_params,
+            )
     except Exception as exc:
         logger.error("Failed to query documents: %s", exc)
         raise HTTPException(
@@ -773,58 +656,40 @@ async def list_documents(
             detail="Failed to query database.",
         ) from exc
 
-    from surrealdb.data.types.record_id import RecordID
-
-    data_records: list[dict] = [
-        r for r in (data_result or []) if isinstance(r, dict)
-    ]
-
     # Batched token aggregation: one extra query for all documents on this page
-    document_rids: list[RecordID] = []
-    for record in data_records:
+    document_ids: list[str] = []
+    for record in rows:
         doc_id_val = record.get("id")
-        if isinstance(doc_id_val, RecordID):
-            document_rids.append(doc_id_val)
-        elif isinstance(doc_id_val, str):
-            parts = doc_id_val.split(":", 1)
-            doc_id = parts[1] if len(parts) > 1 else parts[0]
-            document_rids.append(RecordID("document", doc_id))
+        if isinstance(doc_id_val, str):
+            document_ids.append(doc_id_val)
 
     token_map: dict[str, dict] = {}
-    if document_rids:
+    if document_ids:
         try:
-            token_result = await db.query(
-                "SELECT document, "
-                "math::sum(prompt_tokens) as prompt_tokens, "
-                "math::sum(completion_tokens) as completion_tokens, "
-                "math::sum(total_tokens) as total_tokens, "
-                "math::sum(cached_tokens) as cached_tokens, "
-                "math::sum(cost) as total_cost, "
-                "math::sum(duration_ms) as duration_ms "
-                "FROM llm_usage "
-                "WHERE document INSIDE $docs "
-                "GROUP BY document",
-                {"docs": document_rids},
-            )
-            token_rows: list[dict] = [
-                r for r in (token_result or []) if isinstance(r, dict)
-            ]
-            for row in token_rows:
-                doc_ref = row.get("document")
-                if doc_ref is not None:
-                    token_map[str(doc_ref)] = row
+            async with get_db() as conn:
+                token_rows = await conn.fetch(
+                    "SELECT document, "
+                    "SUM(prompt_tokens) as prompt_tokens, "
+                    "SUM(completion_tokens) as completion_tokens, "
+                    "SUM(total_tokens) as total_tokens, "
+                    "SUM(cached_tokens) as cached_tokens, "
+                    "SUM(cost) as total_cost, "
+                    "SUM(duration_ms) as duration_ms "
+                    "FROM llm_usage "
+                    "WHERE document = ANY($1::text[]) "
+                    "GROUP BY document",
+                    document_ids,
+                )
+                for token_row in token_rows:
+                    doc_ref = token_row.get("document")
+                    if doc_ref is not None:
+                        token_map[str(doc_ref)] = dict(token_row)
         except Exception as exc:
             logger.warning("Failed to query batched token data: %s", exc)
 
     items: list[DocumentListItem] = []
-    for record in data_records:
-        # Parse document_id from the RecordID or string id field
-        doc_id_val = record.get("id")
-        doc_id: str = ""
-        if isinstance(doc_id_val, RecordID):
-            doc_id = doc_id_val.id
-        elif isinstance(doc_id_val, str):
-            doc_id = doc_id_val.split(":", 1)[1] if ":" in doc_id_val else doc_id_val
+    for record in rows:
+        doc_id = record.get("id", "")
 
         created_at_raw = record.get("created_at")
         if created_at_raw is not None:
@@ -842,36 +707,34 @@ async def list_documents(
         chunk_count = 0
         twc = 0
         try:
-            doc_ref_obj = RecordID("document", doc_id)
-            ref_result = await db.query(
-                "SELECT count() AS total FROM reference "
-                "WHERE event.document = $doc_ref GROUP ALL",
-                {"doc_ref": doc_ref_obj},
-            )
-            ref_count = _parse_count(ref_result)
+            async with get_db() as conn:
+                ref_row = await conn.fetchrow(
+                    "SELECT COUNT(*) AS total FROM reference "
+                    "WHERE event IN (SELECT id FROM event WHERE document = $1)",
+                    doc_id,
+                )
+                ref_count = ref_row["total"] if ref_row else 0
 
-            ent_result = await db.query(
-                "SELECT count() AS total FROM reference "
-                "WHERE event.document = $doc_ref "
-                "AND canonical_entity IS NOT NONE "
-                "AND canonical_entity IS NOT NULL "
-                "GROUP ALL",
-                {"doc_ref": doc_ref_obj},
-            )
-            ent_count = _parse_count(ent_result)
+                ent_row = await conn.fetchrow(
+                    "SELECT COUNT(*) AS total FROM reference "
+                    "WHERE event IN (SELECT id FROM event WHERE document = $1) "
+                    "AND canonical_entity IS NOT NULL",
+                    doc_id,
+                )
+                ent_count = ent_row["total"] if ent_row else 0
 
-            chunk_result = await db.query(
-                "SELECT count() AS total FROM document_chunk WHERE document = $doc_ref GROUP ALL",
-                {"doc_ref": doc_ref_obj},
-            )
-            chunk_count = _parse_count(chunk_result)
+                chunk_row = await conn.fetchrow(
+                    "SELECT COUNT(*) AS total FROM document_chunk WHERE document = $1",
+                    doc_id,
+                )
+                chunk_count = chunk_row["total"] if chunk_row else 0
 
-            text_content = record.get("text_content", "") or ""
-            twc = len(text_content.split()) if text_content.strip() else 0
+                text_content = record.get("text_content", "") or ""
+                twc = len(text_content.split()) if text_content.strip() else 0
         except Exception as exc:
             logger.warning("Failed to query counts for document %s: %s", doc_id, exc)
 
-        token_data = token_map.get(f"document:{doc_id}", {})
+        token_data = token_map.get(doc_id, {})
 
         items.append(DocumentListItem(
             document_id=doc_id,
@@ -920,38 +783,20 @@ async def list_documents(
     response_model=DocumentDeleted,
 )
 async def delete_document(document_id: str) -> DocumentDeleted:
-    """Delete a document and all its associated data (full cascade).
+    """Delete a document and all its associated data.
 
-    Deletion order enforces referential integrity:
-      1. event_entity_link  (graph edges referencing event entities)
-      2. reference          (verbatim spans referencing events)
-      3. event              (extracted events belonging to this doc)
-      4. document_chunk     (text chunks of this doc)
-      5. document_event_log (processing logs for this doc)
-      6. llm_usage          (LLM token usage for this doc)
-      7. canonical_entity   (orphaned entities with zero remaining references)
-      8. document           (the document record itself)
+    With ON DELETE CASCADE foreign keys, deleting events, references,
+    document_chunks, etc. is handled automatically when the document
+    is deleted.  Canonical entities are cleaned up separately since
+    they may be referenced by multiple documents.
     """
-    db: AsyncWsSurrealConnection | None = app.state.db
-
-    if db is None:
-        logger.error(
-            "DELETE /documents/%s rejected — SurrealDB unavailable",
-            document_id,
-        )
-        raise HTTPException(
-            status_code=503,
-            detail="SurrealDB is not available. Please try again later.",
-        )
-
+    # Verify document exists
     try:
-        from surrealdb.data.types.record_id import RecordID
-
-        doc_id_obj = RecordID("document", document_id)
-        exists_result = await db.query(
-            "SELECT * FROM document WHERE id = $doc_id",
-            {"doc_id": doc_id_obj},
-        )
+        async with get_db() as conn:
+            doc_row = await conn.fetchrow(
+                "SELECT id FROM document WHERE id = $1",
+                document_id,
+            )
     except Exception as exc:
         logger.error("Failed to query document %s: %s", document_id, exc)
         raise HTTPException(
@@ -959,10 +804,7 @@ async def delete_document(document_id: str) -> DocumentDeleted:
             detail="Failed to query database.",
         ) from exc
 
-    exists_records: list[dict] = [
-        r for r in (exists_result or []) if isinstance(r, dict)
-    ]
-    if not exists_records:
+    if doc_row is None:
         logger.warning("Document %s not found for cascade delete", document_id)
         raise HTTPException(
             status_code=404,
@@ -970,207 +812,159 @@ async def delete_document(document_id: str) -> DocumentDeleted:
         )
 
     try:
-        # --- Step 0: Collect event-type canonical entity IDs for this doc ---
-        event_ce_ids_result = await db.query(
-            "SELECT id FROM canonical_entity "
-            "WHERE entity_type = 'event' AND properties.document_id = $doc_id",
-            {"doc_id": document_id},
-        )
-        event_ce_rows: list[dict] = [
-            r for r in (event_ce_ids_result or []) if isinstance(r, dict)
-        ]
-
-        # --- Step 1: Delete event_participant edges (v6.0) ---
-        try:
-            await db.query(
-                "DELETE event_participant WHERE in IN "
-                "(SELECT id FROM event WHERE document = $doc_id)",
-                {"doc_id": doc_id_obj},
-            )
-        except Exception as exc:
-            logger.warning(
-                "event_participant cleanup skipped (table may not exist yet): %s",
-                exc,
+        async with get_db() as conn:
+            # --- Step 0: Collect event-type canonical entity IDs for this doc ---
+            event_ce_rows = await conn.fetch(
+                "SELECT id FROM canonical_entity "
+                "WHERE entity_type = 'event' AND properties->>'document_id' = $1",
+                document_id,
             )
 
-        # --- Step 1b: Delete event_entity_link edges ---
-        await db.query(
-            "DELETE event_entity_link WHERE event IN ("
-            "SELECT id FROM canonical_entity "
-            "WHERE entity_type = 'event' AND properties.document_id = $doc_id"
-            ")",
-            {"doc_id": document_id},
-        )
-
-        # --- Step 2: Collect affected canonical_entities from references ---
-        # Use direct event-ID subquery instead of graph traversal
-        # (event.document may be NONE for records from prior pipeline runs).
-        # Collect from BOTH canonical_entity and entity_id fields
-        # (Phase 17 search-first resolution populates entity_id).
-        affected_ce_query = await db.query(
-            "SELECT VALUE canonical_entity FROM reference "
-            "WHERE event IN (SELECT id FROM event WHERE document = $doc_id) "
-            "AND canonical_entity IS NOT NONE",
-            {"doc_id": doc_id_obj},
-        )
-        affected_eid_query = await db.query(
-            "SELECT VALUE entity_id FROM reference "
-            "WHERE event IN (SELECT id FROM event WHERE document = $doc_id) "
-            "AND entity_id IS NOT NONE",
-            {"doc_id": doc_id_obj},
-        )
-        # Merge both result sets (set union)
-        affected_ce_rids = list(set(
-            str(r) for r in (affected_ce_query or []) if r and isinstance(r, str)
-        ) | set(
-            str(r) for r in (affected_eid_query or []) if r and isinstance(r, str)
-        ))
-
-        # --- Step 3: Delete references ---
-        await db.query(
-            "DELETE reference WHERE event IN "
-            "(SELECT id FROM event WHERE document = $doc_id)",
-            {"doc_id": doc_id_obj},
-        )
-
-        # --- Step 4: Delete events ---
-        await db.query(
-            "DELETE event WHERE document = $doc_id",
-            {"doc_id": doc_id_obj},
-        )
-
-        # --- Step 5: Delete document chunks ---
-        await db.query(
-            "DELETE document_chunk WHERE document = $doc_id",
-            {"doc_id": doc_id_obj},
-        )
-
-        # --- Step 6: Delete processing logs and LLM usage ---
-        await db.query(
-            "DELETE document_event_log WHERE document = $doc_id",
-            {"doc_id": doc_id_obj},
-        )
-
-        await db.query(
-            "DELETE llm_usage WHERE document = $doc_id",
-            {"doc_id": doc_id_obj},
-        )
-
-        # --- Step 7: Delete event-type canonical entities for this doc ---
-        await db.query(
-            "DELETE canonical_entity WHERE entity_type = 'event' "
-            "AND properties.document_id = $doc_id",
-            {"doc_id": document_id},
-        )
-
-        # --- Step 8: Delete orphaned canonical entities (no refs remain) ---
-        orphaned = 0
-        rids_to_check: list[str] = []
-        if affected_ce_rids:
-            for rid_str in affected_ce_rids:
-                parts = rid_str.split(":")
-                ent_id = parts[1] if len(parts) > 1 else rid_str
-                rids_to_check.append(ent_id)
-
-            for ent_id in rids_to_check:
-                # Check references via BOTH canonical_entity AND entity_id
-                # (Phase 17 search-first resolution may only populate entity_id)
-                count_result = await db.query(
-                    "SELECT count() AS total FROM reference "
-                    "WHERE canonical_entity = $entity_ref "
-                    "OR entity_id = $entity_ref "
-                    "GROUP ALL",
-                    {"entity_ref": RecordID("canonical_entity", ent_id)},
+            # --- Step 1: Delete event_participant edges (v6.0) ---
+            try:
+                await conn.execute(
+                    "DELETE FROM event_participant WHERE "
+                    "in_event IN (SELECT id FROM event WHERE document = $1)",
+                    document_id,
                 )
-                count_rows: list[dict] = [
-                    r for r in (count_result or []) if isinstance(r, dict)
-                ]
-                remaining = 0
-                if count_rows:
-                    cv = count_rows[0].get("total")
-                    if isinstance(cv, dict):
-                        remaining = int(cv.get("value", 0))
-                    elif cv is not None:
-                        remaining = int(cv)
+            except Exception as exc:
+                logger.warning(
+                    "event_participant cleanup skipped (table may not exist yet): %s",
+                    exc,
+                )
+
+            # --- Step 1b: Delete event_entity_link edges ---
+            await conn.execute(
+                "DELETE FROM event_entity_link WHERE event IN ("
+                "SELECT id FROM canonical_entity "
+                "WHERE entity_type = 'event' AND properties->>'document_id' = $1"
+                ")",
+                document_id,
+            )
+
+            # --- Step 2: Collect affected canonical_entities from references ---
+            affected_ce_rows = await conn.fetch(
+                "SELECT canonical_entity FROM reference "
+                "WHERE event IN (SELECT id FROM event WHERE document = $1) "
+                "AND canonical_entity IS NOT NULL",
+                document_id,
+            )
+            affected_eid_rows = await conn.fetch(
+                "SELECT entity_id FROM reference "
+                "WHERE event IN (SELECT id FROM event WHERE document = $1) "
+                "AND entity_id IS NOT NULL",
+                document_id,
+            )
+            affected_ce_ids = list(set(
+                str(r["canonical_entity"]) for r in affected_ce_rows
+                if r["canonical_entity"] is not None
+            ) | set(
+                str(r["entity_id"]) for r in affected_eid_rows
+                if r["entity_id"] is not None
+            ))
+
+            # --- Steps 3-6: Delete dependent records (CASCADE handles most) ---
+            # event_participant, event_entity_link, reference, event,
+            # document_chunk, document_event_log, llm_usage are all
+            # cascaded from event/document deletions, but we delete
+            # them explicitly for explicit ordering.
+
+            await conn.execute(
+                "DELETE FROM reference WHERE event IN "
+                "(SELECT id FROM event WHERE document = $1)",
+                document_id,
+            )
+
+            await conn.execute(
+                "DELETE FROM event WHERE document = $1",
+                document_id,
+            )
+
+            await conn.execute(
+                "DELETE FROM document_chunk WHERE document = $1",
+                document_id,
+            )
+
+            await conn.execute(
+                "DELETE FROM document_event_log WHERE document = $1",
+                document_id,
+            )
+
+            await conn.execute(
+                "DELETE FROM llm_usage WHERE document = $1",
+                document_id,
+            )
+
+            # --- Step 7: Delete event-type canonical entities for this doc ---
+            await conn.execute(
+                "DELETE FROM canonical_entity WHERE entity_type = 'event' "
+                "AND properties->>'document_id' = $1",
+                document_id,
+            )
+
+            # --- Step 8: Delete orphaned canonical entities (no refs remain) ---
+            orphaned = 0
+            for ent_id in affected_ce_ids:
+                count_row = await conn.fetchrow(
+                    "SELECT COUNT(*) AS total FROM reference "
+                    "WHERE canonical_entity = $1 "
+                    "OR entity_id = $1",
+                    ent_id,
+                )
+                remaining = count_row["total"] if count_row else 0
 
                 if remaining == 0:
-                    await db.query(
-                        "DELETE canonical_entity WHERE id = $entity_ref",
-                        {"entity_ref": RecordID("canonical_entity", ent_id)},
+                    await conn.execute(
+                        "DELETE FROM canonical_entity WHERE id = $1",
+                        ent_id,
                     )
                     orphaned += 1
 
-        # --- Step 8b: Delete orphaned non-event entities from event_entity_link ---
-        # After removing event_entity_link edges in Step 1b, check whether
-        # the entities linked via those edges have become true orphans
-        # (zero references + zero remaining event_entity_link edges).
-        eel_entity_result = await db.query(
-            "SELECT VALUE entity FROM event_entity_link "
-            "WHERE event IN ("
-            "  SELECT id FROM canonical_entity "
-            "  WHERE entity_type = 'event' AND properties.document_id = $doc_id"
-            ")",
-            {"doc_id": document_id},
-        )
-        eel_entity_ids = list({
-            str(r) for r in (eel_entity_result or [])
-            if r and isinstance(r, str)
-        })
-        # Deduplicate against already-processed rids
-        eel_entity_ids = [
-            eid for eid in eel_entity_ids
-            if eid not in rids_to_check
-        ]
-        for eel_ent_str in eel_entity_ids:
-            parts = eel_ent_str.split(":")
-            ent_id = parts[1] if len(parts) > 1 else eel_ent_str
-            # Check remaining references (dual-field)
-            ref_count_result = await db.query(
-                "SELECT count() AS total FROM reference "
-                "WHERE canonical_entity = $entity_ref "
-                "OR entity_id = $entity_ref "
-                "GROUP ALL",
-                {"entity_ref": RecordID("canonical_entity", ent_id)},
+            # --- Step 8b: Delete orphaned non-event entities from event_entity_link ---
+            eel_entity_rows = await conn.fetch(
+                "SELECT entity FROM event_entity_link "
+                "WHERE event IN ("
+                "  SELECT id FROM canonical_entity "
+                "  WHERE entity_type = 'event' AND properties->>'document_id' = $1"
+                ")",
+                document_id,
             )
-            ref_rows: list[dict] = [
-                r for r in (ref_count_result or []) if isinstance(r, dict)
+            eel_entity_ids = list({
+                str(r["entity"]) for r in eel_entity_rows
+                if r["entity"] is not None
+            })
+            eel_entity_ids = [
+                eid for eid in eel_entity_ids
+                if eid not in affected_ce_ids
             ]
-            ref_remaining = 0
-            if ref_rows:
-                cv = ref_rows[0].get("total")
-                if isinstance(cv, dict):
-                    ref_remaining = int(cv.get("value", 0))
-                elif cv is not None:
-                    ref_remaining = int(cv)
-            # Check remaining event_entity_link edges
-            eel_count_result = await db.query(
-                "SELECT count() AS total FROM event_entity_link "
-                "WHERE entity = $entity_ref "
-                "GROUP ALL",
-                {"entity_ref": RecordID("canonical_entity", ent_id)},
-            )
-            eel_rows: list[dict] = [
-                r for r in (eel_count_result or []) if isinstance(r, dict)
-            ]
-            eel_remaining = 0
-            if eel_rows:
-                cv = eel_rows[0].get("total")
-                if isinstance(cv, dict):
-                    eel_remaining = int(cv.get("value", 0))
-                elif cv is not None:
-                    eel_remaining = int(cv)
-            if ref_remaining == 0 and eel_remaining == 0:
-                await db.query(
-                    "DELETE canonical_entity WHERE id = $entity_ref",
-                    {"entity_ref": RecordID("canonical_entity", ent_id)},
+            for ent_id in eel_entity_ids:
+                ref_row = await conn.fetchrow(
+                    "SELECT COUNT(*) AS total FROM reference "
+                    "WHERE canonical_entity = $1 "
+                    "OR entity_id = $1",
+                    ent_id,
                 )
-                orphaned += 1
+                ref_remaining = ref_row["total"] if ref_row else 0
 
-        # --- Step 9: Delete the document ---
-        await db.query(
-            "DELETE document WHERE id = $doc_id",
-            {"doc_id": doc_id_obj},
-        )
+                eel_row = await conn.fetchrow(
+                    "SELECT COUNT(*) AS total FROM event_entity_link "
+                    "WHERE entity = $1",
+                    ent_id,
+                )
+                eel_remaining = eel_row["total"] if eel_row else 0
+
+                if ref_remaining == 0 and eel_remaining == 0:
+                    await conn.execute(
+                        "DELETE FROM canonical_entity WHERE id = $1",
+                        ent_id,
+                    )
+                    orphaned += 1
+
+            # --- Step 9: Delete the document ---
+            await conn.execute(
+                "DELETE FROM document WHERE id = $1",
+                document_id,
+            )
 
         logger.info(
             "Deleted document %s (cascade complete, %d orphaned entities cleaned)",
@@ -1224,26 +1018,13 @@ async def delete_document(document_id: str) -> DocumentDeleted:
 )
 async def clear_document_events(document_id: str) -> EventsCleared:
     """Clear all extraction results for a document and reset its status."""
-    db: AsyncWsSurrealConnection | None = app.state.db
-
-    if db is None:
-        logger.error(
-            "DELETE /documents/%s/events rejected — SurrealDB unavailable",
-            document_id,
-        )
-        raise HTTPException(
-            status_code=503,
-            detail="SurrealDB is not available. Please try again later.",
-        )
-
+    # Verify document exists
     try:
-        from surrealdb.data.types.record_id import RecordID
-
-        doc_id_obj = RecordID("document", document_id)
-        exists_result = await db.query(
-            "SELECT * FROM document WHERE id = $doc_id",
-            {"doc_id": doc_id_obj},
-        )
+        async with get_db() as conn:
+            doc_row = await conn.fetchrow(
+                "SELECT id FROM document WHERE id = $1",
+                document_id,
+            )
     except Exception as exc:
         logger.error("Failed to query document %s: %s", document_id, exc)
         raise HTTPException(
@@ -1251,10 +1032,7 @@ async def clear_document_events(document_id: str) -> EventsCleared:
             detail="Failed to query database.",
         ) from exc
 
-    exists_records: list[dict] = [
-        r for r in (exists_result or []) if isinstance(r, dict)
-    ]
-    if not exists_records:
+    if doc_row is None:
         logger.warning("Document %s not found for event clear", document_id)
         raise HTTPException(
             status_code=404,
@@ -1262,67 +1040,62 @@ async def clear_document_events(document_id: str) -> EventsCleared:
         )
 
     try:
-        # Delete event_participant edges for events of this doc (v6.0)
-        try:
-            await db.query(
-                "DELETE event_participant WHERE in IN "
-                "(SELECT id FROM event WHERE document = $doc_id)",
-                {"doc_id": doc_id_obj},
-            )
-        except Exception as exc:
-            logger.warning(
-                "event_participant cleanup skipped (table may not exist yet): %s",
-                exc,
+        async with get_db() as conn:
+            # Delete event_participant edges for events of this doc (v6.0)
+            await conn.execute(
+                "DELETE FROM event_participant WHERE "
+                "in_event IN (SELECT id FROM event WHERE document = $1)",
+                document_id,
             )
 
-        # Delete event_entity_link edges for event-type entities of this doc
-        await db.query(
-            "DELETE event_entity_link WHERE event IN ("
-            "SELECT id FROM canonical_entity "
-            "WHERE entity_type = 'event' AND properties.document_id = $doc_id"
-            ")",
-            {"doc_id": document_id},
-        )
+            # Delete event_entity_link edges for event-type entities of this doc
+            await conn.execute(
+                "DELETE FROM event_entity_link WHERE event IN ("
+                "SELECT id FROM canonical_entity "
+                "WHERE entity_type = 'event' AND properties->>'document_id' = $1"
+                ")",
+                document_id,
+            )
 
-        await db.query(
-            "DELETE document_chunk WHERE document = $doc_id",
-            {"doc_id": doc_id_obj},
-        )
+            await conn.execute(
+                "DELETE FROM document_chunk WHERE document = $1",
+                document_id,
+            )
 
-        await db.query(
-            "DELETE reference WHERE event IN "
-            "(SELECT id FROM event WHERE document = $doc_id)",
-            {"doc_id": doc_id_obj},
-        )
+            await conn.execute(
+                "DELETE FROM reference WHERE event IN "
+                "(SELECT id FROM event WHERE document = $1)",
+                document_id,
+            )
 
-        await db.query(
-            "DELETE event WHERE document = $doc_id",
-            {"doc_id": doc_id_obj},
-        )
+            await conn.execute(
+                "DELETE FROM event WHERE document = $1",
+                document_id,
+            )
 
-        await db.query(
-            "DELETE document_event_log WHERE document = $doc_id",
-            {"doc_id": doc_id_obj},
-        )
+            await conn.execute(
+                "DELETE FROM document_event_log WHERE document = $1",
+                document_id,
+            )
 
-        await db.query(
-            "DELETE llm_usage WHERE document = $doc_id",
-            {"doc_id": doc_id_obj},
-        )
+            await conn.execute(
+                "DELETE FROM llm_usage WHERE document = $1",
+                document_id,
+            )
 
-        # Delete event-type canonical entities for this doc
-        await db.query(
-            "DELETE canonical_entity WHERE entity_type = 'event' "
-            "AND properties.document_id = $doc_id",
-            {"doc_id": document_id},
-        )
+            # Delete event-type canonical entities for this doc
+            await conn.execute(
+                "DELETE FROM canonical_entity WHERE entity_type = 'event' "
+                "AND properties->>'document_id' = $1",
+                document_id,
+            )
 
-        await db.query(
-            "UPDATE document SET status = 'pending', "
-            "text_content = '', error_message = NULL, "
-            "updated_at = time::now() WHERE id = $doc_id",
-            {"doc_id": doc_id_obj},
-        )
+            await conn.execute(
+                "UPDATE document SET status = 'pending', "
+                "text_content = '', error_message = NULL, "
+                "updated_at = NOW() WHERE id = $1",
+                document_id,
+            )
 
         logger.info(
             "Cleared events and reset status for document %s",

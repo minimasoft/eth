@@ -4,11 +4,9 @@ import logging
 
 from fastapi import APIRouter, HTTPException, Query
 
-from surrealdb import AsyncWsSurrealConnection
-
 from eth_pipeline.api import app
-
 from eth_pipeline.api.models import (
+    EntityDeleted,
     EntityDetailReference,
     EntityDetailResponse,
     EntityListItem,
@@ -19,6 +17,7 @@ from eth_pipeline.api.models import (
     SplitRequest,
     SplitResponse,
 )
+from eth_pipeline.db import get_db
 
 logger = logging.getLogger(__name__)
 
@@ -38,37 +37,27 @@ async def list_entities(
     entity_type: str | None = Query(None),
 ) -> EntityListResponse:
     """List canonical entities with pagination, search, and type filtering."""
-    db: AsyncWsSurrealConnection | None = app.state.db
-
-    if db is None:
-        logger.error("GET /entities rejected — SurrealDB unavailable")
-        raise HTTPException(
-            status_code=503,
-            detail="SurrealDB is not available. Please try again later.",
-        )
-
     offset = (page - 1) * per_page
 
     where_parts: list[str] = ["superseded_by IS NULL"]
-    query_params: dict[str, object] = {}
+    params: list[object] = []
 
     if search:
-        where_parts.append("name LIKE $search")
-        query_params["search"] = f"%{search}%"
+        where_parts.append(f"name ILIKE ${len(params) + 1}")
+        params.append(f"%{search}%")
 
     if entity_type:
-        where_parts.append("entity_type = $entity_type")
-        query_params["entity_type"] = entity_type
+        where_parts.append(f"entity_type = ${len(params) + 1}")
+        params.append(entity_type)
 
     where_clause = " AND ".join(where_parts)
-    query_params["per_page"] = per_page
-    query_params["offset"] = offset
 
     try:
-        count_result = await db.query(
-            f"SELECT count() AS total FROM canonical_entity WHERE {where_clause} GROUP ALL",
-            query_params,
-        )
+        async with get_db() as db:
+            total = await db.fetchval(
+                f"SELECT COUNT(*) AS total FROM canonical_entity WHERE {where_clause}",
+                *params,
+            ) or 0
     except Exception as exc:
         logger.error("Failed to count entities: %s", exc)
         raise HTTPException(
@@ -76,16 +65,7 @@ async def list_entities(
             detail="Failed to query database.",
         ) from exc
 
-    total = 0
-    count_records: list[dict] = [
-        r for r in (count_result or []) if isinstance(r, dict)
-    ]
-    if count_records:
-        cnt_val = count_records[0].get("total")
-        if isinstance(cnt_val, dict):
-            total = int(cnt_val.get("value", 0))
-        elif cnt_val is not None:
-            total = int(cnt_val)
+    total = int(total)
 
     if total == 0:
         pages = 0
@@ -93,11 +73,12 @@ async def list_entities(
         pages = max(1, (total + per_page - 1) // per_page)
 
     try:
-        data_result = await db.query(
-            f"SELECT * FROM canonical_entity WHERE {where_clause} "
-            "ORDER BY name ASC LIMIT $per_page START $offset",
-            query_params,
-        )
+        async with get_db() as db:
+            rows = await db.fetch(
+                f"SELECT * FROM canonical_entity WHERE {where_clause} "
+                f"ORDER BY name ASC LIMIT ${len(params) + 1} OFFSET ${len(params) + 2}",
+                *params, per_page, offset,
+            )
     except Exception as exc:
         logger.error("Failed to query entities: %s", exc)
         raise HTTPException(
@@ -105,51 +86,31 @@ async def list_entities(
             detail="Failed to query database.",
         ) from exc
 
-    from surrealdb.data.types.record_id import RecordID
-
-    data_records: list[dict] = [
-        r for r in (data_result or []) if isinstance(r, dict)
-    ]
+    entity_ids = [str(r["id"]) for r in rows]
+    ref_counts: dict[str, int] = {}
+    if entity_ids:
+        try:
+            async with get_db() as db:
+                placeholders = ", ".join(f"${i + 1}" for i in range(len(entity_ids)))
+                count_rows = await db.fetch(
+                    f"SELECT canonical_entity AS canonical_entity_id, COUNT(*) AS cnt FROM reference "
+                    f"WHERE canonical_entity IN ({placeholders}) "
+                    f"GROUP BY canonical_entity",
+                    *entity_ids,
+                )
+                for cr in count_rows:
+                    ref_counts[str(cr["canonical_entity_id"])] = cr["cnt"]
+        except Exception as exc:
+            logger.warning("Failed to batch-count references: %s", exc)
 
     items: list[EntityListItem] = []
-    for record in data_records:
-        ent_id_val = record.get("id")
-        entity_id: str = ""
-        if isinstance(ent_id_val, RecordID):
-            entity_id = ent_id_val.id
-        elif isinstance(ent_id_val, str):
-            entity_id = ent_id_val.split(":", 1)[1] if ":" in ent_id_val else ent_id_val
-
-        ent_rid = RecordID("canonical_entity", entity_id)
-        ref_count = 0
-        try:
-            ref_result = await db.query(
-                "SELECT count() AS total FROM reference WHERE canonical_entity = $entity_ref GROUP ALL",
-                {"entity_ref": ent_rid},
-            )
-        except Exception as exc:
-            logger.warning(
-                "Failed to count references for entity %s: %s",
-                entity_id,
-                exc,
-            )
-            ref_count = 0
-        else:
-            ref_records: list[dict] = [
-                r for r in (ref_result or []) if isinstance(r, dict)
-            ]
-            if ref_records:
-                cnt_val = ref_records[0].get("total")
-                if isinstance(cnt_val, dict):
-                    ref_count = int(cnt_val.get("value", 0))
-                elif cnt_val is not None:
-                    ref_count = int(cnt_val)
-
+    for row in rows:
+        eid = str(row["id"])
         items.append(EntityListItem(
-            entity_id=entity_id,
-            name=record.get("name", ""),
-            entity_type=record.get("entity_type", ""),
-            reference_count=ref_count,
+            entity_id=eid,
+            name=row.get("name", "") or "",
+            entity_type=row.get("entity_type", "") or "",
+            reference_count=ref_counts.get(eid, 0),
         ))
 
     logger.info(
@@ -179,19 +140,6 @@ async def list_entities(
 @router.post("/entities/merge", response_model=MergeResponse, status_code=200)
 async def merge_entities(request: MergeRequest) -> MergeResponse:
     """Merge two canonical entities of the same type."""
-    db: AsyncWsSurrealConnection | None = app.state.db
-
-    if db is None:
-        logger.error("POST /entities/merge rejected — SurrealDB unavailable")
-        raise HTTPException(
-            status_code=503,
-            detail="SurrealDB is not available. Please try again later.",
-        )
-
-    from surrealdb.data.types.record_id import RecordID
-
-    source_id_obj = RecordID("canonical_entity", request.source_id)
-    target_id_obj = RecordID("canonical_entity", request.target_id)
 
     if request.source_id == request.target_id:
         logger.warning(
@@ -204,10 +152,11 @@ async def merge_entities(request: MergeRequest) -> MergeResponse:
         )
 
     try:
-        source_result = await db.query(
-            "SELECT * FROM canonical_entity WHERE id = $source_id",
-            {"source_id": source_id_obj},
-        )
+        async with get_db() as db:
+            source_row = await db.fetchrow(
+                "SELECT * FROM canonical_entity WHERE id = $1",
+                request.source_id,
+            )
     except Exception as exc:
         logger.error(
             "Failed to query source entity %s: %s",
@@ -219,10 +168,7 @@ async def merge_entities(request: MergeRequest) -> MergeResponse:
             detail="Failed to query database.",
         ) from exc
 
-    source_records: list[dict] = [
-        r for r in (source_result or []) if isinstance(r, dict)
-    ]
-    if not source_records:
+    if not source_row:
         logger.warning(
             "Merge rejected — source entity %s not found",
             request.source_id,
@@ -232,13 +178,12 @@ async def merge_entities(request: MergeRequest) -> MergeResponse:
             detail=f"Source canonical entity {request.source_id} not found.",
         )
 
-    source_record = source_records[0]
-
     try:
-        target_result = await db.query(
-            "SELECT * FROM canonical_entity WHERE id = $target_id",
-            {"target_id": target_id_obj},
-        )
+        async with get_db() as db:
+            target_row = await db.fetchrow(
+                "SELECT * FROM canonical_entity WHERE id = $1",
+                request.target_id,
+            )
     except Exception as exc:
         logger.error(
             "Failed to query target entity %s: %s",
@@ -250,10 +195,7 @@ async def merge_entities(request: MergeRequest) -> MergeResponse:
             detail="Failed to query database.",
         ) from exc
 
-    target_records: list[dict] = [
-        r for r in (target_result or []) if isinstance(r, dict)
-    ]
-    if not target_records:
+    if not target_row:
         logger.warning(
             "Merge rejected — target entity %s not found",
             request.target_id,
@@ -263,10 +205,8 @@ async def merge_entities(request: MergeRequest) -> MergeResponse:
             detail=f"Target canonical entity {request.target_id} not found.",
         )
 
-    target_record = target_records[0]
-
-    source_type = source_record.get("entity_type")
-    target_type = target_record.get("entity_type")
+    source_type = source_row.get("entity_type")
+    target_type = target_row.get("entity_type")
     if source_type != target_type:
         logger.warning(
             "Merge rejected — cross-type merge attempted: source=%s (%s), target=%s (%s)",
@@ -280,36 +220,34 @@ async def merge_entities(request: MergeRequest) -> MergeResponse:
             detail=f"Cannot merge entities of different types: source is '{source_type}', target is '{target_type}'.",
         )
 
-    if source_record.get("superseded_by") is not None:
+    if source_row.get("superseded_by") is not None:
         logger.warning(
             "Merge rejected — source entity %s is already merged (superseded_by=%s)",
             request.source_id,
-            source_record["superseded_by"],
+            source_row["superseded_by"],
         )
         raise HTTPException(
             status_code=400,
             detail=f"Source canonical entity {request.source_id} has already been merged into another entity.",
         )
 
-    if target_record.get("superseded_by") is not None:
+    if target_row.get("superseded_by") is not None:
         logger.warning(
             "Merge rejected — target entity %s is already merged (superseded_by=%s)",
             request.target_id,
-            target_record["superseded_by"],
+            target_row["superseded_by"],
         )
         raise HTTPException(
             status_code=400,
             detail=f"Target canonical entity {request.target_id} has already been merged into another entity.",
         )
 
-    target_rid = RecordID("canonical_entity", request.target_id)
-    source_rid = RecordID("canonical_entity", request.source_id)
-
     try:
-        count_result = await db.query(
-            "SELECT count() as cnt FROM reference WHERE canonical_entity = $source_ref",
-            {"source_ref": source_rid},
-        )
+        async with get_db() as db:
+            rewired_count = await db.fetchval(
+                "SELECT COUNT(*) AS cnt FROM reference WHERE canonical_entity = $1",
+                request.source_id,
+            ) or 0
     except Exception as exc:
         logger.error(
             "Failed to count references for source entity %s: %s",
@@ -321,54 +259,45 @@ async def merge_entities(request: MergeRequest) -> MergeResponse:
             detail="Failed to query database during reference count.",
         ) from exc
 
-    count_records: list[dict] = [
-        r for r in (count_result or []) if isinstance(r, dict)
-    ]
-    rewired_count = 0
-    if count_records:
-        cnt_val = count_records[0].get("cnt")
-        if isinstance(cnt_val, dict):
-            rewired_count = int(cnt_val.get("value", 0))
-        elif cnt_val is not None:
-            rewired_count = int(cnt_val)
+    rewired_count = int(rewired_count)
 
     try:
-        await db.query(
-            "UPDATE reference SET canonical_entity = $target_ref, "
-            "resolution_confidence = 1.0, updated_at = time::now() "
-            "WHERE canonical_entity = $source_ref",
-            {"source_ref": source_rid, "target_ref": target_rid},
-        )
-
-        # v6.0: rewire location_place_id on events pointing to source place
-        try:
-            await db.query(
-                "UPDATE event SET location_place_id = $target_ref "
-                "WHERE location_place_id = $source_ref",
-                {"source_ref": source_rid, "target_ref": target_rid},
-            )
-        except Exception as exc:
-            logger.warning(
-                "location_place_id rewire skipped (may not exist yet): %s", exc,
+        async with get_db() as db:
+            await db.execute(
+                "UPDATE reference SET canonical_entity = $1, "
+                "resolution_confidence = 1.0, updated_at = NOW() "
+                "WHERE canonical_entity = $2",
+                request.target_id, request.source_id,
             )
 
-        # v6.0: rewire event_participant edges from source to target
-        try:
-            await db.query(
-                "UPDATE event_participant SET out = $target_ref "
-                "WHERE out = $source_ref",
-                {"source_ref": source_rid, "target_ref": target_rid},
-            )
-        except Exception as exc:
-            logger.warning(
-                "event_participant rewire skipped (may not exist yet): %s", exc,
-            )
+            try:
+                await db.execute(
+                    "UPDATE event SET location_place_id = $1 "
+                    "WHERE location_place_id = $2",
+                    request.target_id, request.source_id,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "location_place_id rewire skipped (may not exist yet): %s", exc,
+                )
 
-        await db.query(
-            f"UPDATE canonical_entity:{request.source_id} SET "
-            "superseded_by = $target_ref, updated_at = time::now()",
-            {"target_ref": target_rid},
-        )
+            try:
+                await db.execute(
+                    "UPDATE event_participant SET out_entity = $1 "
+                    "WHERE out_entity = $2",
+                    request.target_id, request.source_id,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "event_participant rewire skipped (may not exist yet): %s", exc,
+                )
+
+            await db.execute(
+                "UPDATE canonical_entity SET "
+                "superseded_by = $1, updated_at = NOW() "
+                "WHERE id = $2",
+                request.target_id, request.source_id,
+            )
 
         logger.info(
             "Merge complete: source=%s target=%s rewired=%d references",
@@ -413,18 +342,6 @@ async def split_entity(
     request: SplitRequest,
 ) -> SplitResponse:
     """Split references from a canonical entity into new entities."""
-    db: AsyncWsSurrealConnection | None = app.state.db
-
-    if db is None:
-        logger.error(
-            "POST /entities/%s/%s/split rejected — SurrealDB unavailable",
-            entity_type,
-            entity_id,
-        )
-        raise HTTPException(
-            status_code=503,
-            detail="SurrealDB is not available. Please try again later.",
-        )
 
     valid_types = {"place", "person", "object"}
     if entity_type not in valid_types:
@@ -438,15 +355,12 @@ async def split_entity(
             detail=f"Invalid entity type '{entity_type}'. Must be one of: {', '.join(sorted(valid_types))}.",
         )
 
-    from surrealdb.data.types.record_id import RecordID
-
-    source_id_obj = RecordID("canonical_entity", entity_id)
-
     try:
-        source_result = await db.query(
-            "SELECT * FROM canonical_entity WHERE id = $source_id",
-            {"source_id": source_id_obj},
-        )
+        async with get_db() as db:
+            source_row = await db.fetchrow(
+                "SELECT * FROM canonical_entity WHERE id = $1",
+                entity_id,
+            )
     except Exception as exc:
         logger.error(
             "Failed to query source entity %s/%s: %s",
@@ -459,10 +373,7 @@ async def split_entity(
             detail="Failed to query database.",
         ) from exc
 
-    source_records: list[dict] = [
-        r for r in (source_result or []) if isinstance(r, dict)
-    ]
-    if not source_records:
+    if not source_row:
         logger.warning(
             "Split rejected — entity %s/%s not found",
             entity_type,
@@ -509,28 +420,31 @@ async def split_entity(
             detail="Duplicate reference IDs found across partitions. Each reference can only be moved once.",
         )
 
-    source_rid = RecordID("canonical_entity", entity_id)
-    for ref_id in all_ref_ids:
-        try:
-            ref_result = await db.query(
-                "SELECT * FROM reference WHERE id = $ref_id",
-                {"ref_id": RecordID("reference", ref_id)},
+    try:
+        async with get_db() as db:
+            placeholders = ", ".join(f"${i + 1}" for i in range(len(all_ref_ids)))
+            ref_rows = await db.fetch(
+                f"SELECT id, canonical_entity AS canonical_entity_id FROM reference "
+                f"WHERE id IN ({placeholders})",
+                *all_ref_ids,
             )
-        except Exception as exc:
-            logger.error(
-                "Failed to query reference %s: %s",
-                ref_id,
-                exc,
-            )
-            raise HTTPException(
-                status_code=502,
-                detail="Failed to query database.",
-            ) from exc
+    except Exception as exc:
+        logger.error(
+            "Failed to query references during split: %s",
+            exc,
+        )
+        raise HTTPException(
+            status_code=502,
+            detail="Failed to query database.",
+        ) from exc
 
-        ref_records: list[dict] = [
-            r for r in (ref_result or []) if isinstance(r, dict)
-        ]
-        if not ref_records:
+    ref_map: dict[str, str | None] = {}
+    for r in ref_rows:
+        ref_map[str(r["id"])] = str(r["canonical_entity_id"]) if r["canonical_entity_id"] else None
+
+    for ref_id in all_ref_ids:
+        ref_canonical = ref_map.get(ref_id)
+        if ref_canonical is None and ref_id not in ref_map:
             logger.warning(
                 "Split rejected — reference %s not found",
                 ref_id,
@@ -539,22 +453,12 @@ async def split_entity(
                 status_code=400,
                 detail=f"Reference {ref_id} not found.",
             )
-
-        ref_record = ref_records[0]
-        ref_canonical = ref_record.get("canonical_entity")
-
-        ref_matches = False
-        if isinstance(ref_canonical, RecordID):
-            ref_matches = ref_canonical == source_rid
-        elif isinstance(ref_canonical, str):
-            ref_matches = ref_canonical == str(source_rid)
-
-        if not ref_matches:
+        if ref_canonical != entity_id:
             logger.warning(
                 "Split rejected — reference %s does not point to entity %s (points to %s)",
                 ref_id,
                 entity_id,
-                str(source_rid),
+                ref_canonical,
             )
             raise HTTPException(
                 status_code=400,
@@ -571,98 +475,68 @@ async def split_entity(
     new_entities_info: list[dict] = []
     total_moved = 0
 
-    for new_name in groups:
-        merged_ref_ids: list[str] = []
-        for partition in groups[new_name]:
-            merged_ref_ids.extend(partition.reference_ids)
+    async with get_db() as db:
+        for new_name in groups:
+            merged_ref_ids: list[str] = []
+            for partition in groups[new_name]:
+                merged_ref_ids.extend(partition.reference_ids)
 
-        try:
-            create_result = await db.create(
-                "canonical_entity",
-                {
-                    "entity_type": entity_type,
-                    "name": new_name,
-                    "properties": {
-                        "split_from": str(source_rid),
-                    },
-                    "superseded_by": None,
-                },
-            )
-        except Exception as exc:
-            logger.error(
-                "Failed to create canonical_entity '%s' during split: %s",
-                new_name,
-                exc,
-            )
-            raise HTTPException(
-                status_code=502,
-                detail=f"Failed to create canonical entity '{new_name}'.",
-            ) from exc
-
-        new_entity_id: str | None = None
-        if isinstance(create_result, RecordID):
-            new_entity_id = create_result.id
-        elif isinstance(create_result, dict):
-            created_id = create_result.get("id")
-            if isinstance(created_id, RecordID):
-                new_entity_id = created_id.id
-            elif isinstance(created_id, str):
-                if ":" in created_id:
-                    new_entity_id = created_id.split(":", 1)[1]
-                else:
-                    new_entity_id = created_id
-        elif isinstance(create_result, list) and len(create_result) > 0:
-            first = create_result[0]
-            if isinstance(first, dict):
-                created_id = first.get("id")
-                if isinstance(created_id, RecordID):
-                    new_entity_id = created_id.id
-                elif isinstance(created_id, str):
-                    if ":" in created_id:
-                        new_entity_id = created_id.split(":", 1)[1]
-                    else:
-                        new_entity_id = created_id
-
-        if new_entity_id is None:
-            logger.error(
-                "Could not parse created entity ID from response: %s",
-                str(create_result)[:300],
-            )
-            raise HTTPException(
-                status_code=502,
-                detail=f"Failed to parse created entity ID for '{new_name}'.",
-            )
-
-        new_entity_rid = RecordID("canonical_entity", new_entity_id)
-
-        for ref_id in merged_ref_ids:
             try:
-                await db.query(
-                    "UPDATE reference SET canonical_entity = $target_ref, "
-                    "resolution_confidence = 1.0, updated_at = time::now() "
-                    "WHERE id = $ref_id",
-                    {
-                        "target_ref": new_entity_rid,
-                        "ref_id": RecordID("reference", ref_id),
-                    },
+                row = await db.fetchrow(
+                    "INSERT INTO canonical_entity (entity_type, name, properties, superseded_by) "
+                    "VALUES ($1, $2, $3, $4) RETURNING *",
+                    entity_type,
+                    new_name,
+                    {"split_from": entity_id},
+                    None,
                 )
             except Exception as exc:
                 logger.error(
-                    "Failed to update reference %s for new entity '%s': %s",
-                    ref_id,
+                    "Failed to create canonical_entity '%s' during split: %s",
                     new_name,
                     exc,
                 )
                 raise HTTPException(
                     status_code=502,
-                    detail=f"Failed to update reference {ref_id} for '{new_name}'.",
+                    detail=f"Failed to create canonical entity '{new_name}'.",
                 ) from exc
 
-        new_entities_info.append({
-            "name": new_name,
-            "entity_id": new_entity_id,
-        })
-        total_moved += len(merged_ref_ids)
+            if not row or not row.get("id"):
+                logger.error(
+                    "Could not parse created entity ID from response: %s",
+                    str(row)[:300],
+                )
+                raise HTTPException(
+                    status_code=502,
+                    detail=f"Failed to parse created entity ID for '{new_name}'.",
+                )
+
+            new_entity_id = str(row["id"])
+
+            ref_placeholders = ", ".join(f"${i + 1}" for i in range(len(merged_ref_ids)))
+            try:
+                await db.execute(
+                    f"UPDATE reference SET canonical_entity = $1, "
+                    f"resolution_confidence = 1.0, updated_at = NOW() "
+                    f"WHERE id IN ({ref_placeholders})",
+                    new_entity_id, *merged_ref_ids,
+                )
+            except Exception as exc:
+                logger.error(
+                    "Failed to update references for new entity '%s': %s",
+                    new_name,
+                    exc,
+                )
+                raise HTTPException(
+                    status_code=502,
+                    detail=f"Failed to update references for '{new_name}'.",
+                ) from exc
+
+            new_entities_info.append({
+                "name": new_name,
+                "entity_id": new_entity_id,
+            })
+            total_moved += len(merged_ref_ids)
 
     logger.info(
         "Split complete: entity=%s/%s partitions=%d total_moved=%d new_entities=%s",
@@ -688,6 +562,77 @@ async def split_entity(
 
 
 # =======================================================================
+# Delete entity
+# =======================================================================
+
+
+@router.delete(
+    "/entities/{entity_id}",
+    response_model=EntityDeleted,
+)
+async def delete_entity(entity_id: str) -> EntityDeleted:
+    """Delete a canonical entity.
+
+    All references linked to this entity will have their canonical_entity
+    and entity_id set to NULL (via ON DELETE SET NULL). Event location
+    links, event_entity_link edges, and event_participant entries are
+    handled by the corresponding foreign key constraints.
+    """
+    try:
+        async with get_db() as db:
+            entity_row = await db.fetchrow(
+                "SELECT id FROM canonical_entity WHERE id = $1",
+                entity_id,
+            )
+    except Exception as exc:
+        logger.error("Failed to query entity %s: %s", entity_id, exc)
+        raise HTTPException(
+            status_code=502,
+            detail="Failed to query database.",
+        ) from exc
+
+    if not entity_row:
+        logger.warning("Entity %s not found for deletion", entity_id)
+        raise HTTPException(
+            status_code=404,
+            detail=f"Canonical entity {entity_id} not found.",
+        )
+
+    try:
+        async with get_db() as db:
+            ref_count = await db.fetchval(
+                "SELECT COUNT(*) AS total FROM reference "
+                "WHERE canonical_entity = $1 OR entity_id = $1",
+                entity_id,
+            ) or 0
+
+            ref_count = int(ref_count)
+
+            await db.execute(
+                "DELETE FROM canonical_entity WHERE id = $1",
+                entity_id,
+            )
+
+        logger.info(
+            "Deleted canonical entity %s (%d references affected)",
+            entity_id,
+            ref_count,
+        )
+    except Exception as exc:
+        logger.error("Failed to delete entity %s: %s", entity_id, exc)
+        raise HTTPException(
+            status_code=502,
+            detail="Failed to delete canonical entity.",
+        ) from exc
+
+    return EntityDeleted(
+        entity_id=entity_id,
+        entity_deleted=True,
+        references_affected=ref_count,
+    )
+
+
+# =======================================================================
 # Get entity details (with linked references)
 # =======================================================================
 
@@ -698,24 +643,13 @@ async def split_entity(
 )
 async def get_entity(entity_id: str) -> EntityDetailResponse:
     """Retrieve a canonical entity with its linked references."""
-    db: AsyncWsSurrealConnection | None = app.state.db
-
-    if db is None:
-        logger.error("GET /entities/%s rejected — SurrealDB unavailable", entity_id)
-        raise HTTPException(
-            status_code=503,
-            detail="SurrealDB is not available. Please try again later.",
-        )
-
-    from surrealdb.data.types.record_id import RecordID
-
-    ent_rid = RecordID("canonical_entity", entity_id)
 
     try:
-        ent_result = await db.query(
-            "SELECT * FROM canonical_entity WHERE id = $entity_ref",
-            {"entity_ref": ent_rid},
-        )
+        async with get_db() as db:
+            entity_row = await db.fetchrow(
+                "SELECT * FROM canonical_entity WHERE id = $1",
+                entity_id,
+            )
     except Exception as exc:
         logger.error("Failed to query entity %s: %s", entity_id, exc)
         raise HTTPException(
@@ -723,115 +657,68 @@ async def get_entity(entity_id: str) -> EntityDetailResponse:
             detail="Failed to query database.",
         ) from exc
 
-    ent_records: list[dict] = [
-        r for r in (ent_result or []) if isinstance(r, dict)
-    ]
-    if not ent_records:
+    if not entity_row:
         logger.warning("Entity %s not found", entity_id)
         raise HTTPException(
             status_code=404,
             detail=f"Canonical entity {entity_id} not found.",
         )
 
-    record = ent_records[0]
+    resolved_id = str(entity_row["id"])
 
-    ent_id_val = record.get("id")
-    resolved_id: str = ""
-    if isinstance(ent_id_val, RecordID):
-        resolved_id = ent_id_val.id
-    elif isinstance(ent_id_val, str):
-        resolved_id = ent_id_val.split(":", 1)[1] if ":" in ent_id_val else ent_id_val
-
-    # Count references
     try:
-        ref_count_result = await db.query(
-            "SELECT count() AS total FROM reference WHERE canonical_entity = $entity_ref GROUP ALL",
-            {"entity_ref": ent_rid},
-        )
+        async with get_db() as db:
+            ref_count = await db.fetchval(
+                "SELECT COUNT(*) AS total FROM reference WHERE canonical_entity = $1",
+                entity_id,
+            ) or 0
     except Exception:
-        ref_count_result = []
+        ref_count = 0
 
-    ref_count = 0
-    ref_count_records: list[dict] = [
-        r for r in (ref_count_result or []) if isinstance(r, dict)
-    ]
-    if ref_count_records:
-        cnt_val = ref_count_records[0].get("total")
-        if isinstance(cnt_val, dict):
-            ref_count = int(cnt_val.get("value", 0))
-        elif cnt_val is not None:
-            ref_count = int(cnt_val)
+    ref_count = int(ref_count)
 
-    # Fetch linked references with event and document info
     try:
-        refs_result = await db.query(
-            "SELECT * FROM reference WHERE canonical_entity = $entity_ref "
-            "ORDER BY created_at DESC "
-            "FETCH event, event.document",
-            {"entity_ref": ent_rid},
-        )
+        async with get_db() as db:
+            ref_rows = await db.fetch(
+                "SELECT r.id, r.reference_type, r.verbatim_text, "
+                "r.created_at, r.canonical_entity, "
+                "e.que_paso AS event_que_paso, e.id AS event_id, "
+                "d.filename AS doc_filename, d.id AS doc_id "
+                "FROM reference r "
+                "LEFT JOIN event e ON r.event = e.id "
+                "LEFT JOIN document d ON e.document = d.id "
+                "WHERE r.canonical_entity = $1 "
+                "ORDER BY r.created_at DESC",
+                entity_id,
+            )
     except Exception as exc:
         logger.warning("Failed to query references for entity %s: %s", entity_id, exc)
-        refs_result = []
-
-    ref_records: list[dict] = [
-        r for r in (refs_result or []) if isinstance(r, dict)
-    ]
+        ref_rows = []
 
     references: list[EntityDetailReference] = []
-    for ref_record in ref_records:
-        ref_id_val = ref_record.get("id")
-        ref_id: str = ""
-        if isinstance(ref_id_val, RecordID):
-            ref_id = ref_id_val.id
-        elif isinstance(ref_id_val, str):
-            ref_id = ref_id_val.split(":", 1)[1] if ":" in ref_id_val else ref_id_val
-
-        event_data = ref_record.get("event")
-        event_que_paso: str | None = None
-        event_id: str | None = None
-        doc_filename: str | None = None
-        doc_id: str | None = None
-
-        if isinstance(event_data, dict):
-            event_que_paso = event_data.get("que_paso")
-            ev_id_val = event_data.get("id")
-            if isinstance(ev_id_val, RecordID):
-                event_id = ev_id_val.id
-            elif isinstance(ev_id_val, str):
-                event_id = ev_id_val.split(":", 1)[1] if ":" in ev_id_val else ev_id_val
-
-            doc_data = event_data.get("document")
-            if isinstance(doc_data, dict):
-                doc_filename = doc_data.get("filename")
-                doc_id_val = doc_data.get("id")
-                if isinstance(doc_id_val, RecordID):
-                    doc_id = doc_id_val.id
-                elif isinstance(doc_id_val, str):
-                    doc_id = doc_id_val.split(":", 1)[1] if ":" in doc_id_val else doc_id_val
-
+    for row in ref_rows:
         references.append(EntityDetailReference(
-            reference_id=ref_id,
-            reference_type=ref_record.get("reference_type", ""),
-            verbatim_text=ref_record.get("verbatim_text", ""),
-            event_que_paso=event_que_paso,
-            event_id=event_id,
-            document_filename=doc_filename,
-            document_id=doc_id,
+            reference_id=str(row["id"]),
+            reference_type=row.get("reference_type", "") or "",
+            verbatim_text=row.get("verbatim_text", "") or "",
+            event_que_paso=row.get("event_que_paso"),
+            event_id=str(row["event_id"]) if row.get("event_id") else None,
+            document_filename=row.get("doc_filename"),
+            document_id=str(row["doc_id"]) if row.get("doc_id") else None,
         ))
 
     logger.info(
         "Entity detail for %s (%s) — %d references",
         resolved_id,
-        record.get("name", ""),
+        entity_row.get("name", "") or "",
         len(references),
     )
 
     return EntityDetailResponse(
         entity_id=resolved_id,
-        name=record.get("name", ""),
-        entity_type=record.get("entity_type", ""),
+        name=entity_row.get("name", "") or "",
+        entity_type=entity_row.get("entity_type", "") or "",
         reference_count=ref_count,
-        properties=record.get("properties"),
+        properties=entity_row.get("properties"),
         references=references,
     )
