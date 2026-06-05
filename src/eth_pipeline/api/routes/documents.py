@@ -833,6 +833,22 @@ async def delete_document(document_id: str) -> DocumentDeleted:
                     exc,
                 )
 
+            # --- Step 1a: Collect non-event entities linked via event_entity_link ---
+            # Collect BEFORE Step 1b deletes the edges, so we know which entities
+            # to check for orphan status after references are deleted.
+            eel_entity_rows = await conn.fetch(
+                "SELECT entity FROM event_entity_link "
+                "WHERE event IN ("
+                "  SELECT id FROM canonical_entity "
+                "  WHERE entity_type = 'event' AND properties->>'document_id' = $1"
+                ")",
+                document_id,
+            )
+            eel_entity_ids = list({
+                str(r["entity"]) for r in eel_entity_rows
+                if r["entity"] is not None
+            })
+
             # --- Step 1b: Delete event_entity_link edges ---
             await conn.execute(
                 "DELETE FROM event_entity_link WHERE event IN ("
@@ -921,23 +937,12 @@ async def delete_document(document_id: str) -> DocumentDeleted:
                     orphaned += 1
 
             # --- Step 8b: Delete orphaned non-event entities from event_entity_link ---
-            eel_entity_rows = await conn.fetch(
-                "SELECT entity FROM event_entity_link "
-                "WHERE event IN ("
-                "  SELECT id FROM canonical_entity "
-                "  WHERE entity_type = 'event' AND properties->>'document_id' = $1"
-                ")",
-                document_id,
-            )
-            eel_entity_ids = list({
-                str(r["entity"]) for r in eel_entity_rows
-                if r["entity"] is not None
-            })
-            eel_entity_ids = [
+            # Use eel_entity_ids collected in Step 1a (before edges were deleted)
+            eel_ids = [
                 eid for eid in eel_entity_ids
                 if eid not in affected_ce_ids
             ]
-            for ent_id in eel_entity_ids:
+            for ent_id in eel_ids:
                 ref_row = await conn.fetchrow(
                     "SELECT COUNT(*) AS total FROM reference "
                     "WHERE canonical_entity = $1 "
