@@ -4,7 +4,7 @@ milestone: v6.0
 milestone_name: Event-Centric Data Quality & UI
 status: roadmap
 last_updated: "2026-06-05"
-last_activity: 2026-06-05 — Completed quick task 260605-l4s: Fix canonical_entity_id column name bug, add entity delete endpoint + UI button, cleanup 181 orphan entities.
+last_activity: 2026-06-05 — Completed quick task 260605-lmg: Split activities.py into individual files under activities/ directory
 progress:
   total_phases: 5
   completed_phases: 0
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-06-04)
 Phase: 24 of 28 (Schema & Data Model Foundation)
 Plan: —
 Status: Roadmap created — ready for planning
-Last activity: 2026-06-05 — Completed quick task 260605-l4s: fix canonical_entity_id column name bug, add entity delete endpoint + UI button, cleanup 181 orphan entities
+Last activity: 2026-06-05 — Completed quick task 260605-lmg: Split activities.py into individual files under activities/ directory
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -84,6 +84,7 @@ None. Ready to begin Phase 24 planning.
 | 260604-ugl | clean up DB, apply delete cascade fixes, rebuild, verify | 2026-06-05 | fc4f7e2 | [260604-ugl-1-clean-up-db-2-apply-the-fixes-3-build-](./quick/260604-ugl-1-clean-up-db-2-apply-the-fixes-3-build-/) |
 | 260604-u5y | review docker compose logs — why entities remain after document deletion | 2026-06-05 | — | [260604-u5y-review-logs-in-docker-compose-is-there-a](./quick/260604-u5y-review-logs-in-docker-compose-is-there-a/) |
 | 260604-taa | review docker compose up logs and fix it. Then wait for tests to run and report back if there's any other issue and what's the plan to fix it. | 2026-06-05 | 5bcf7aa | [260604-taa-review-docker-compose-up-logs-and-fix-it](./quick/260604-taa-review-docker-compose-up-logs-and-fix-it/) |
+| 260605-lmg | Split activities.py into individual files under activities/ directory | 2026-06-05 | — | [260605-lmg-split-activities-py-2479-lines-into-indi](./quick/260605-lmg-split-activities-py-2479-lines-into-indi/) |
 
 ## Deferred Items
 
