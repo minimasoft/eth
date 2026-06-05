@@ -23,7 +23,6 @@ from eth_pipeline.api.models import (  # noqa: F401 — intentional re-export
     EntityListItem,
     EntityListResponse,
     EventsCleared,
-    GraphQLRequest,
     HealthResponse,
     MergeRequest,
     MergeResponse,
@@ -34,7 +33,6 @@ from eth_pipeline.api.models import (  # noqa: F401 — intentional re-export
     SplitPartition,
     SplitRequest,
     SplitResponse,
-    _parse_count,
 )
 
 logger = logging.getLogger(__name__)
@@ -45,7 +43,7 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="eth-pipeline",
-    description="Document processing pipeline with Temporal and SurrealDB",
+    description="Document processing pipeline with Temporal and PostgreSQL",
     version="0.1.0",
     lifespan=lifespan,
 )
@@ -73,10 +71,8 @@ from eth_pipeline.api.routes.documents import router as documents_router  # noqa
 from eth_pipeline.api.routes.entities import router as entities_router  # noqa: E402
 from eth_pipeline.api.routes.references import router as references_router  # noqa: E402
 from eth_pipeline.api.routes.events import router as events_router  # noqa: E402
-from eth_pipeline.api.graphql import router as graphql_router  # noqa: E402
 
 app.include_router(documents_router)
 app.include_router(entities_router)
 app.include_router(references_router)
 app.include_router(events_router)
-app.include_router(graphql_router)

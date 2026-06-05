@@ -1,20 +1,18 @@
 services:
-  surrealdb:
-    image: surrealdb/surrealdb:latest
-    command: start --username root --password root rocksdb:/data
+  postgres:
+    image: postgres:17-alpine
     ports:
-    - 8000:8000
+    - 5432:5432
     volumes:
-    - surrealdb_data:/data
-    user: root
+    - postgres_data:/var/lib/postgresql/data
     environment:
-      SURREAL_USER: root
-      SURREAL_PASS: root
+      POSTGRES_USER: eth
+      POSTGRES_PASSWORD: eth
+      POSTGRES_DB: eth
     healthcheck:
       test:
-      - CMD
-      - /surreal
-      - is-ready
+      - CMD-SHELL
+      - pg_isready -U eth -d eth
       interval: 5s
       retries: 6
       start_period: 10s
@@ -83,9 +81,13 @@ services:
     command: uv run python scripts/init_schema.py
     env_file: .env
     environment:
-      SURREAL_URL: http://surrealdb:8000
+      PGUSER: eth
+      PGPASSWORD: eth
+      PGHOST: postgres
+      PGPORT: "5432"
+      PGDATABASE: eth
     depends_on:
-      surrealdb:
+      postgres:
         condition: service_healthy
     restart: 'no'
     networks:
@@ -113,7 +115,11 @@ services:
     - 1985:8001
     env_file: .env
     environment:
-      SURREAL_URL: ws://surrealdb:8000/rpc
+      PGUSER: eth
+      PGPASSWORD: eth
+      PGHOST: postgres
+      PGPORT: "5432"
+      PGDATABASE: eth
     healthcheck:
       test:
       - CMD
@@ -137,7 +143,11 @@ services:
     command: uv run python scripts/run_worker.py
     env_file: .env
     environment:
-      SURREAL_URL: ws://surrealdb:8000/rpc
+      PGUSER: eth
+      PGPASSWORD: eth
+      PGHOST: postgres
+      PGPORT: "5432"
+      PGDATABASE: eth
     depends_on:
       schema-init:
         condition: service_completed_successfully
@@ -155,11 +165,11 @@ services:
       - ./tests/integration:/tests
     environment:
       API_URL: http://api:8001
-      SURREAL_HTTP: http://surrealdb:8000
-      SURREAL_USER: ${SURREAL_USER:-root}
-      SURREAL_PASS: ${SURREAL_PASS:-root}
-      SURREAL_NS: ${SURREAL_NS:-eth}
-      SURREAL_DB: ${SURREAL_DB:-pipeline}
+      PGUSER: eth
+      PGPASSWORD: eth
+      PGHOST: postgres
+      PGPORT: "5432"
+      PGDATABASE: eth
     depends_on:
       api:
         condition: service_healthy
@@ -175,8 +185,8 @@ services:
     networks:
     - eth-pipeline
 volumes:
-  surrealdb_data: null
-  minio_data: null
+  postgres_data:
+  minio_data:
 networks:
   eth-pipeline:
     driver: bridge

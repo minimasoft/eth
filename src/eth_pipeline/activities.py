@@ -13,8 +13,9 @@ import io
 import os
 import time
 import unicodedata
+import uuid
 
-from surrealdb.data.types.record_id import RecordID
+import asyncpg
 
 from temporalio import activity
 
@@ -31,23 +32,32 @@ from eth_pipeline.processing_log import ProcessingLogger
 from eth_pipeline.storage import get_storage
 
 # ---------------------------------------------------------------------------
-# SurrealDB connection helpers (read from env at runtime)
+# PostgreSQL connection helpers (read from env at runtime)
 # ---------------------------------------------------------------------------
 
 
+def _normalize(text: str) -> str:
+    """Unicode NFD normalization + casefold for fuzzy entity matching."""
+    nfd = unicodedata.normalize("NFD", text)
+    stripped = "".join(c for c in nfd if unicodedata.combining(c) == 0)
+    return stripped.casefold()
+
+
 def _db_params() -> dict:
-    """Return SurrealDB connection parameters from environment variables.
+    """Return PostgreSQL connection parameters from environment variables.
 
     Falls back to the same defaults used in ``eth_pipeline.db`` for local
     development when the env vars are not set.
     """
-    return {
-        "url": os.environ.get("SURREAL_URL", "ws://localhost:8000/rpc"),
-        "user": os.environ.get("SURREAL_USER", "root"),
-        "password": os.environ.get("SURREAL_PASS", "root"),
-        "ns": os.environ.get("SURREAL_NS", "eth"),
-        "database": os.environ.get("SURREAL_DB", "pipeline"),
-    }
+    return {}
+
+
+def _extract_query_results(results) -> list[dict]:
+    if results is None:
+        return []
+    if isinstance(results, asyncpg.Record):
+        return [dict(results)]
+    return [dict(r) for r in results]
 
 
 async def _get_blob_from_minio(blob_path: str) -> bytes:
@@ -96,7 +106,7 @@ async def _get_blob_from_minio(blob_path: str) -> bytes:
 async def extract_events_activity(document_id: str) -> dict:
     """Extract structured events from document text via OpenRouter LLM.
 
-    Queries ``text_content`` directly from SurrealDB (same pattern as
+    Queries ``text_content`` directly from PostgreSQL (same pattern as
     ``resolve_entities_activity``) to avoid passing large payloads through
     Temporal's serialization layer.
 
@@ -108,7 +118,7 @@ async def extract_events_activity(document_id: str) -> dict:
     Parameters
     ----------
     document_id:
-        SurrealDB record ID of the document (e.g. ``"abc123"``).
+        Document ID (e.g. ``"abc123"``).
 
     Returns
     -------
@@ -129,12 +139,15 @@ async def extract_events_activity(document_id: str) -> dict:
     provider = OpenRouterProvider(api_key=api_key, model=model)
 
     params = _db_params()
-    doc_ref = f"document:{document_id}"
 
     try:
-        async with get_db(**params) as db:
-            raw = await db.query(f"SELECT text_content FROM {doc_ref}")
-            rows = _extract_query_results(raw)
+        async with get_db(**params) as conn:
+            rows = _extract_query_results(
+                await conn.fetch(
+                    "SELECT text_content FROM document WHERE id = $1",
+                    document_id,
+                )
+            )
             if not rows:
                 activity.logger.warning(
                     "Document not found [document_id=%s]",
@@ -146,7 +159,7 @@ async def extract_events_activity(document_id: str) -> dict:
             text = rows[0].get("text_content") or ""
     except ConnectionError as exc:
         activity.logger.error(
-            "SurrealDB connection failed in extract_events_activity: %s",
+            "PostgreSQL connection failed in extract_events_activity: %s",
             exc,
         )
         await _log.log(document_id, "extract_events", "error",
@@ -269,13 +282,13 @@ async def resolve_entities_activity(document_id: str) -> dict:
     LLM failures for individual batches are logged but do **not** block
     resolution of other reference types.
 
-    Queries event count and references directly from SurrealDB — does NOT
+    Queries event count and references directly from PostgreSQL — does NOT
     accept the LLM extraction result dict.
 
     Parameters
     ----------
     document_id:
-        SurrealDB record ID of the document (e.g. ``"abc123"``).
+        Document ID (e.g. ``"abc123"``).
 
     Returns
     -------
@@ -285,7 +298,6 @@ async def resolve_entities_activity(document_id: str) -> dict:
     """
     params = _db_params()
     _log = ProcessingLogger(params)
-    doc_rid = RecordID("document", document_id)
 
     activity.logger.info(
         "resolve_entities_activity called [document_id=%s]",
@@ -295,16 +307,15 @@ async def resolve_entities_activity(document_id: str) -> dict:
                    "Starting entity resolution")
 
     try:
-        async with get_db(**params) as db:
+        async with get_db(**params) as conn:
             # ------------------------------------------------------------------
             # 0. Early-return: query event count from DB
             # ------------------------------------------------------------------
-            count_raw = await db.query(
-                "SELECT count() FROM event WHERE document = $doc_rid GROUP ALL",
-                {"doc_rid": doc_rid},
+            count_row = await conn.fetchrow(
+                "SELECT COUNT(*)::int AS count FROM event WHERE document = $1",
+                document_id,
             )
-            count_rows = _extract_query_results(count_raw)
-            event_count = count_rows[0].get("count", 0) if count_rows else 0
+            event_count = count_row["count"] if count_row else 0
 
             if event_count == 0:
                 activity.logger.info(
@@ -318,11 +329,14 @@ async def resolve_entities_activity(document_id: str) -> dict:
             # ------------------------------------------------------------------
             # 1. Query all references for this document
             # ------------------------------------------------------------------
-            refs_raw = await db.query(
-                "SELECT * FROM reference WHERE event.document = $doc_rid",
-                {"doc_rid": doc_rid},
+            references = _extract_query_results(
+                await conn.fetch(
+                    "SELECT r.* FROM reference r "
+                    "JOIN event e ON r.event = e.id "
+                    "WHERE e.document = $1",
+                    document_id,
+                )
             )
-            references = _extract_query_results(refs_raw)
 
             if not references:
                 activity.logger.info(
@@ -346,11 +360,11 @@ async def resolve_entities_activity(document_id: str) -> dict:
                 document_id,
                 len(references),
             )
-            await db.query(
-                "UPDATE reference SET canonical_entity = null, "
-                "resolution_confidence = null "
-                "WHERE event.document = $doc_rid",
-                {"doc_rid": doc_rid},
+            await conn.execute(
+                "UPDATE reference SET canonical_entity = NULL, "
+                "resolution_confidence = NULL "
+                "WHERE event IN (SELECT id FROM event WHERE document = $1)",
+                document_id,
             )
 
             # ------------------------------------------------------------------
@@ -393,11 +407,6 @@ async def resolve_entities_activity(document_id: str) -> dict:
             total_resolved = 0
             total_created = 0
 
-            def _normalize(text: str) -> str:
-                nfd = unicodedata.normalize("NFD", text)
-                stripped = "".join(c for c in nfd if unicodedata.combining(c) == 0)
-                return stripped.casefold()
-
             async def _dedup_and_link(
                 db_conn,
                 entity_name: str,
@@ -434,12 +443,12 @@ async def resolve_entities_activity(document_id: str) -> dict:
                 if matched_ce_id:
                     for rid in ref_ids:
                         try:
-                            await db_conn.query(
-                                f"UPDATE {rid} SET "
-                                f"entity_id = $eid, "
-                                f"canonical_entity = $ce, "
-                                f"resolution_confidence = 1.0",
-                                {"eid": matched_ce_id, "ce": matched_ce_id},
+                            await db_conn.execute(
+                                "UPDATE reference SET entity_id = $2, "
+                                "canonical_entity = $3, "
+                                "resolution_confidence = 1.0 "
+                                "WHERE id = $1",
+                                rid, matched_ce_id, matched_ce_id,
                             )
                             linked += 1
                         except Exception as exc:
@@ -453,12 +462,13 @@ async def resolve_entities_activity(document_id: str) -> dict:
                 if not refs:
                     continue
 
-                existing_raw = await db.query(
-                    "SELECT id, name, entity_type, properties "
-                    "FROM canonical_entity WHERE entity_type = $type",
-                    {"type": entity_type},
+                existing_entities = _extract_query_results(
+                    await conn.fetch(
+                        "SELECT id, name, entity_type, properties "
+                        "FROM canonical_entity WHERE entity_type = $1",
+                        entity_type,
+                    )
                 )
-                existing_entities = _extract_query_results(existing_raw)
 
                 activity.logger.info(
                     "Resolving %d %s references [document_id=%s]",
@@ -527,7 +537,7 @@ async def resolve_entities_activity(document_id: str) -> dict:
                             rid = ref.get("id")
                             if rid:
                                 linked = await _dedup_and_link(
-                                    db, vt, entity_type, [rid],
+                                    conn, vt, entity_type, [rid],
                                     existing_entities,
                                 )
                                 total_resolved += linked
@@ -559,7 +569,7 @@ async def resolve_entities_activity(document_id: str) -> dict:
                             continue
 
                         linked = await _dedup_and_link(
-                            db, entity_name, inferred_type,
+                            conn, entity_name, inferred_type,
                             group_ref_ids, existing_entities,
                         )
                         total_resolved += linked
@@ -569,15 +579,16 @@ async def resolve_entities_activity(document_id: str) -> dict:
             #    Set location_place_id on events from place references.
             #    Create event_participant edges from person references.
             # ------------------------------------------------------------------
-            place_refs_raw = await db.query(
-                "SELECT event, canonical_entity FROM reference "
-                "WHERE event.document = $doc_rid "
-                "AND reference_type = 'espacio' "
-                "AND canonical_entity IS NOT NULL "
-                "AND canonical_entity IS NOT NONE",
-                {"doc_rid": doc_rid},
+            place_refs = _extract_query_results(
+                await conn.fetch(
+                    "SELECT r.event, r.canonical_entity FROM reference r "
+                    "JOIN event e ON r.event = e.id "
+                    "WHERE e.document = $1 "
+                    "AND r.reference_type = 'espacio' "
+                    "AND r.canonical_entity IS NOT NULL",
+                    document_id,
+                )
             )
-            place_refs = _extract_query_results(place_refs_raw)
             if place_refs:
                 # Group by event → set location_place_id
                 event_to_place: dict[str, str] = {}
@@ -588,9 +599,9 @@ async def resolve_entities_activity(document_id: str) -> dict:
                         event_to_place[str(evt)] = ce
                 for eid, ce_id in event_to_place.items():
                     try:
-                        await db.query(
-                            "UPDATE $eid SET location_place_id = $ce_id",
-                            {"eid": RecordID("event", eid), "ce_id": ce_id},
+                        await conn.execute(
+                            "UPDATE event SET location_place_id = $2 WHERE id = $1",
+                            eid, ce_id,
                         )
                     except Exception as exc:
                         activity.logger.warning(
@@ -598,15 +609,16 @@ async def resolve_entities_activity(document_id: str) -> dict:
                             eid, exc,
                         )
 
-            person_refs_raw = await db.query(
-                "SELECT event, canonical_entity, verbatim_text FROM reference "
-                "WHERE event.document = $doc_rid "
-                "AND reference_type = 'humanos' "
-                "AND canonical_entity IS NOT NULL "
-                "AND canonical_entity IS NOT NONE",
-                {"doc_rid": doc_rid},
+            person_refs = _extract_query_results(
+                await conn.fetch(
+                    "SELECT r.event, r.canonical_entity, r.verbatim_text FROM reference r "
+                    "JOIN event e ON r.event = e.id "
+                    "WHERE e.document = $1 "
+                    "AND r.reference_type = 'humanos' "
+                    "AND r.canonical_entity IS NOT NULL",
+                    document_id,
+                )
             )
-            person_refs = _extract_query_results(person_refs_raw)
             if person_refs:
                 event_person_pairs = set()
                 for pr in person_refs:
@@ -616,16 +628,16 @@ async def resolve_entities_activity(document_id: str) -> dict:
                         event_person_pairs.add((str(evt), str(ce)))
                 for eid, ce_id in event_person_pairs:
                     try:
-                        e_rid = RecordID("event", eid)
-                        ce_rid = RecordID("canonical_entity", ce_id)
-                        await db.query(
-                            "RELATE $in->event_participant->$out "
-                            "SET role = 'subject', confidence = 1.0",
-                            {"in": e_rid, "out": ce_rid},
+                        participant_id = uuid.uuid4().hex
+                        await conn.execute(
+                            "INSERT INTO event_participant "
+                            "(id, in_event, out_entity, role, confidence) "
+                            "VALUES ($1, $2, $3, 'subject', 1.0)",
+                            participant_id, eid, ce_id,
                         )
                     except Exception as exc:
                         activity.logger.warning(
-                            "Failed to RELATE event_participant "
+                            "Failed to INSERT event_participant "
                             "event=%s entity=%s: %s",
                             eid, ce_id, exc,
                         )
@@ -656,11 +668,11 @@ async def resolve_entities_activity(document_id: str) -> dict:
 
     except ConnectionError as exc:
         activity.logger.error(
-            "SurrealDB connection failed in resolve_entities_activity: %s",
+            "PostgreSQL connection failed in resolve_entities_activity: %s",
             exc,
         )
         await _log.log(document_id, "resolve_entities", "error",
-                       f"SurrealDB connection failed: {exc}")
+                       f"Connection failed: {exc}")
         return {"error": str(exc), "document_id": document_id}
     except Exception as exc:
         activity.logger.error(
@@ -695,13 +707,13 @@ async def resolve_entities_with_search_activity(document_id: str) -> dict:
     References are grouped by ``reference_type`` with the same mapping as
     ``resolve_entities_activity``.
 
-    Queries event count and references directly from SurrealDB — does NOT
+    Queries event count and references directly from PostgreSQL — does NOT
     accept the LLM extraction result dict.
 
     Parameters
     ----------
     document_id:
-        SurrealDB record ID of the document (e.g. ``"abc123"``).
+        Document ID (e.g. ``"abc123"``).
 
     Returns
     -------
@@ -712,7 +724,6 @@ async def resolve_entities_with_search_activity(document_id: str) -> dict:
     """
     params = _db_params()
     _log = ProcessingLogger(params)
-    doc_rid = RecordID("document", document_id)
 
     activity.logger.info(
         "resolve_entities_with_search_activity called "
@@ -723,16 +734,15 @@ async def resolve_entities_with_search_activity(document_id: str) -> dict:
                    "Starting search-first entity resolution")
 
     try:
-        async with get_db(**params) as db:
+        async with get_db(**params) as conn:
             # ------------------------------------------------------------------
             # 0. Early-return: query event count from DB
             # ------------------------------------------------------------------
-            count_raw = await db.query(
-                "SELECT count() FROM event WHERE document = $doc_rid GROUP ALL",
-                {"doc_rid": doc_rid},
+            count_row = await conn.fetchrow(
+                "SELECT COUNT(*)::int AS count FROM event WHERE document = $1",
+                document_id,
             )
-            count_rows = _extract_query_results(count_raw)
-            event_count = count_rows[0].get("count", 0) if count_rows else 0
+            event_count = count_row["count"] if count_row else 0
 
             if event_count == 0:
                 activity.logger.info(
@@ -758,11 +768,14 @@ async def resolve_entities_with_search_activity(document_id: str) -> dict:
             # ------------------------------------------------------------------
             # 1. Query all references for this document
             # ------------------------------------------------------------------
-            refs_raw = await db.query(
-                "SELECT * FROM reference WHERE event.document = $doc_rid",
-                {"doc_rid": doc_rid},
+            references = _extract_query_results(
+                await conn.fetch(
+                    "SELECT r.* FROM reference r "
+                    "JOIN event e ON r.event = e.id "
+                    "WHERE e.document = $1",
+                    document_id,
+                )
             )
-            references = _extract_query_results(refs_raw)
 
             if not references:
                 activity.logger.info(
@@ -789,11 +802,11 @@ async def resolve_entities_with_search_activity(document_id: str) -> dict:
                 document_id,
                 len(references),
             )
-            await db.query(
-                "UPDATE reference SET canonical_entity = null, "
-                "entity_id = null, resolution_confidence = null "
-                "WHERE event.document = $doc_rid",
-                {"doc_rid": doc_rid},
+            await conn.execute(
+                "UPDATE reference SET canonical_entity = NULL, "
+                "entity_id = NULL, resolution_confidence = NULL "
+                "WHERE event IN (SELECT id FROM event WHERE document = $1)",
+                document_id,
             )
 
             # ------------------------------------------------------------------
@@ -837,11 +850,6 @@ async def resolve_entities_with_search_activity(document_id: str) -> dict:
             total_created = 0
             total_llm_calls = 0
             total_exact_matches = 0
-
-            def _normalize(text: str) -> str:
-                nfd = unicodedata.normalize("NFD", text)
-                stripped = "".join(c for c in nfd if unicodedata.combining(c) == 0)
-                return stripped.casefold()
 
             async def _dedup_and_link(
                 db_conn,
@@ -887,12 +895,12 @@ async def resolve_entities_with_search_activity(document_id: str) -> dict:
                 if matched_ce_id:
                     for rid in ref_ids:
                         try:
-                            await db_conn.query(
-                                f"UPDATE {rid} SET "
-                                f"entity_id = $eid, "
-                                f"canonical_entity = $ce, "
-                                f"resolution_confidence = 1.0",
-                                {"eid": matched_ce_id, "ce": matched_ce_id},
+                            await db_conn.execute(
+                                "UPDATE reference SET entity_id = $2, "
+                                "canonical_entity = $3, "
+                                "resolution_confidence = 1.0 "
+                                "WHERE id = $1",
+                                rid, matched_ce_id, matched_ce_id,
                             )
                             linked += 1
                         except Exception as exc:
@@ -908,12 +916,13 @@ async def resolve_entities_with_search_activity(document_id: str) -> dict:
                     continue
 
                 # Query existing canonical entities of this type
-                existing_raw = await db.query(
-                    "SELECT id, name, entity_type, properties "
-                    "FROM canonical_entity WHERE entity_type = $type",
-                    {"type": entity_type},
+                existing_entities = _extract_query_results(
+                    await conn.fetch(
+                        "SELECT id, name, entity_type, properties "
+                        "FROM canonical_entity WHERE entity_type = $1",
+                        entity_type,
+                    )
                 )
-                existing_entities = _extract_query_results(existing_raw)
 
                 activity.logger.info(
                     "Grouping resolution [type=%s] [refs=%d] "
@@ -948,12 +957,12 @@ async def resolve_entities_with_search_activity(document_id: str) -> dict:
                             entity_id_val = entity.get("id")
                             if entity_id_val:
                                 try:
-                                    await db.query(
-                                        f"UPDATE {ref.get('id')} SET "
-                                        f"entity_id = $eid, "
-                                        f"canonical_entity = $ce, "
-                                        f"resolution_confidence = 1.0",
-                                        {"eid": entity_id_val, "ce": entity_id_val},
+                                    await conn.execute(
+                                        "UPDATE reference SET entity_id = $2, "
+                                        "canonical_entity = $3, "
+                                        "resolution_confidence = 1.0 "
+                                        "WHERE id = $1",
+                                        ref.get("id"), entity_id_val, entity_id_val,
                                     )
                                     total_resolved += 1
                                     exact_match_count += 1
@@ -1063,7 +1072,7 @@ async def resolve_entities_with_search_activity(document_id: str) -> dict:
                             rid = ref.get("id")
                             if rid:
                                 linked = await _dedup_and_link(
-                                    db, vt, entity_type, [rid],
+                                    conn, vt, entity_type, [rid],
                                     existing_entities,
                                 )
                                 total_resolved += linked
@@ -1100,7 +1109,7 @@ async def resolve_entities_with_search_activity(document_id: str) -> dict:
                             continue
 
                         linked = await _dedup_and_link(
-                            db, entity_name, inferred_type,
+                            conn, entity_name, inferred_type,
                             group_ref_ids, existing_entities,
                         )
                         total_resolved += linked
@@ -1142,7 +1151,7 @@ async def resolve_entities_with_search_activity(document_id: str) -> dict:
 
     except ConnectionError as exc:
         activity.logger.error(
-            "SurrealDB connection failed in "
+            "PostgreSQL connection failed in "
             "resolve_entities_with_search_activity: %s",
             exc,
         )
@@ -1170,7 +1179,7 @@ async def create_event_canonical_entities_activity(
     scoped to this document (and their event_entity_link edges), then
     recreates them from scratch. This guarantees idempotency across retries.
 
-    Queries stored events directly from SurrealDB — does NOT accept the LLM
+    Queries stored events directly from PostgreSQL — does NOT accept the LLM
     extraction result dict.  This avoids passing large payloads through
     Temporal serialization and ensures the activity works with actual stored
     data.
@@ -1178,15 +1187,15 @@ async def create_event_canonical_entities_activity(
     For each stored event:
       1. Creates a ``canonical_entity`` record with ``entity_type="event"``
          and properties mapped from event fields.
-      2. Creates ``event_entity_link`` RELATE edges to matching
-         place/person/object canonical entities via verbatim text CONTAINS
+      2. Creates ``event_entity_link`` records to matching
+         place/person/object canonical entities via verbatim text ILIKE
          matching on the event's ``espacio``, ``humanos``, and ``objetos``
          fields.
 
     Parameters
     ----------
     document_id:
-        SurrealDB record ID of the source document (e.g. ``"abc123"``).
+        Document ID of the source document (e.g. ``"abc123"``).
 
     Returns
     -------
@@ -1197,7 +1206,6 @@ async def create_event_canonical_entities_activity(
     """
     params = _db_params()
     _log = ProcessingLogger(params)
-    doc_rid = RecordID("document", document_id)
 
     activity.logger.info(
         "create_event_canonical_entities_activity called "
@@ -1208,16 +1216,15 @@ async def create_event_canonical_entities_activity(
                    "Starting event canonical entity creation")
 
     try:
-        async with get_db(**params) as db:
+        async with get_db(**params) as conn:
             # ------------------------------------------------------------------
             # 0. Early-return: query event count from DB
             # ------------------------------------------------------------------
-            count_raw = await db.query(
-                "SELECT count() FROM event WHERE document = $doc_rid GROUP ALL",
-                {"doc_rid": doc_rid},
+            count_row = await conn.fetchrow(
+                "SELECT COUNT(*)::int AS count FROM event WHERE document = $1",
+                document_id,
             )
-            count_rows = _extract_query_results(count_raw)
-            event_count = count_rows[0].get("count", 0) if count_rows else 0
+            event_count = count_row["count"] if count_row else 0
 
             if event_count == 0:
                 activity.logger.info(
@@ -1253,27 +1260,28 @@ async def create_event_canonical_entities_activity(
                            "Deleting prior event entities for this document")
 
             # Delete links first (foreign-key order)
-            await db.query(
-                "DELETE event_entity_link WHERE event IN ("
+            await conn.execute(
+                "DELETE FROM event_entity_link WHERE event IN ("
                 "SELECT id FROM canonical_entity "
-                "WHERE entity_type = 'event' AND properties.document_id = $doc_id"
+                "WHERE entity_type = 'event' AND properties->>'document_id' = $1"
                 ")",
-                {"doc_id": document_id},
+                document_id,
             )
-            await db.query(
-                "DELETE canonical_entity "
-                "WHERE entity_type = 'event' AND properties.document_id = $doc_id",
-                {"doc_id": document_id},
+            await conn.execute(
+                "DELETE FROM canonical_entity "
+                "WHERE entity_type = 'event' AND properties->>'document_id' = $1",
+                document_id,
             )
 
             # ------------------------------------------------------------------
             # 2. Query stored events for this document
             # ------------------------------------------------------------------
-            events_raw = await db.query(
-                "SELECT * FROM event WHERE document = $doc_rid",
-                {"doc_rid": doc_rid},
+            stored_events = _extract_query_results(
+                await conn.fetch(
+                    "SELECT * FROM event WHERE document = $1",
+                    document_id,
+                )
             )
-            stored_events = _extract_query_results(events_raw)
 
             if not stored_events:
                 activity.logger.info(
@@ -1290,7 +1298,7 @@ async def create_event_canonical_entities_activity(
                 }
 
             # ------------------------------------------------------------------
-            # 3. For each stored event, create canonical_entity and RELATE edges
+            # 3. For each stored event, create canonical_entity and INSERT links
             # ------------------------------------------------------------------
             entities_created = 0
             links_created = 0
@@ -1321,19 +1329,13 @@ async def create_event_canonical_entities_activity(
                 }
 
                 # ---- Create canonical_entity record ----
-                entity_result = await db.query(
-                    "CREATE canonical_entity CONTENT { "
-                    "name: $name, "
-                    "entity_type: 'event', "
-                    "properties: $props "
-                    "} RETURN id",
-                    {
-                        "name": name,
-                        "props": props,
-                    },
+                entity_id = uuid.uuid4().hex
+                entity_result = await conn.fetchrow(
+                    "INSERT INTO canonical_entity (id, name, entity_type, properties) "
+                    "VALUES ($1, $2, 'event', $3) RETURNING id",
+                    entity_id, name, props,
                 )
-                created_rows = _extract_query_results(entity_result)
-                if not created_rows:
+                if not entity_result:
                     activity.logger.warning(
                         "Failed to create event canonical entity "
                         "[document_id=%s] [que_paso=%.40s]",
@@ -1342,10 +1344,10 @@ async def create_event_canonical_entities_activity(
                     )
                     continue
 
-                event_entity_rid = created_rows[0].get("id")
+                event_entity_rid = entity_result["id"]
                 entities_created += 1
 
-                # ---- 4. RELATE edges ----
+                # ---- 4. INSERT edges ----
                 # Match espacio (→location) against 'place' entities
                 for field_value, entity_type_filter, role in [
                     (espacio, "place", "location"),
@@ -1355,29 +1357,25 @@ async def create_event_canonical_entities_activity(
                     if not field_value:
                         continue
 
-                    # Query existing entities by CONTAINS matching
-                    matched_raw = await db.query(
-                        "SELECT id, name FROM canonical_entity "
-                        "WHERE entity_type = $etype "
-                        "AND name CONTAINS $value",
-                        {
-                            "etype": entity_type_filter,
-                            "value": field_value,
-                        },
+                    # Query existing entities by ILIKE matching
+                    matched_entities = _extract_query_results(
+                        await conn.fetch(
+                            "SELECT id, name FROM canonical_entity "
+                            "WHERE entity_type = $1 "
+                            "AND name ILIKE '%' || $2 || '%'",
+                            entity_type_filter, field_value,
+                        )
                     )
-                    matched_entities = _extract_query_results(matched_raw)
 
-                    # Also check the reverse: verbatim text CONTAINS entity name
-                    reverse_raw = await db.query(
-                        "SELECT id, name FROM canonical_entity "
-                        "WHERE entity_type = $etype "
-                        "AND $value CONTAINS name",
-                        {
-                            "etype": entity_type_filter,
-                            "value": field_value,
-                        },
+                    # Also check the reverse: verbatim text ILIKE entity name
+                    reverse_entities = _extract_query_results(
+                        await conn.fetch(
+                            "SELECT id, name FROM canonical_entity "
+                            "WHERE entity_type = $1 "
+                            "AND $2 ILIKE '%' || name || '%'",
+                            entity_type_filter, field_value,
+                        )
                     )
-                    reverse_entities = _extract_query_results(reverse_raw)
 
                     # Combine, deduplicate by id
                     seen_ids: set[str] = set()
@@ -1387,19 +1385,12 @@ async def create_event_canonical_entities_activity(
                         if match_id_str and match_id_str not in seen_ids:
                             seen_ids.add(match_id_str)
                             try:
-                                await db.query(
-                                    "CREATE event_entity_link CONTENT { "
-                                    "event: $event_rid, "
-                                    "entity: $entity_rid, "
-                                    "relationship_type: 'involves', "
-                                    "role: $role, "
-                                    "confidence: 0.7 "
-                                    "}",
-                                    {
-                                        "event_rid": event_entity_rid,
-                                        "entity_rid": match_id,
-                                        "role": role,
-                                    },
+                                link_id = uuid.uuid4().hex
+                                await conn.execute(
+                                    "INSERT INTO event_entity_link "
+                                    "(id, event, entity, relationship_type, role, confidence) "
+                                    "VALUES ($1, $2, $3, 'involves', $4, 0.7)",
+                                    link_id, event_entity_rid, match_id, role,
                                 )
                                 links_created += 1
                             except Exception as exc:
@@ -1438,7 +1429,7 @@ async def create_event_canonical_entities_activity(
 
     except ConnectionError as exc:
         activity.logger.error(
-            "SurrealDB connection failed in "
+            "PostgreSQL connection failed in "
             "create_event_canonical_entities_activity: %s",
             exc,
         )
@@ -1460,59 +1451,25 @@ async def create_event_canonical_entities_activity(
 # ---------------------------------------------------------------------------
 
 
-def _extract_query_results(raw: list | dict | None) -> list[dict]:
-    """Extract result rows from a SurrealDB ``db.query()`` response.
-
-    SurrealDB ``query()`` returns a list of response statements, each being
-    a dict with a ``"result"`` key containing the actual rows.  This helper
-    normalises the various shapes into a flat list of row dicts.
-    """
-    if not raw:
-        return []
-    if isinstance(raw, dict):
-        rows = raw.get("result", [])
-        return rows if isinstance(rows, list) else [rows] if isinstance(rows, dict) else []
-    if isinstance(raw, list):
-        # Each element may be a dict with a "result" key, or already a list
-        flat: list[dict] = []
-        for item in raw:
-            if isinstance(item, dict) and "result" in item:
-                rows = item["result"]
-                if isinstance(rows, list):
-                    flat.extend(rows)
-                elif isinstance(rows, dict):
-                    flat.append(rows)
-            elif isinstance(item, list):
-                flat.extend(item)
-            elif isinstance(item, dict):
-                flat.append(item)
-        return flat
-    return []
-
-
 async def _create_canonical_entity(
     db,
     name: str,
     entity_type: str,
     properties: dict | None,
 ) -> str | None:
-    """Create a ``canonical_entity`` record and return its SurrealDB record ID.
+    """Create a ``canonical_entity`` record and return its id.
 
     Returns ``None`` if creation fails or the result cannot be parsed.
     """
-    data: dict = {
-        "name": name,
-        "entity_type": entity_type,
-        "properties": properties or {},
-    }
+    entity_id = uuid.uuid4().hex
     try:
-        created = await db.create("canonical_entity", data)
-        if isinstance(created, dict):
-            return created.get("id")
-        if isinstance(created, list) and created:
-            first = created[0]
-            if isinstance(first, dict):
-                return first.get("id")
+        row = await db.fetchrow(
+            "INSERT INTO canonical_entity (id, name, entity_type, properties) "
+            "VALUES ($1, $2, $3, $4) RETURNING id",
+            entity_id, name, entity_type, properties or {},
+        )
+        if row:
+            return row["id"]
     except Exception as exc:
         logger = activity.logger if hasattr(activity, "logger") else __import__("logging").getLogger(__name__)
         logger.error(
@@ -1530,11 +1487,11 @@ async def update_document_status_activity(
     status: str,
     error_message: str | None = None,
 ) -> dict:
-    """Update a document's status (and optional error_message) in SurrealDB.
+    """Update a document's status (and optional error_message) in PostgreSQL.
 
-    Connects to SurrealDB at runtime using environment variables, executes
-    ``UPDATE $doc_id SET status = $status, error_message = $error,
-    updated_at = time::now()``, and returns a summary dict.
+    Connects to PostgreSQL at runtime using environment variables, executes
+    ``UPDATE document SET status = $2, ... WHERE id = $1``, and returns a
+    summary dict.
 
     On connection failure, logs the error and returns an error dict
     (degraded — the workflow can continue or retry).
@@ -1542,7 +1499,7 @@ async def update_document_status_activity(
     Parameters
     ----------
     document_id:
-        SurrealDB record ID of the document (e.g. ``"document:abc123"``).
+        Document ID (e.g. ``"abc123"``).
     status:
         New status value (one of ``pending``, ``extracted``, ``processed``,
         ``failed``).
@@ -1557,7 +1514,6 @@ async def update_document_status_activity(
     """
     params = _db_params()
     _log = ProcessingLogger(params)
-    doc_ref = f"document:{document_id}"
 
     activity.logger.info(
         "update_document_status_activity called [document_id=%s] [status=%s]",
@@ -1569,22 +1525,24 @@ async def update_document_status_activity(
                    {"new_status": status, "error_message": error_message})
 
     try:
-        async with get_db(**params) as db:
+        async with get_db(**params) as conn:
             if error_message is None:
-                await db.query(
-                    f"UPDATE {doc_ref} SET status = $status, "
-                    "error_message = null, updated_at = time::now()",
-                    {"status": status},
+                await conn.execute(
+                    "UPDATE document SET status = $2, "
+                    "error_message = NULL, updated_at = NOW() "
+                    "WHERE id = $1",
+                    document_id, status,
                 )
             else:
-                await db.query(
-                    f"UPDATE {doc_ref} SET status = $status, "
-                    "error_message = $error_message, updated_at = time::now()",
-                    {"status": status, "error_message": error_message},
+                await conn.execute(
+                    "UPDATE document SET status = $2, "
+                    "error_message = $3, updated_at = NOW() "
+                    "WHERE id = $1",
+                    document_id, status, error_message,
                 )
     except ConnectionError as exc:
         activity.logger.error(
-            "SurrealDB connection failed in update_document_status_activity: %s",
+            "PostgreSQL connection failed in update_document_status_activity: %s",
             exc,
         )
         await _log.log(document_id, "update_status", "error",
@@ -1617,7 +1575,7 @@ async def store_extraction_results_activity(
     document_id: str,
     result: dict,
 ) -> dict:
-    """Persist extracted events and verbatim references to SurrealDB.
+    """Persist extracted events and verbatim references to PostgreSQL.
 
     **Idempotent**: First deletes any existing events and references for this
     document, then recreates them from *result*.  This makes replay safe —
@@ -1625,7 +1583,7 @@ async def store_extraction_results_activity(
 
     For each event in ``result["events"]``:
       1. Creates an ``event`` record with fields ``que_paso``, ``espacio``,
-         ``tiempo``, ``humanos``, ``objetos``, ``document`` (record link),
+         ``tiempo``, ``humanos``, ``objetos``, ``document`` (foreign key),
          and ``extraction_confidence=1.0``.
       2. For each reference in the event's ``references`` array, creates a
          ``reference`` record linked to the created event via the returned
@@ -1638,7 +1596,7 @@ async def store_extraction_results_activity(
     Parameters
     ----------
     document_id:
-        SurrealDB record ID of the source document (e.g. ``"abc123"``).
+        Document ID of the source document (e.g. ``"abc123"``).
     result:
         LLM extraction result dict with top-level ``"events"`` array.  Each
         event must contain at least ``"que_paso"`` and ``"references"``.
@@ -1651,8 +1609,6 @@ async def store_extraction_results_activity(
     """
     params = _db_params()
     _log = ProcessingLogger(params)
-    doc_rid = RecordID("document", document_id)
-    doc_record = doc_rid
     events = result.get("events", [])
 
     activity.logger.info(
@@ -1677,7 +1633,7 @@ async def store_extraction_results_activity(
         return {"document_id": document_id, "events_stored": 0, "references_stored": 0}
 
     try:
-        async with get_db(**params) as db:
+        async with get_db(**params) as conn:
             # ---- Idempotent: delete existing events+references ----
             # NOTE: llm_usage records are intentionally NOT deleted here.
             # They are a separate audit/telemetry concern (Phase 19) and
@@ -1688,39 +1644,39 @@ async def store_extraction_results_activity(
                 "Clearing prior extraction results [document_id=%s]",
                 document_id,
             )
-            await db.query(
-                "DELETE event_participant WHERE in IN "
-                "(SELECT id FROM event WHERE document = $doc_rid)",
-                {"doc_rid": doc_rid},
+            await conn.execute(
+                "DELETE FROM event_participant WHERE in_event IN "
+                "(SELECT id FROM event WHERE document = $1)",
+                document_id,
             )
-            await db.query(
-                "DELETE reference WHERE event IN "
-                "(SELECT id FROM event WHERE document = $doc_rid)",
-                {"doc_rid": doc_rid},
+            await conn.execute(
+                "DELETE FROM reference WHERE event IN "
+                "(SELECT id FROM event WHERE document = $1)",
+                document_id,
             )
-            await db.query(
-                "DELETE event WHERE document = $doc_rid",
-                {"doc_rid": doc_rid},
+            await conn.execute(
+                "DELETE FROM event WHERE document = $1",
+                document_id,
             )
 
             # ---- Query document metadata and chunks for offset computation ----
             doc_rows = _extract_query_results(
-                await db.query(
-                    "SELECT mime_type FROM ONLY $doc_rid",
-                    {"doc_rid": doc_rid},
+                await conn.fetch(
+                    "SELECT mime_type FROM document WHERE id = $1",
+                    document_id,
                 )
             )
             mime_type = doc_rows[0].get("mime_type", "") if doc_rows else ""
             is_plain_text = mime_type.startswith("text/")
 
             chunk_rows = _extract_query_results(
-                await db.query(
+                await conn.fetch(
                     "SELECT chunk_index, page_start, page_end, "
                     "offset_start, offset_end "
                     "FROM document_chunk "
-                    "WHERE document = $doc_rid "
+                    "WHERE document = $1 "
                     "ORDER BY chunk_index ASC",
-                    {"doc_rid": doc_rid},
+                    document_id,
                 )
             )
             if not chunk_rows:
@@ -1766,79 +1722,57 @@ async def store_extraction_results_activity(
                 # Link location to canonical place entity
                 location_place_id = None
                 if location_point and location_point.get("label"):
-                    loc_query = await db.query(
+                    loc_row = await conn.fetchrow(
                         "SELECT id FROM canonical_entity "
-                        "WHERE entity_type = 'place' AND name = $name "
+                        "WHERE entity_type = 'place' AND name = $1 "
                         "LIMIT 1",
-                        {"name": str(location_point["label"])},
+                        str(location_point["label"]),
                     )
-                    loc_rows = _extract_query_results(loc_query)
-                    if loc_rows:
-                        location_place_id = RecordID(
-                            "canonical_entity", loc_rows[0]["id"]
-                        )
+                    if loc_row:
+                        location_place_id = loc_row["id"]
                     else:
                         # Create canonical place entity on the fly
-                        loc_create = await db.query(
-                            "CREATE canonical_entity CONTENT { "
-                            "entity_type: 'place', "
-                            "name: $name, "
-                            "properties: $props "
-                            "} RETURN id",
+                        loc_create_id = uuid.uuid4().hex
+                        loc_create = await conn.fetchrow(
+                            "INSERT INTO canonical_entity (id, entity_type, name, properties) "
+                            "VALUES ($1, 'place', $2, $3) RETURNING id",
+                            loc_create_id,
+                            str(location_point["label"]),
                             {
-                                "name": str(location_point["label"]),
-                                "props": {
-                                    "lat": location_point.get("lat"),
-                                    "lon": location_point.get("lon"),
-                                },
+                                "lat": location_point.get("lat"),
+                                "lon": location_point.get("lon"),
                             },
                         )
-                        loc_created = _extract_query_results(loc_create)
-                        if loc_created:
-                            location_place_id = RecordID(
-                                "canonical_entity", loc_created[0]["id"]
-                            )
+                        if loc_create:
+                            location_place_id = loc_create["id"]
 
-                event_result = await db.query(
-                    "CREATE event CONTENT { "
-                    "que_paso: $que_paso, "
-                    "espacio: $espacio, "
-                    "tiempo: $tiempo, "
-                    "humanos: $humanos, "
-                    "objetos: $objetos, "
-                    "time_window: $tw, "
-                    "location_point: $lp, "
-                    "location_place_id: $lpi, "
-                    "document: $document, "
-                    "extraction_confidence: 1.0 "
-                    "} RETURN id",
-                    {
-                        "que_paso": event_data.get("que_paso", ""),
-                        "espacio": event_data.get("espacio") or "",
-                        "tiempo": event_data.get("tiempo") or "",
-                        "humanos": event_data.get("humanos") or "",
-                        "objetos": event_data.get("objetos") or "",
-                        "tw": time_window,
-                        "lp": location_point,
-                        "lpi": location_place_id,
-                        "document": doc_record,
-                    },
+                event_id = uuid.uuid4().hex
+                event_result = await conn.fetchrow(
+                    "INSERT INTO event "
+                    "(id, que_paso, espacio, tiempo, humanos, objetos, "
+                    "time_window, location_point, location_place_id, document, "
+                    "extraction_confidence) "
+                    "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 1.0) "
+                    "RETURNING id",
+                    event_id,
+                    event_data.get("que_paso", ""),
+                    event_data.get("espacio") or "",
+                    event_data.get("tiempo") or "",
+                    event_data.get("humanos") or "",
+                    event_data.get("objetos") or "",
+                    time_window,
+                    location_point,
+                    location_place_id,
+                    document_id,
                 )
-                created = _extract_query_results(event_result)
-                if not created:
+                if not event_result:
                     activity.logger.error(
-                        "Could not extract event id from create result: %s",
-                        event_result,
+                        "Could not extract event id from create result",
                     )
                     continue
-                event_rid = created[0].get("id")
-                if not isinstance(event_rid, RecordID):
-                    activity.logger.error(
-                        "Unexpected event id type: %s", event_rid,
-                    )
-                    continue
+                event_rid = event_result["id"]
 
-                # ---- Create participant RELATE edges ----
+                # ---- Create participant INSERTs ----
                 participants = event_data.get("participants") or []
                 for p in participants:
                     p_name = str(p.get("name", "")).strip()
@@ -1847,32 +1781,30 @@ async def store_extraction_results_activity(
                         continue
                     try:
                         # Find or create person canonical entity
-                        p_query = await db.query(
+                        p_row = await conn.fetchrow(
                             "SELECT id FROM canonical_entity "
-                            "WHERE entity_type = 'person' AND name = $name "
+                            "WHERE entity_type = 'person' AND name = $1 "
                             "LIMIT 1",
-                            {"name": p_name},
+                            p_name,
                         )
-                        p_rows = _extract_query_results(p_query)
-                        if p_rows:
-                            p_rid = RecordID("canonical_entity", p_rows[0]["id"])
+                        if p_row:
+                            p_rid = p_row["id"]
                         else:
-                            p_create = await db.query(
-                                "CREATE canonical_entity CONTENT { "
-                                "entity_type: 'person', "
-                                "name: $name, "
-                                "properties: {} "
-                                "} RETURN id",
-                                {"name": p_name},
+                            p_create_id = uuid.uuid4().hex
+                            p_create = await conn.fetchrow(
+                                "INSERT INTO canonical_entity (id, entity_type, name, properties) "
+                                "VALUES ($1, 'person', $2, '{}'::jsonb) RETURNING id",
+                                p_create_id, p_name,
                             )
-                            p_created = _extract_query_results(p_create)
-                            if not p_created:
+                            if not p_create:
                                 continue
-                            p_rid = RecordID("canonical_entity", p_created[0]["id"])
-                        await db.query(
-                            "RELATE $in->event_participant->$out "
-                            "SET role = $role, confidence = 1.0",
-                            {"in": event_rid, "out": p_rid, "role": p_role},
+                            p_rid = p_create["id"]
+                        participant_id = uuid.uuid4().hex
+                        await conn.execute(
+                            "INSERT INTO event_participant "
+                            "(id, in_event, out_entity, role, confidence) "
+                            "VALUES ($1, $2, $3, $4, 1.0)",
+                            participant_id, event_rid, p_rid, p_role,
                         )
                     except Exception as exc:
                         activity.logger.warning(
@@ -1944,31 +1876,18 @@ async def store_extraction_results_activity(
                         await _log.log(document_id, "store_results", "warning",
                                        f"Reference span out of range: span_start={ss}, span_end={se}")
 
-                    await db.query(
-                        "CREATE reference CONTENT { "
-                        "reference_type: $ref_type, "
-                        "verbatim_text: $vt, "
-                        "span_start: $ss, "
-                        "span_end: $se, "
-                        "page_number: $pn, "
-                        "page_offset_start: $pos, "
-                        "page_offset_end: $poe, "
-                        "element_field: $ef, "
-                        "reference_index: $ri, "
-                        "event: $evt "
-                        "}",
-                        {
-                            "ref_type": ref_type,
-                            "vt": vt,
-                            "ss": ss,
-                            "se": se,
-                            "pn": offset_result["page_number"],
-                            "pos": offset_result["page_offset_start"],
-                            "poe": offset_result["page_offset_end"],
-                            "ef": element_field,
-                            "ri": ref_idx,
-                            "evt": event_rid,
-                        },
+                    ref_id = uuid.uuid4().hex
+                    await conn.execute(
+                        "INSERT INTO reference "
+                        "(id, reference_type, verbatim_text, span_start, span_end, "
+                        "page_number, page_offset_start, page_offset_end, "
+                        "element_field, reference_index, event) "
+                        "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)",
+                        ref_id, ref_type, vt, ss, se,
+                        offset_result["page_number"],
+                        offset_result["page_offset_start"],
+                        offset_result["page_offset_end"],
+                        element_field, ref_idx, event_rid,
                     )
                     total_references += 1
 
@@ -1989,7 +1908,7 @@ async def store_extraction_results_activity(
                             "dedup_skipped": dedup_refs_skipped})
     except ConnectionError as exc:
         activity.logger.error(
-            "SurrealDB connection failed in store_extraction_results_activity: "
+            "PostgreSQL connection failed in store_extraction_results_activity: "
             "%s",
             exc,
         )
@@ -1998,12 +1917,20 @@ async def store_extraction_results_activity(
         await update_document_status_activity(document_id, "failed", str(exc))
         return {"error": str(exc), "document_id": document_id}
     except Exception as exc:
+        import traceback, json
+        error_detail = {
+            "type": type(exc).__name__,
+            "message": str(exc),
+            "repr": repr(exc),
+            "traceback": traceback.format_exc()[-2000:],
+            "document_id": document_id,
+        }
         activity.logger.error(
             "Unexpected error in store_extraction_results_activity: %s",
-            exc,
+            json.dumps(error_detail, default=str),
         )
         await _log.log(document_id, "store_results", "error",
-                       f"Unexpected error: {exc}")
+                       f"Unexpected error: {type(exc).__name__}: {exc}")
         await update_document_status_activity(document_id, "failed", str(exc))
         return {"error": str(exc), "document_id": document_id}
 
@@ -2023,7 +1950,7 @@ async def store_extraction_results_activity(
 async def extract_text_activity(document_id: str) -> dict:
     """Extract text from a blob-stored document.
 
-    Reads the document record from SurrealDB to get ``blob_format``,
+    Reads the document record from PostgreSQL to get ``blob_format``,
     ``blob_path``, ``filename``, and ``mime_type``.  If
     ``blob_format == "minio"``, fetches the blob from MinIO; otherwise
     decodes ``original_blob`` (legacy base64).
@@ -2044,7 +1971,7 @@ async def extract_text_activity(document_id: str) -> dict:
     Parameters
     ----------
     document_id:
-        SurrealDB record ID of the document (e.g. ``"abc123"``).
+        Document ID (e.g. ``"abc123"``).
 
     Returns
     -------
@@ -2055,7 +1982,6 @@ async def extract_text_activity(document_id: str) -> dict:
     """
     params = _db_params()
     _log = ProcessingLogger(params)
-    doc_ref = f"document:{document_id}"
 
     activity.logger.info(
         "extract_text_activity called [document_id=%s]",
@@ -2065,11 +1991,13 @@ async def extract_text_activity(document_id: str) -> dict:
                    "Starting text extraction")
 
     try:
-        async with get_db(**params) as db:
-            raw = await db.query(
-                f"SELECT * FROM {doc_ref}",
+        async with get_db(**params) as conn:
+            rows = _extract_query_results(
+                await conn.fetch(
+                    "SELECT * FROM document WHERE id = $1",
+                    document_id,
+                )
             )
-            rows = _extract_query_results(raw)
             if not rows:
                 activity.logger.warning(
                     "Document not found [document_id=%s]",
@@ -2110,10 +2038,11 @@ async def extract_text_activity(document_id: str) -> dict:
                 try:
                     result = extractor.extract(content, filename=filename)
                 except ExtractorQualityError as exc:
-                    await db.query(
-                        f"UPDATE {doc_ref} SET status = 'failed', "
-                        f"error_message = $msg, updated_at = time::now()",
-                        {"msg": str(exc)},
+                    await conn.execute(
+                        "UPDATE document SET status = 'failed', "
+                        "error_message = $2, updated_at = NOW() "
+                        "WHERE id = $1",
+                        document_id, str(exc),
                     )
                     activity.logger.warning(
                         "Quality gate failed [document_id=%s] [reason=%s]: %s",
@@ -2146,10 +2075,11 @@ async def extract_text_activity(document_id: str) -> dict:
                     )
                     await _log.log(document_id, "extract_text", "error",
                                    f"UTF-8 decode failed for plain-text file: {exc}")
-                    await db.query(
-                        f"UPDATE {doc_ref} SET status = 'failed', "
-                        f"error_message = $msg, updated_at = time::now()",
-                        {"msg": msg},
+                    await conn.execute(
+                        "UPDATE document SET status = 'failed', "
+                        "error_message = $2, updated_at = NOW() "
+                        "WHERE id = $1",
+                        document_id, msg,
                     )
                     return {"error": msg, "document_id": document_id}
 
@@ -2171,23 +2101,22 @@ async def extract_text_activity(document_id: str) -> dict:
                 )
                 await _log.log(document_id, "extract_text", "error",
                                f"Unsupported format: {ext_display} (mime: {mime_type})")
-                await db.query(
-                    f"UPDATE {doc_ref} SET status = 'failed', "
-                    f"error_message = $msg, updated_at = time::now()",
-                    {"msg": msg},
+                await conn.execute(
+                    "UPDATE document SET status = 'failed', "
+                    "error_message = $2, updated_at = NOW() "
+                    "WHERE id = $1",
+                    document_id, msg,
                 )
                 return {"error": msg, "document_id": document_id}
 
             # ---- Update document record ----
-            await db.query(
-                f"UPDATE {doc_ref} SET text_content = $text, "
-                f"status = 'extracting_text', "
-                f"_page_count = $page_count, "
-                f"updated_at = time::now()",
-                {
-                    "text": text,
-                    "page_count": page_count,
-                },
+            await conn.execute(
+                "UPDATE document SET text_content = $2, "
+                "status = 'extracting_text', "
+                "_page_count = $3, "
+                "updated_at = NOW() "
+                "WHERE id = $1",
+                document_id, text, page_count,
             )
 
             activity.logger.info(
@@ -2228,11 +2157,11 @@ async def extract_text_activity(document_id: str) -> dict:
 
 @activity.defn
 async def chunk_document_activity(document_id: str, extraction_result: dict) -> dict:
-    """Chunk a document's extracted text and store chunks in SurrealDB.
+    """Chunk a document's extracted text and store chunks in PostgreSQL.
 
     Takes the extraction result dict (from ``extract_text_activity``)
     containing ``text_length``, ``page_count``, and ``page_offsets``.
-    Queries ``text_content`` from SurrealDB, runs ``DocumentChunker``,
+    Queries ``text_content`` from PostgreSQL, runs ``DocumentChunker``,
     deletes any existing chunks for this document, inserts fresh chunk
     records, and returns lightweight metadata (no chunk text in the
     return payload — avoids Temporal 2 MB payload limit).
@@ -2240,7 +2169,7 @@ async def chunk_document_activity(document_id: str, extraction_result: dict) -> 
     Parameters
     ----------
     document_id:
-        SurrealDB record ID of the document.
+        Document ID.
     extraction_result:
         Dict from ``extract_text_activity`` with ``page_offsets``.
 
@@ -2252,7 +2181,6 @@ async def chunk_document_activity(document_id: str, extraction_result: dict) -> 
     """
     params = _db_params()
     _log = ProcessingLogger(params)
-    doc_ref = f"document:{document_id}"
 
     activity.logger.info(
         "chunk_document_activity called [document_id=%s]",
@@ -2262,11 +2190,13 @@ async def chunk_document_activity(document_id: str, extraction_result: dict) -> 
                    "Starting document chunking")
 
     try:
-        async with get_db(**params) as db:
-            raw = await db.query(
-                f"SELECT text_content FROM {doc_ref}",
+        async with get_db(**params) as conn:
+            rows = _extract_query_results(
+                await conn.fetch(
+                    "SELECT text_content FROM document WHERE id = $1",
+                    document_id,
+                )
             )
-            rows = _extract_query_results(raw)
             if not rows:
                 return {"error": "Document not found", "document_id": document_id}
 
@@ -2290,25 +2220,27 @@ async def chunk_document_activity(document_id: str, extraction_result: dict) -> 
                 })
 
             # ---- Idempotent: delete existing chunks ----
-            await db.query(
-                "DELETE document_chunk WHERE document = $doc_ref",
-                {"doc_ref": doc_ref},
+            await conn.execute(
+                "DELETE FROM document_chunk WHERE document = $1",
+                document_id,
             )
 
             # ---- Insert new chunks ----
-            doc_rid = RecordID("document", document_id)
             for chunk in chunks:
-                await db.create(
-                    "document_chunk",
-                    {
-                        "chunk_index": chunk["chunk_index"],
-                        "text": chunk["text"],
-                        "page_start": chunk["page_start"],
-                        "page_end": chunk["page_end"],
-                        "offset_start": chunk["offset_start"],
-                        "offset_end": chunk["offset_end"],
-                        "document": doc_rid,
-                    },
+                chunk_id = uuid.uuid4().hex
+                await conn.execute(
+                    "INSERT INTO document_chunk "
+                    "(id, chunk_index, text, page_start, page_end, "
+                    "offset_start, offset_end, document) "
+                    "VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+                    chunk_id,
+                    chunk["chunk_index"],
+                    chunk["text"],
+                    chunk["page_start"],
+                    chunk["page_end"],
+                    chunk["offset_start"],
+                    chunk["offset_end"],
+                    document_id,
                 )
 
             # ---- Update document status ----
@@ -2320,9 +2252,11 @@ async def chunk_document_activity(document_id: str, extraction_result: dict) -> 
                 await _log.log(document_id, "chunk_document", "warning",
                                "No chunks generated — document may be empty")
 
-            await db.query(
-                f"UPDATE {doc_ref} SET status = 'chunking', "
-                "updated_at = time::now()",
+            await conn.execute(
+                "UPDATE document SET status = 'chunking', "
+                "updated_at = NOW() "
+                "WHERE id = $1",
+                document_id,
             )
 
             activity.logger.info(
@@ -2354,11 +2288,12 @@ async def chunk_document_activity(document_id: str, extraction_result: dict) -> 
             exc,
         )
         try:
-            async with get_db(**params) as db:
-                await db.query(
-                    f"UPDATE {doc_ref} SET status = 'failed', "
-                    f"error_message = $msg, updated_at = time::now()",
-                    {"msg": str(exc)},
+            async with get_db(**params) as conn:
+                await conn.execute(
+                    "UPDATE document SET status = 'failed', "
+                    "error_message = $2, updated_at = NOW() "
+                    "WHERE id = $1",
+                    document_id, str(exc),
                 )
         except Exception:
             pass
@@ -2382,7 +2317,7 @@ async def get_document_metadata_activity(document_id: str) -> dict:
     Parameters
     ----------
     document_id:
-        SurrealDB record ID of the document (e.g. ``"abc123"``).
+        Document ID (e.g. ``"abc123"``).
 
     Returns
     -------
@@ -2393,7 +2328,6 @@ async def get_document_metadata_activity(document_id: str) -> dict:
     """
     params = _db_params()
     _log = ProcessingLogger(params)
-    doc_ref = f"document:{document_id}"
 
     activity.logger.info(
         "get_document_metadata_activity called [document_id=%s]",
@@ -2403,12 +2337,14 @@ async def get_document_metadata_activity(document_id: str) -> dict:
                    "Starting document metadata retrieval")
 
     try:
-        async with get_db(**params) as db:
-            raw = await db.query(
-                f"SELECT blob_format, text_content, filename, mime_type "
-                f"FROM {doc_ref}",
+        async with get_db(**params) as conn:
+            rows = _extract_query_results(
+                await conn.fetch(
+                    "SELECT blob_format, text_content, filename, mime_type "
+                    "FROM document WHERE id = $1",
+                    document_id,
+                )
             )
-            rows = _extract_query_results(raw)
             if not rows:
                 activity.logger.warning(
                     "Document not found [document_id=%s]",
@@ -2443,11 +2379,11 @@ async def get_document_metadata_activity(document_id: str) -> dict:
 
     except ConnectionError as exc:
         activity.logger.error(
-            "SurrealDB connection failed in get_document_metadata_activity: %s",
+            "PostgreSQL connection failed in get_document_metadata_activity: %s",
             exc,
         )
         await _log.log(document_id, "get_document_metadata", "error",
-                       f"SurrealDB connection failed: {exc}")
+                       f"PostgreSQL connection failed: {exc}")
         return {"error": str(exc), "document_id": document_id}
     except Exception as exc:
         activity.logger.error(
@@ -2471,7 +2407,7 @@ async def get_document_text_activity(document_id: str) -> dict:
     Parameters
     ----------
     document_id:
-        SurrealDB record ID of the document (e.g. ``"abc123"``).
+        Document ID (e.g. ``"abc123"``).
 
     Returns
     -------
@@ -2482,7 +2418,6 @@ async def get_document_text_activity(document_id: str) -> dict:
     """
     params = _db_params()
     _log = ProcessingLogger(params)
-    doc_ref = f"document:{document_id}"
 
     activity.logger.info(
         "get_document_text_activity called [document_id=%s]",
@@ -2492,11 +2427,13 @@ async def get_document_text_activity(document_id: str) -> dict:
                    "Starting document text retrieval")
 
     try:
-        async with get_db(**params) as db:
-            raw = await db.query(
-                f"SELECT text_content FROM {doc_ref}",
+        async with get_db(**params) as conn:
+            rows = _extract_query_results(
+                await conn.fetch(
+                    "SELECT text_content FROM document WHERE id = $1",
+                    document_id,
+                )
             )
-            rows = _extract_query_results(raw)
             if not rows:
                 activity.logger.warning(
                     "Document not found [document_id=%s]",
@@ -2526,11 +2463,11 @@ async def get_document_text_activity(document_id: str) -> dict:
 
     except ConnectionError as exc:
         activity.logger.error(
-            "SurrealDB connection failed in get_document_text_activity: %s",
+            "PostgreSQL connection failed in get_document_text_activity: %s",
             exc,
         )
         await _log.log(document_id, "get_document_text", "error",
-                       f"SurrealDB connection failed: {exc}")
+                       f"PostgreSQL connection failed: {exc}")
         return {"error": str(exc), "document_id": document_id}
     except Exception as exc:
         activity.logger.error(

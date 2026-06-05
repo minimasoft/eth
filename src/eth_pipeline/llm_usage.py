@@ -1,7 +1,7 @@
 """
 Fire-and-forget LLM token usage recorder for Temporal activities.
 
-Each ``record_llm_usage()`` call opens its own SurrealDB connection, writes
+Each ``record_llm_usage()`` call opens its own PostgreSQL connection, writes
 one entry to the ``llm_usage`` table, and closes.  This is safe for Temporal
 activities — no shared state, no replay contamination.
 
@@ -14,8 +14,6 @@ from __future__ import annotations
 import hashlib
 import logging
 from typing import Any
-
-from surrealdb.data.types.record_id import RecordID
 
 from eth_pipeline.db import get_db
 
@@ -42,7 +40,7 @@ async def record_llm_usage(
 ) -> None:
     """Record a single LLM usage entry into the ``llm_usage`` table.
 
-    Opens a SurrealDB connection, writes one UPSERT entry with a
+    Opens a PostgreSQL connection, writes one UPSERT entry with a
     deterministic SHA256 record ID, and closes.  Errors are logged at
     WARNING level but never raised — the caller (a Temporal activity)
     continues on failure.
@@ -50,10 +48,10 @@ async def record_llm_usage(
     Parameters
     ----------
     db_params:
-        SurrealDB connection parameters dict (url, user, password, ns, database)
+        PostgreSQL connection parameters dict (host, port, user, password, database)
         as produced by ``activities._db_params()``.
     document_id:
-        SurrealDB record ID hex portion of the document (e.g. ``"abc123"``).
+        Document ID (e.g. ``"abc123"``).
     step_name:
         Processing step name — one of ``"extract_events"``,
         ``"resolve_entities"``, ``"resolve_entities_with_search"``.
@@ -83,35 +81,19 @@ async def record_llm_usage(
     raw_id = f"{document_id}:{step_name}:{chunk_index}"
     record_id = hashlib.sha256(raw_id.encode("utf-8")).hexdigest()
 
-    doc_record = RecordID("document", document_id)
-
     try:
-        async with get_db(**db_params) as db:
-            await db.query(
-                "UPSERT type::record('llm_usage', $rid) CONTENT { "
-                "document: $doc, step_name: $step, "
-                "chunk_index: $chunk, model: $model, "
-                "prompt_tokens: $pt, completion_tokens: $ct, total_tokens: $tt, "
-                "cached_tokens: $cached, cache_write_tokens: $cache_write, "
-                "reasoning_tokens: $reasoning, cost: $cost, cost_source: $cost_source, "
-                "duration_ms: $dur "
-                "}",
-                {
-                    "rid": record_id,
-                    "doc": doc_record,
-                    "step": step_name,
-                    "chunk": chunk_index,
-                    "model": model,
-                    "pt": prompt_tokens,
-                    "ct": completion_tokens,
-                    "tt": total_tokens,
-                    "cached": cached_tokens,
-                    "cache_write": cache_write_tokens,
-                    "reasoning": reasoning_tokens,
-                    "cost": cost,
-                    "cost_source": cost_source,
-                    "dur": duration_ms,
-                },
+        async with get_db(**db_params) as conn:
+            await conn.execute(
+                "INSERT INTO llm_usage (id, document, step_name, chunk_index, model, "
+                "prompt_tokens, completion_tokens, total_tokens, cached_tokens, "
+                "cache_write_tokens, reasoning_tokens, cost, cost_source, duration_ms) "
+                "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) "
+                "ON CONFLICT (id) DO UPDATE SET model = $5, prompt_tokens = $6, "
+                "completion_tokens = $7, total_tokens = $8, duration_ms = $14",
+                record_id, document_id, step_name, chunk_index, model,
+                prompt_tokens, completion_tokens, total_tokens,
+                cached_tokens, cache_write_tokens, reasoning_tokens,
+                cost, cost_source, duration_ms,
             )
             logger.debug(
                 "Recorded LLM usage [doc=%s] [step=%s] [chunk=%d] "
@@ -121,7 +103,7 @@ async def record_llm_usage(
             )
     except ConnectionError:
         logger.warning(
-            "record_llm_usage: SurrealDB unavailable for document %s step %s",
+            "record_llm_usage: PostgreSQL unavailable for document %s step %s",
             document_id,
             step_name,
         )

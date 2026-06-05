@@ -133,7 +133,7 @@ class DocumentProcessingWorkflow:
                 await workflow.execute_activity(
                     update_document_status_activity,
                     args=[document_id, "extracting_blob"],
-                    start_to_close_timeout=timedelta(seconds=10),
+                start_to_close_timeout=timedelta(seconds=60),
                 )
 
                 # Extract text from blob
@@ -198,7 +198,7 @@ class DocumentProcessingWorkflow:
             store_result = await workflow.execute_activity(
                 store_extraction_results_activity,
                 args=[document_id, result],
-                start_to_close_timeout=timedelta(seconds=10),
+                start_to_close_timeout=timedelta(seconds=120),
             )
             if "error" in store_result:
                 raise RuntimeError(store_result["error"])

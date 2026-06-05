@@ -4,20 +4,13 @@ import logging
 
 from fastapi import APIRouter, HTTPException, Query
 
-from surrealdb import AsyncWsSurrealConnection
-
 from eth_pipeline.api import app
-
 from eth_pipeline.api.models import EventListItem, EventListResponse
+from eth_pipeline.db import get_db
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["Events"])
-
-
-# =======================================================================
-# List events (paginated)
-# =======================================================================
 
 
 @router.get("/events", response_model=EventListResponse)
@@ -31,98 +24,74 @@ async def list_events(
     entity_type: str | None = Query(None),
     entity_id: str | None = Query(None),
 ) -> EventListResponse:
-    """List extracted events with pagination and filtering.
-
-    v6.0: supports date_range, entity filtering, and structured event fields.
-    """
-    db: AsyncWsSurrealConnection | None = app.state.db
-
-    if db is None:
-        logger.error("GET /events rejected — SurrealDB unavailable")
-        raise HTTPException(
-            status_code=503,
-            detail="SurrealDB is not available. Please try again later.",
-        )
-
+    """List extracted events with pagination and filtering."""
     offset = (page - 1) * per_page
 
-    where_parts: list[str] = ["1 = 1"]
-    query_params: dict[str, object] = {}
+    where_parts: list[str] = ["TRUE"]
+    params: list[object] = []
 
     if search:
-        where_parts.append("que_paso LIKE $search")
-        query_params["search"] = f"%{search}%"
+        where_parts.append(f"e.que_paso ILIKE ${len(params) + 1}")
+        params.append(f"%{search}%")
 
     if document:
-        from surrealdb.data.types.record_id import RecordID
-        where_parts.append("document = $doc_rid")
-        query_params["doc_rid"] = RecordID("document", document)
+        where_parts.append(f"e.document = ${len(params) + 1}")
+        params.append(document)
 
     if date_from:
-        where_parts.append("time_window.start >= $date_from")
-        query_params["date_from"] = date_from
+        where_parts.append(f"e.time_window->>'start' >= ${len(params) + 1}")
+        params.append(date_from)
 
     if date_to:
-        where_parts.append("time_window.end <= $date_to")
-        query_params["date_to"] = date_to
+        where_parts.append(f"e.time_window->>'end' <= ${len(params) + 1}")
+        params.append(date_to)
 
     if entity_type or entity_id:
-        from surrealdb.data.types.record_id import RecordID
         if entity_type:
             where_parts.append(
-                "id IN (SELECT VALUE in FROM event_participant "
-                "WHERE out.entity_type = $ent_type)"
+                f"e.id IN ("
+                f"SELECT ep.in_event FROM event_participant ep "
+                f"JOIN canonical_entity ce ON ce.id = ep.out_entity "
+                f"WHERE ce.entity_type = ${len(params) + 1}"
+                f")"
             )
-            query_params["ent_type"] = entity_type
+            params.append(entity_type)
         if entity_id:
             where_parts.append(
-                "id IN (SELECT VALUE in FROM event_participant "
-                "WHERE out = $ent_rid)"
+                f"e.id IN ("
+                f"SELECT ep.in_event FROM event_participant ep "
+                f"WHERE ep.out_entity = ${len(params) + 1}"
+                f")"
             )
-            query_params["ent_rid"] = RecordID("canonical_entity", entity_id)
+            params.append(entity_id)
 
     where_clause = " AND ".join(where_parts)
-    query_params["per_page"] = per_page
-    query_params["offset"] = offset
 
     try:
-        count_result = await db.query(
-            f"SELECT count() AS total FROM event WHERE {where_clause} GROUP ALL",
-            query_params,
-        )
-    except Exception as exc:
-        logger.error("Failed to count events: %s", exc)
-        raise HTTPException(
-            status_code=502,
-            detail="Failed to query database.",
-        ) from exc
+        async with get_db() as db:
+            count_sql = f"SELECT COUNT(*) AS total FROM event e WHERE {where_clause}"
+            count_row = await db.fetchrow(count_sql, *params)
+            total = count_row["total"] if count_row else 0
 
-    total = 0
-    count_records: list[dict] = [
-        r for r in (count_result or []) if isinstance(r, dict)
-    ]
-    if count_records:
-        cnt_val = count_records[0].get("total")
-        if isinstance(cnt_val, dict):
-            total = int(cnt_val.get("value", 0))
-        elif cnt_val is not None:
-            total = int(cnt_val)
-
-    if total == 0:
-        pages = 0
-    else:
-        pages = max(1, (total + per_page - 1) // per_page)
-
-    try:
-        data_result = await db.query(
-            f"SELECT *, "
-            "count(<-event_participant) AS participant_count, "
-            "count(<-reference) AS reference_count "
-            f"FROM event WHERE {where_clause} "
-            "ORDER BY created_at DESC LIMIT $per_page START $offset "
-            "FETCH document, location_place_id",
-            query_params,
-        )
+            if total > 0:
+                data_sql = (
+                    f"SELECT e.*, "
+                    f"d.id AS doc_id, d.filename AS doc_filename, "
+                    f"ce.name AS loc_place_name, "
+                    f"(SELECT COUNT(*) FROM event_participant ep WHERE ep.in_event = e.id) AS participant_count, "
+                    f"(SELECT COUNT(*) FROM reference r WHERE r.event = e.id) AS reference_count "
+                    f"FROM event e "
+                    f"LEFT JOIN document d ON d.id = e.document "
+                    f"LEFT JOIN canonical_entity ce ON ce.id = e.location_place_id "
+                    f"WHERE {where_clause} "
+                    f"ORDER BY e.created_at DESC "
+                    f"LIMIT ${len(params) + 1} OFFSET ${len(params) + 2}"
+                )
+                params.append(per_page)
+                params.append(offset)
+                data_result = await db.fetch(data_sql, *params)
+            else:
+                data_result = []
     except Exception as exc:
         logger.error("Failed to query events: %s", exc)
         raise HTTPException(
@@ -130,42 +99,15 @@ async def list_events(
             detail="Failed to query database.",
         ) from exc
 
-    from surrealdb.data.types.record_id import RecordID
-
-    data_records: list[dict] = [
-        r for r in (data_result or []) if isinstance(r, dict)
-    ]
+    if total == 0:
+        pages = 0
+    else:
+        pages = max(1, (total + per_page - 1) // per_page)
 
     items: list[EventListItem] = []
-    for record in data_records:
-        ev_id_val = record.get("id")
-        event_id: str = ""
-        if isinstance(ev_id_val, RecordID):
-            event_id = ev_id_val.id
-        elif isinstance(ev_id_val, str):
-            event_id = ev_id_val.split(":", 1)[1] if ":" in ev_id_val else ev_id_val
-
-        doc_data = record.get("document")
-        document_id: str | None = None
-        document_filename: str | None = None
-        if isinstance(doc_data, dict):
-            doc_id_val = doc_data.get("id")
-            if isinstance(doc_id_val, RecordID):
-                document_id = doc_id_val.id
-            elif isinstance(doc_id_val, str):
-                document_id = doc_id_val.split(":", 1)[1] if ":" in doc_id_val else doc_id_val
-            document_filename = doc_data.get("filename")
-
-        loc_data = record.get("location_place_id")
-        location_place_name: str | None = None
-        if isinstance(loc_data, dict):
-            location_place_name = loc_data.get("name")
-
-        pcount = record.get("participant_count")
-        rcount = record.get("reference_count")
-
+    for record in data_result:
         items.append(EventListItem(
-            event_id=event_id,
+            event_id=str(record["id"]),
             que_paso=record.get("que_paso", ""),
             espacio=record.get("espacio"),
             tiempo=record.get("tiempo"),
@@ -173,13 +115,17 @@ async def list_events(
             objetos=record.get("objetos"),
             time_window=record.get("time_window"),
             location_point=record.get("location_point"),
-            location_place_name=location_place_name,
-            participant_count=int(pcount) if pcount else 0,
-            reference_count=int(rcount) if rcount else 0,
-            document_id=document_id,
-            document_filename=document_filename,
+            location_place_name=record.get("loc_place_name"),
+            participant_count=record.get("participant_count", 0),
+            reference_count=record.get("reference_count", 0),
+            document_id=str(record["doc_id"]) if record.get("doc_id") else None,
+            document_filename=record.get("doc_filename"),
             extraction_confidence=float(record.get("extraction_confidence", 1.0)),
-            created_at=record.get("created_at"),
+            created_at=(
+                record["created_at"].isoformat()
+                if record.get("created_at") and hasattr(record["created_at"], "isoformat")
+                else str(record["created_at"]) if record.get("created_at") else None
+            ),
         ))
 
     logger.info(

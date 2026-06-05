@@ -9,11 +9,6 @@ See ``api/__init__.py`` for the application constructor and
 ``api/routes/`` for individual endpoint modules.
 """
 
-# Re-export all public names from the api/ package.
-# Python resolves ``eth_pipeline.api`` to the package directory,
-# so this file is documentation only.  The actual imports in other
-# modules (e.g. ``from eth_pipeline.api import app``) resolve to
-# ``api/__init__.py``.
 from eth_pipeline.api import (  # noqa: E402, F401
     APIInfo,
     DocumentCreated,
@@ -26,7 +21,6 @@ from eth_pipeline.api import (  # noqa: E402, F401
     EntityListItem,
     EntityListResponse,
     EventsCleared,
-    GraphQLRequest,
     HealthResponse,
     MergeRequest,
     MergeResponse,
@@ -37,6 +31,5 @@ from eth_pipeline.api import (  # noqa: E402, F401
     SplitPartition,
     SplitRequest,
     SplitResponse,
-    _parse_count,
     app,
 )

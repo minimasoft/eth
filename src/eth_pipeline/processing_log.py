@@ -1,7 +1,7 @@
 """
 Fire-and-forget per-document processing audit logger for Temporal activities.
 
-Each ``log()`` call opens its own SurrealDB connection, writes
+Each ``log()`` call opens its own PostgreSQL connection, writes
 one entry, and closes.  This is safe for Temporal activities
 — no shared state, no replay contamination.
 
@@ -14,8 +14,6 @@ from __future__ import annotations
 
 import hashlib
 import logging
-
-from surrealdb.data.types.record_id import RecordID
 
 from eth_pipeline.db import get_db
 
@@ -33,20 +31,19 @@ MAX_ENTRIES_PER_DOCUMENT = 100
 class ProcessingLogger:
     """Fire-and-forget per-document processing audit logger.
 
-    Each log() call opens its own SurrealDB connection, writes
+    Each log() call opens its own PostgreSQL connection, writes
     one entry, and closes.  This is safe for Temporal activities
     — no shared state, no replay contamination.
 
     Parameters
     ----------
     db_params:
-        SurrealDB connection parameters dict (url, user, password, ns, database)
+        PostgreSQL connection parameters dict (host, port, user, password, database)
         as produced by activities._db_params().
     """
 
     def __init__(self, db_params: dict) -> None:
         self._db_params = db_params
-        # Sequence counter keyed by f"{document_id}:{step_name}"
         self._seq_counter: dict[str, int] = {}
 
     async def log(
@@ -62,8 +59,7 @@ class ProcessingLogger:
         Parameters
         ----------
         document_id:
-            SurrealDB record ID hex portion of the document
-            (e.g. ``"abc123"``).
+            Document ID (e.g. ``"abc123"``).
         step_name:
             Processing step name (e.g. ``"extract_text"``,
             ``"extract_events"``).
@@ -75,7 +71,6 @@ class ProcessingLogger:
         details:
             Optional structured metadata attached to this entry.
         """
-        # 1. Validate severity
         if severity not in VALID_SEVERITIES:
             logger.warning(
                 "Invalid severity '%s' for document %s step %s — defaulting to 'info'",
@@ -85,26 +80,20 @@ class ProcessingLogger:
             )
             severity = "info"
 
-        # 2. Compute sequence number
         key = f"{document_id}:{step_name}"
         seq = self._seq_counter.get(key, 0)
         self._seq_counter[key] = seq + 1
 
-        # 3. Compute deterministic record ID
         raw = f"{document_id}{step_name}{seq}"
         record_id = hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
 
-        # 4-7. Open connection, check cap, write entry (fire-and-forget)
         try:
-            async with get_db(**self._db_params) as db:
-                # 5. Enforce 100-entry cap
-                doc_ref = f"document:{document_id}"
-                count_result = await db.query(
-                    "SELECT count() AS total FROM document_event_log "
-                    "WHERE document = $doc_ref GROUP ALL",
-                    {"doc_ref": doc_ref},
+            async with get_db(**self._db_params) as conn:
+                row = await conn.fetchrow(
+                    "SELECT COUNT(*) AS total FROM document_event_log WHERE document = $1",
+                    document_id,
                 )
-                count = _parse_count(count_result)
+                count = row["total"] if row else 0
                 if count >= MAX_ENTRIES_PER_DOCUMENT:
                     logger.warning(
                         "Processing log cap reached for document %s — skipping entry",
@@ -112,42 +101,23 @@ class ProcessingLogger:
                     )
                     return
 
-                # 6. Write the log entry (UPSERT with CONTENT — creates on first call,
-                # updates on Temporal replay; created_at omitted because it has
-                # READONLY constraint and DEFAULT time::now()).
-                doc_record = RecordID("document", document_id)
                 if details is None:
-                    await db.query(
-                        "UPSERT type::record('document_event_log', $rid) CONTENT { "
-                        "document: $doc, step_name: $step, "
-                        "severity: $sev, message: $msg, details: null "
-                        "}",
-                        {
-                            "rid": record_id,
-                            "doc": doc_record,
-                            "step": step_name,
-                            "sev": severity,
-                            "msg": message,
-                        },
+                    await conn.execute(
+                        "INSERT INTO document_event_log (id, document, step_name, severity, message, details) "
+                        "VALUES ($1, $2, $3, $4, $5, NULL) "
+                        "ON CONFLICT (id) DO UPDATE SET step_name = $3, severity = $4, message = $5, details = NULL",
+                        record_id, document_id, step_name, severity, message,
                     )
                 else:
-                    await db.query(
-                        "UPSERT type::record('document_event_log', $rid) CONTENT { "
-                        "document: $doc, step_name: $step, "
-                        "severity: $sev, message: $msg, details: $det "
-                        "}",
-                        {
-                            "rid": record_id,
-                            "doc": doc_record,
-                            "step": step_name,
-                            "sev": severity,
-                            "msg": message,
-                            "det": details,
-                        },
+                    await conn.execute(
+                        "INSERT INTO document_event_log (id, document, step_name, severity, message, details) "
+                        "VALUES ($1, $2, $3, $4, $5, $6) "
+                        "ON CONFLICT (id) DO UPDATE SET step_name = $3, severity = $4, message = $5, details = $6",
+                        record_id, document_id, step_name, severity, message, details,
                     )
         except ConnectionError:
             logger.warning(
-                "ProcessingLogger: SurrealDB unavailable for document %s",
+                "ProcessingLogger: PostgreSQL unavailable for document %s",
                 document_id,
             )
         except Exception as exc:
@@ -156,21 +126,3 @@ class ProcessingLogger:
                 document_id,
                 exc,
             )
-
-
-def _parse_count(raw_result: list | dict | None) -> int:
-    """Extract count integer from a SurrealDB count query result.
-
-    Mirrors the same helper in ``eth_pipeline.api``.
-    """
-    records: list[dict] = [
-        r for r in (raw_result or []) if isinstance(r, dict)
-    ]
-    if not records:
-        return 0
-    cnt = records[0].get("total")
-    if isinstance(cnt, dict):
-        return int(cnt.get("value", 0))
-    if cnt is not None:
-        return int(cnt)
-    return 0
