@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
+import traceback
 import uuid
 
 from temporalio import activity
@@ -95,7 +97,8 @@ async def resolve_entities_with_search_activity(document_id: str) -> dict:
             await conn.execute(
                 "UPDATE reference SET canonical_entity = NULL, "
                 "entity_id = NULL, resolution_confidence = NULL "
-                "WHERE event IN (SELECT id FROM event WHERE document = $1)",
+                "WHERE event IN (SELECT id FROM event WHERE document = $1) "
+                "AND reference_type != 'tiempo'",
                 document_id,
             )
 
@@ -289,23 +292,66 @@ async def resolve_entities_with_search_activity(document_id: str) -> dict:
                         len(batch), document_id,
                     )
 
-                    try:
-                        resolution, usage = await provider.resolve_references(
-                            references=batch,
-                        )
-                        total_llm_calls += 1
-                    except Exception as exc:
-                        activity.logger.error(
-                            "LLM grouping failed for %s batch %d/%d "
-                            "[document_id=%s]: %s",
-                            entity_type, batch_idx + 1, len(batches),
-                            document_id, exc,
-                        )
-                        await _log.log(document_id, "resolve_entities_search",
-                                       "warning",
-                                       f"LLM grouping failed for {entity_type} "
-                                       f"batch {batch_idx + 1}/{len(batches)}",
-                                       {"error": str(exc)[:200]})
+                    max_retries = 3
+                    resolution = None
+                    usage = None
+                    last_exc = None
+                    for attempt in range(max_retries):
+                        try:
+                            resolution, usage = await provider.resolve_references(
+                                references=batch,
+                            )
+                            total_llm_calls += 1
+                            break
+                        except Exception as exc:
+                            last_exc = exc
+                            if attempt < max_retries - 1:
+                                wait = 2 ** attempt
+                                activity.logger.warning(
+                                    "LLM grouping attempt %d/%d failed for "
+                                    "%s batch %d/%d [document_id=%s]: %s "
+                                    "— retrying in %ds",
+                                    attempt + 1, max_retries,
+                                    entity_type, batch_idx + 1, len(batches),
+                                    document_id, exc, wait,
+                                )
+                                await _log.log(
+                                    document_id, "resolve_entities_search",
+                                    "warning",
+                                    f"LLM grouping attempt {attempt+1}/{max_retries} "
+                                    f"failed for {entity_type} batch "
+                                    f"{batch_idx+1}/{len(batches)} — retrying",
+                                    {"error": str(exc)[:500],
+                                     "attempt": attempt + 1,
+                                     "max_retries": max_retries},
+                                )
+                                await asyncio.sleep(wait)
+                            else:
+                                activity.logger.error(
+                                    "LLM grouping failed after %d retries "
+                                    "for %s batch %d/%d [document_id=%s]: %s\n%s",
+                                    max_retries,
+                                    entity_type, batch_idx + 1, len(batches),
+                                    document_id, exc,
+                                    traceback.format_exc(),
+                                )
+                                await _log.log(
+                                    document_id, "resolve_entities_search",
+                                    "error",
+                                    f"LLM grouping FAILED after {max_retries} "
+                                    f"attempts for {entity_type} batch "
+                                    f"{batch_idx+1}/{len(batches)} — "
+                                    f"{len(batch)} references left unresolved",
+                                    {"error": str(exc)[:500],
+                                     "traceback": traceback.format_exc()[-2000:],
+                                     "entity_type": entity_type,
+                                     "batch_index": batch_idx,
+                                     "total_batches": len(batches),
+                                     "unresolved_refs": len(batch),
+                                     "ref_ids": [r.get("id") for r in batch
+                                                 if r.get("id")]},
+                                )
+                    if resolution is None:
                         continue
 
                     if usage is not None:
