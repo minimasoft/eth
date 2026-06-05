@@ -1003,17 +1003,28 @@ async def delete_document(document_id: str) -> DocumentDeleted:
         )
 
         # --- Step 2: Collect affected canonical_entities from references ---
+        # Use direct event-ID subquery instead of graph traversal
+        # (event.document may be NONE for records from prior pipeline runs).
+        # Collect from BOTH canonical_entity and entity_id fields
+        # (Phase 17 search-first resolution populates entity_id).
         affected_ce_query = await db.query(
             "SELECT VALUE canonical_entity FROM reference "
-            "WHERE event.document = $doc_id "
-            "AND canonical_entity IS NOT NONE "
-            "AND canonical_entity IS NOT NULL",
+            "WHERE event IN (SELECT id FROM event WHERE document = $doc_id) "
+            "AND canonical_entity IS NOT NONE",
             {"doc_id": doc_id_obj},
         )
-        affected_ce_rids = list({
-            r for r in (affected_ce_query or [])
-            if isinstance(r, str)
-        })
+        affected_eid_query = await db.query(
+            "SELECT VALUE entity_id FROM reference "
+            "WHERE event IN (SELECT id FROM event WHERE document = $doc_id) "
+            "AND entity_id IS NOT NONE",
+            {"doc_id": doc_id_obj},
+        )
+        # Merge both result sets (set union)
+        affected_ce_rids = list(set(
+            str(r) for r in (affected_ce_query or []) if r and isinstance(r, str)
+        ) | set(
+            str(r) for r in (affected_eid_query or []) if r and isinstance(r, str)
+        ))
 
         # --- Step 3: Delete references ---
         await db.query(
@@ -1054,17 +1065,21 @@ async def delete_document(document_id: str) -> DocumentDeleted:
 
         # --- Step 8: Delete orphaned canonical entities (no refs remain) ---
         orphaned = 0
+        rids_to_check: list[str] = []
         if affected_ce_rids:
-            rids_to_check: list[str] = []
             for rid_str in affected_ce_rids:
                 parts = rid_str.split(":")
                 ent_id = parts[1] if len(parts) > 1 else rid_str
                 rids_to_check.append(ent_id)
 
             for ent_id in rids_to_check:
+                # Check references via BOTH canonical_entity AND entity_id
+                # (Phase 17 search-first resolution may only populate entity_id)
                 count_result = await db.query(
                     "SELECT count() AS total FROM reference "
-                    "WHERE canonical_entity = $entity_ref GROUP ALL",
+                    "WHERE canonical_entity = $entity_ref "
+                    "OR entity_id = $entity_ref "
+                    "GROUP ALL",
                     {"entity_ref": RecordID("canonical_entity", ent_id)},
                 )
                 count_rows: list[dict] = [
@@ -1084,6 +1099,72 @@ async def delete_document(document_id: str) -> DocumentDeleted:
                         {"entity_ref": RecordID("canonical_entity", ent_id)},
                     )
                     orphaned += 1
+
+        # --- Step 8b: Delete orphaned non-event entities from event_entity_link ---
+        # After removing event_entity_link edges in Step 1b, check whether
+        # the entities linked via those edges have become true orphans
+        # (zero references + zero remaining event_entity_link edges).
+        eel_entity_result = await db.query(
+            "SELECT VALUE entity FROM event_entity_link "
+            "WHERE event IN ("
+            "  SELECT id FROM canonical_entity "
+            "  WHERE entity_type = 'event' AND properties.document_id = $doc_id"
+            ")",
+            {"doc_id": document_id},
+        )
+        eel_entity_ids = list({
+            str(r) for r in (eel_entity_result or [])
+            if r and isinstance(r, str)
+        })
+        # Deduplicate against already-processed rids
+        eel_entity_ids = [
+            eid for eid in eel_entity_ids
+            if eid not in rids_to_check
+        ]
+        for eel_ent_str in eel_entity_ids:
+            parts = eel_ent_str.split(":")
+            ent_id = parts[1] if len(parts) > 1 else eel_ent_str
+            # Check remaining references (dual-field)
+            ref_count_result = await db.query(
+                "SELECT count() AS total FROM reference "
+                "WHERE canonical_entity = $entity_ref "
+                "OR entity_id = $entity_ref "
+                "GROUP ALL",
+                {"entity_ref": RecordID("canonical_entity", ent_id)},
+            )
+            ref_rows: list[dict] = [
+                r for r in (ref_count_result or []) if isinstance(r, dict)
+            ]
+            ref_remaining = 0
+            if ref_rows:
+                cv = ref_rows[0].get("total")
+                if isinstance(cv, dict):
+                    ref_remaining = int(cv.get("value", 0))
+                elif cv is not None:
+                    ref_remaining = int(cv)
+            # Check remaining event_entity_link edges
+            eel_count_result = await db.query(
+                "SELECT count() AS total FROM event_entity_link "
+                "WHERE entity = $entity_ref "
+                "GROUP ALL",
+                {"entity_ref": RecordID("canonical_entity", ent_id)},
+            )
+            eel_rows: list[dict] = [
+                r for r in (eel_count_result or []) if isinstance(r, dict)
+            ]
+            eel_remaining = 0
+            if eel_rows:
+                cv = eel_rows[0].get("total")
+                if isinstance(cv, dict):
+                    eel_remaining = int(cv.get("value", 0))
+                elif cv is not None:
+                    eel_remaining = int(cv)
+            if ref_remaining == 0 and eel_remaining == 0:
+                await db.query(
+                    "DELETE canonical_entity WHERE id = $entity_ref",
+                    {"entity_ref": RecordID("canonical_entity", ent_id)},
+                )
+                orphaned += 1
 
         # --- Step 9: Delete the document ---
         await db.query(

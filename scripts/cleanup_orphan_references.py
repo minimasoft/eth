@@ -1,10 +1,15 @@
 """
-Detect and clean up orphan references in SurrealDB.
+Detect and clean up orphans in SurrealDB.
 
-Orphan references are references whose ``event`` link or transitive
-``event.document`` link points to a non-existent record.  These can
-accumulate after failed cascade deletes, manual DB edits, or incomplete
-Temporal activity runs.
+Orphans are records whose parent or linked record no longer exists.
+These can accumulate after failed cascade deletes, manual DB edits,
+or incomplete Temporal activity runs.
+
+Types detected:
+  Type A — references whose ``event`` link points to a non-existent record
+  Type B — references whose ``event.document`` link points to a non-existent document
+  Type C — canonical_entity records with zero references (no link from any reference via canonical_entity or entity_id)
+  Type D — event_entity_link edges with broken event or entity links
 
 **Default mode is DRY-RUN** — no data is modified unless ``--execute``
 is passed.
@@ -151,14 +156,43 @@ async def main() -> None:
 
             total = count_a + count_b
 
+            # Type C — orphan canonical entities
+            count_c_result = await db.query(
+                "SELECT count() AS total FROM canonical_entity "
+                "WHERE id NOT IN (SELECT canonical_entity FROM reference WHERE canonical_entity IS NOT NONE) "
+                "AND id NOT IN (SELECT entity_id FROM reference WHERE entity_id IS NOT NONE) "
+                "GROUP ALL"
+            )
+            count_c = (
+                count_c_result[0]["total"]
+                if count_c_result and isinstance(count_c_result, list)
+                else 0
+            )
+
+            # Type D — orphan event_entity_link edges
+            count_d_result = await db.query(
+                "SELECT count() AS total FROM event_entity_link "
+                "WHERE event NOT IN (SELECT id FROM canonical_entity) "
+                "OR entity NOT IN (SELECT id FROM canonical_entity) "
+                "GROUP ALL"
+            )
+            count_d = (
+                count_d_result[0]["total"]
+                if count_d_result and isinstance(count_d_result, list)
+                else 0
+            )
+
             # ----------------------------------------------------------
             # Print summary
             # ----------------------------------------------------------
             print("=== ORPHAN REFERENCES REPORT ===")
             print(f"  Type A (event missing):         {count_a} records")
             print(f"  Type B (event.document missing): {count_b} records")
+            print(f"  Type C (canonical_entity orphan): {count_c} records")
+            print(f"  Type D (event_entity_link orphan): {count_d} records")
             print(f"  ─────────────────────────────────────")
-            print(f"  Total orphan references:           {total} records")
+            print(f"  Total orphan references (A+B):      {total} records")
+            print(f"  Total orphan entities/edges (C+D):  {count_c + count_d} records")
             print()
 
             # ----------------------------------------------------------
@@ -196,6 +230,33 @@ async def main() -> None:
                         print(f"  {rid}  text={text!r}  event={evt}")
                     print()
 
+                if count_c > 0:
+                    print("--- Type C: canonical_entity orphan ---")
+                    rows_c = await db.query(
+                        "SELECT id, entity_type FROM canonical_entity "
+                        "WHERE id NOT IN (SELECT canonical_entity FROM reference WHERE canonical_entity IS NOT NONE) "
+                        "AND id NOT IN (SELECT entity_id FROM reference WHERE entity_id IS NOT NONE)"
+                    )
+                    for r in rows_c:
+                        rid = r.get("id", "?")
+                        etype = r.get("entity_type", "?")
+                        print(f"  {rid}  entity_type={etype}")
+                    print()
+
+                if count_d > 0:
+                    print("--- Type D: event_entity_link orphan ---")
+                    rows_d = await db.query(
+                        "SELECT id, event, entity FROM event_entity_link "
+                        "WHERE event NOT IN (SELECT id FROM canonical_entity) "
+                        "OR entity NOT IN (SELECT id FROM canonical_entity)"
+                    )
+                    for r in rows_d:
+                        rid = r.get("id", "?")
+                        evt = r.get("event", "?")
+                        ent = r.get("entity", "?")
+                        print(f"  {rid}  event={evt}  entity={ent}")
+                    print()
+
             # ----------------------------------------------------------
             # Orphan events (optional)
             # ----------------------------------------------------------
@@ -229,7 +290,7 @@ async def main() -> None:
             # Execute deletes (only if --execute)
             # ----------------------------------------------------------
             if args.execute:
-                if total == 0 and orphan_event_count == 0:
+                if total == 0 and orphan_event_count == 0 and count_c == 0 and count_d == 0:
                     print("No orphans to delete.")
                 else:
                     print("=== DELETING ORPHANS ===")
@@ -251,6 +312,22 @@ async def main() -> None:
                         print(
                             f"  Deleted Type B: {count_b} references (event.document missing)"
                         )
+
+                    if count_c > 0:
+                        await db.query(
+                            "DELETE canonical_entity "
+                            "WHERE id NOT IN (SELECT canonical_entity FROM reference WHERE canonical_entity IS NOT NONE) "
+                            "AND id NOT IN (SELECT entity_id FROM reference WHERE entity_id IS NOT NONE)"
+                        )
+                        print(f"  Deleted Type C: {count_c} canonical entities")
+
+                    if count_d > 0:
+                        await db.query(
+                            "DELETE event_entity_link "
+                            "WHERE event NOT IN (SELECT id FROM canonical_entity) "
+                            "OR entity NOT IN (SELECT id FROM canonical_entity)"
+                        )
+                        print(f"  Deleted Type D: {count_d} event_entity_link edges")
 
                     if args.orphan_events and orphan_event_count > 0:
                         result_e = await db.query(
