@@ -32,9 +32,11 @@ Requirements for this milestone. Each maps to roadmap phases.
 
 ### References UI
 
-- [ ] **REFS-01**: New References tab in SPA between Documents and Entities — paginated, filterable (by type, document, entity), with search
-- [ ] **REFS-02**: References grouped by canonical entity, showing verbatim text, context excerpt, page/offset provenance, color-coded type badges, and element_field badges
-- [ ] **REFS-03**: Cross-tab navigation — Entity tab → click reference count → filtered References tab; Reference → click → jump to source document
+- [x] **REFS-01**: New References tab in SPA between Documents and Entities — paginated, filterable (by type, document, entity), with search
+
+- [x] **REFS-02**: References grouped by canonical entity, showing verbatim text, context excerpt, page/offset provenance, color-coded type badges, and element_field badges
+
+- [x] **REFS-03**: Cross-tab navigation — Entity tab → click reference count → filtered References tab; Reference → click → jump to source document
 
 ### API Endpoints
 
@@ -93,12 +95,12 @@ Which phases cover which requirements. Updated during roadmap creation.
 | PIPE-02 | Phase 25 | Complete |
 | PIPE-03 | Phase 25 | Complete |
 | PIPE-04 | Phase 25 | Complete |
-| REFS-01 | Phase 27 | Pending |
-| REFS-02 | Phase 27 | Pending |
-| REFS-03 | Phase 27 | Pending |
-| API-01 | Phase 26 | Pending |
-| API-02 | Phase 26 | Pending |
-| API-03 | Phase 26 | Pending |
+| REFS-01 | Phase 27 | Complete |
+| REFS-02 | Phase 27 | Complete |
+| REFS-03 | Phase 27 | Complete |
+| API-01 | Phase 26 | Complete |
+| API-02 | Phase 26 | Complete |
+| API-03 | Phase 26 | Complete |
 | TEST-01 | Phase 28 | Complete |
 | TEST-02 | Phase 28 | Complete |
 | TEST-03 | Phase 28 | Complete |
@@ -109,8 +111,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 - v6.0 requirements: 23 total
 - Mapped to phases: 23 ✓
-- Completed: 9 (SCHE-01..04, TEST-01..05)
-- In progress: 14 (EXTR-01..05, PIPE-01..04, API-01..03, REFS-01..03)
+- Completed: 23 (SCHE-01..04, EXTR-01..05, PIPE-01..04, API-01..03, TEST-01..05, REFS-01..03)
+- In progress: 0
 - Unmapped: 0
 
 **By Phase:**
