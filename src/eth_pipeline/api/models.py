@@ -285,6 +285,15 @@ class ReferenceListItem(BaseModel):
     page_number: int | None = None
     """1-based page number where this reference appears."""
 
+    page_offset_start: int | None = None
+    """Character offset within the page where the verbatim span starts (0-based)."""
+
+    page_offset_end: int | None = None
+    """Character offset within the page where the verbatim span ends (exclusive)."""
+
+    context_excerpt: str | None = None
+    """Excerpt of surrounding text (~80 chars before and after) with verbatim text centered, or null if document text_content is unavailable."""
+
     element_field: str | None = None
     """Specific event element this reference substantiates (v6.0)."""
 
