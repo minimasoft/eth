@@ -477,6 +477,36 @@ export async function mergeEntities(
   return JSON.parse(body!) as MergeResponse;
 }
 
+/**
+ * Filter references by arbitrary query params via REST API (GET /references).
+ * Returns parsed body or null on error — same error handling pattern as listReferences.
+ */
+export async function filterReferences(
+  params: Record<string, string>,
+): Promise<ReferenceListResponse | null> {
+  const query = new URLSearchParams({ per_page: "100", ...params }).toString();
+  const [status, body, error] = await httpGet(
+    `${API_BASE}/references?${query}`,
+  );
+  if (error || status !== 200) return null;
+  return JSON.parse(body!) as ReferenceListResponse;
+}
+
+/**
+ * Filter events by arbitrary query params via REST API (GET /events).
+ * Returns parsed body or null on error — same error handling pattern as listEvents.
+ */
+export async function filterEvents(
+  params: Record<string, string>,
+): Promise<EventListResponse | null> {
+  const query = new URLSearchParams({ per_page: "100", ...params }).toString();
+  const [status, body, error] = await httpGet(
+    `${API_BASE}/events?${query}`,
+  );
+  if (error || status !== 200) return null;
+  return JSON.parse(body!) as EventListResponse;
+}
+
 // ── Assertion helpers ──────────────────────────────────────────────────
 
 export function assertNonNull<T>(

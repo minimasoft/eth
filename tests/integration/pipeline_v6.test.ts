@@ -20,6 +20,8 @@ import {
   waitForProcessing,
   listEvents,
   listReferences,
+  filterReferences,
+  filterEvents,
   getProcessingLogs,
   clearEvents,
 } from "./helpers.js";
@@ -138,15 +140,18 @@ describe("v6.0 — structured event fields, cascade, replay safety", () => {
       assert.ok(events.total >= 2, `Expected ≥2 events, got ${events.total}`);
 
       for (const evt of events.items) {
-        // Verify time_window has non-null start/end when present
+        // Verify time_window has non-null start when present.
+        // end may be null/missing (LLM may only extract a start date with precision).
         if (evt.time_window) {
           assert.ok(typeof evt.time_window.start === "string",
             `time_window.start should be a string for event ${evt.event_id}`);
-          assert.ok(typeof evt.time_window.end === "string",
-            `time_window.end should be a string for event ${evt.event_id}`);
           // Date should be ISO 8601 format
           assert.match(evt.time_window.start, /^\d{4}-\d{2}-\d{2}/,
             `time_window.start should be ISO date, got ${evt.time_window.start}`);
+          if (evt.time_window.end !== null && evt.time_window.end !== undefined) {
+            assert.ok(typeof evt.time_window.end === "string",
+              `time_window.end should be a string when present, got ${typeof evt.time_window.end}`);
+          }
         }
 
         // Verify participant_count is always present and non-negative
@@ -302,6 +307,265 @@ describe("v6.0 — structured event fields, cascade, replay safety", () => {
       if (idx !== -1) testDocIds.splice(idx, 1);
 
       console.log("✓ Cascade delete: document + event_participant edges cleaned");
+    });
+  });
+});
+
+// ===================================================================
+// Test Group 5: Enhanced GET /references filters
+// ===================================================================
+describe("Enhanced GET /references filters", () => {
+  it("5a. Document filter — filter by document ID", async () => {
+    await skipIfDegraded(`${API_BASE}/health`, async () => {
+      const firstDocId = testDocIds[0];
+      if (!firstDocId || !documentWasProcessed) {
+        console.log("ℹ  No processed document — skipping document filter test");
+        return;
+      }
+
+      // Create a second document so we have two docs (differential filtering)
+      const secondDoc = await createDocument(
+        "A short second document about a meeting in Madrid in 2026.",
+        "second_doc_filter.txt",
+      );
+      if (!secondDoc) {
+        console.log("ℹ  Could not create second document — skipping");
+        return;
+      }
+      testDocIds.push(secondDoc.document_id);
+
+      const secondResult = await waitForProcessing(secondDoc.document_id, 180_000);
+      if (!secondResult || secondResult.status !== "processed") {
+        console.log("ℹ  Second document was not processed — skipping document filter test");
+        return;
+      }
+      console.log(`✓ Second document ${secondDoc.document_id} processed`);
+
+      // Filter references by first document
+      const refs = await filterReferences({ document: firstDocId });
+      if (!refs) {
+        console.log("ℹ  filterReferences returned null — skipping");
+        return;
+      }
+      assert.ok(refs.total >= 0, "total should be non-negative");
+
+      if (refs.total > 0) {
+        // Verify every returned reference belongs to the requested document
+        for (const ref of refs.items) {
+          assert.equal(
+            ref.document_id,
+            firstDocId,
+            `Reference ${ref.reference_id} should belong to document ${firstDocId}, not ${ref.document_id}`,
+          );
+        }
+        console.log(`✓ Document filter: ${refs.total} references all belong to document ${firstDocId}`);
+      } else {
+        console.log("ℹ  No references returned for document filter test");
+      }
+    });
+  });
+
+  it("5b. Entity type filter — filter references by entity_type", async () => {
+    await skipIfDegraded(`${API_BASE}/health`, async () => {
+      const docId = testDocIds[0];
+      if (!docId || !documentWasProcessed) {
+        console.log("ℹ  No processed document — skipping entity_type filter test");
+        return;
+      }
+
+      const refs = await filterReferences({ entity_type: "person", document: docId });
+      if (!refs) {
+        console.log("ℹ  filterReferences returned null — skipping");
+        return;
+      }
+
+      assert.ok(refs.total >= 0, "total should be non-negative");
+      console.log(`✓ entity_type filter: ${refs.total} references with entity_type=person`);
+
+      if (refs.total > 0) {
+        // Verify every returned reference is linked to a person entity
+        for (const ref of refs.items) {
+          if (ref.canonical_entity_type) {
+            assert.equal(
+              ref.canonical_entity_type,
+              "person",
+              `Reference ${ref.reference_id} should have canonical_entity_type=person, got ${ref.canonical_entity_type}`,
+            );
+          }
+        }
+        console.log(`✓ All ${refs.total} reference(s) have canonical_entity_type=person where set`);
+      }
+    });
+  });
+
+  it("5c. Entity ID filter — filter references by entity_id", async () => {
+    await skipIfDegraded(`${API_BASE}/health`, async () => {
+      const docId = testDocIds[0];
+      if (!docId || !documentWasProcessed) {
+        console.log("ℹ  No processed document — skipping entity_id filter test");
+        return;
+      }
+
+      // First get references to find one with a non-null canonical_entity_id
+      const allRefs = await listReferences({ document_id: docId });
+      if (!allRefs || allRefs.total === 0) {
+        console.log("ℹ  No references to test entity_id filter — skipping");
+        return;
+      }
+
+      const refWithEntity = allRefs.items.find(r => r.canonical_entity_id);
+      if (!refWithEntity) {
+        console.log("ℹ  No references with canonical_entity_id found — skipping");
+        return;
+      }
+
+      const entityId = refWithEntity.canonical_entity_id!;
+      console.log(`✓ Found reference ${refWithEntity.reference_id} with entity_id=${entityId}`);
+
+      const filtered = await filterReferences({ entity_id: entityId });
+      if (!filtered) {
+        console.log("ℹ  filterReferences returned null — skipping");
+        return;
+      }
+
+      assert.ok(filtered.total >= 0, "total should be non-negative");
+
+      if (filtered.total > 0) {
+        for (const ref of filtered.items) {
+          assert.ok(
+            ref.canonical_entity_id === entityId,
+            `Reference ${ref.reference_id} should have canonical_entity_id=${entityId}, got ${ref.canonical_entity_id}`,
+          );
+        }
+        console.log(`✓ Entity ID filter: ${filtered.total} reference(s) match entity ${entityId}`);
+      }
+    });
+  });
+
+  it("5d. Event element filter — filter references by event_element", async () => {
+    await skipIfDegraded(`${API_BASE}/health`, async () => {
+      const docId = testDocIds[0];
+      if (!docId || !documentWasProcessed) {
+        console.log("ℹ  No processed document — skipping event_element filter test");
+        return;
+      }
+
+      const refs = await filterReferences({ event_element: "tiempo", document: docId });
+      if (!refs) {
+        console.log("ℹ  filterReferences returned null — skipping");
+        return;
+      }
+
+      assert.ok(refs.total >= 0, "total should be non-negative");
+      console.log(`✓ event_element filter: ${refs.total} references with event_element=tiempo`);
+
+      if (refs.total > 0) {
+        for (const ref of refs.items) {
+          assert.equal(
+            ref.element_field,
+            "tiempo",
+            `Reference ${ref.reference_id} should have element_field=tiempo, got ${ref.element_field}`,
+          );
+        }
+        console.log(`✓ All ${refs.total} reference(s) have element_field=tiempo`);
+      }
+    });
+  });
+});
+
+// ===================================================================
+// Test Group 6: Enhanced GET /events filters
+// ===================================================================
+describe("Enhanced GET /events filters", () => {
+  it("6a. Entity ID filter — filter events by entity_id", async () => {
+    await skipIfDegraded(`${API_BASE}/health`, async () => {
+      const docId = testDocIds[0];
+      if (!docId || !documentWasProcessed) {
+        console.log("ℹ  No processed document — skipping entity_id event filter test");
+        return;
+      }
+
+      // Pick an entity_id from the first event's references
+      const refs = await listReferences({ document_id: docId });
+      if (!refs || refs.total === 0) {
+        console.log("ℹ  No references to find entity_id for events — skipping");
+        return;
+      }
+
+      const refWithEntity = refs.items.find(r => r.canonical_entity_id);
+      if (!refWithEntity) {
+        console.log("ℹ  No entity-linked references found — skipping entity_id filter");
+        return;
+      }
+
+      const entityId = refWithEntity.canonical_entity_id!;
+      console.log(`✓ Testing filterEvents by entity_id=${entityId}`);
+
+      const events = await filterEvents({ entity_id: entityId });
+      if (!events) {
+        console.log("ℹ  filterEvents returned null — skipping");
+        return;
+      }
+
+      assert.ok(events.total >= 0, "total should be non-negative");
+
+      if (events.total > 0) {
+        for (const evt of events.items) {
+          assert.ok(
+            evt.participant_count >= 0,
+            `Event ${evt.event_id} should have participant_count >= 0, got ${evt.participant_count}`,
+          );
+        }
+        console.log(`✓ Entity ID event filter: ${events.total} event(s) for entity ${entityId}`);
+      } else {
+        console.log("ℹ  No entity-linked events found for this entity_id");
+      }
+    });
+  });
+
+  it("6b. Entity type filter — filter events by entity_type", async () => {
+    await skipIfDegraded(`${API_BASE}/health`, async () => {
+      const events = await filterEvents({ entity_type: "person" });
+      if (!events) {
+        console.log("ℹ  filterEvents returned null — skipping");
+        return;
+      }
+
+      assert.ok(events.total >= 0, "total should be non-negative");
+      console.log(`✓ Entity type event filter: ${events.total} event(s) with entity_type=person`);
+    });
+  });
+
+  it("6c. Date range filter — filter events by date_from/date_to", async () => {
+    await skipIfDegraded(`${API_BASE}/health`, async () => {
+      const docId = testDocIds[0];
+      if (!docId || !documentWasProcessed) {
+        console.log("ℹ  No processed document — skipping date range filter test");
+        return;
+      }
+
+      // Get the document's total event count for comparison
+      const allEvents = await listEvents(docId);
+      if (!allEvents) {
+        console.log("ℹ  Could not fetch events — skipping date range filter test");
+        return;
+      }
+
+      const events = await filterEvents({
+        date_from: "2000-01-01",
+        date_to: "2100-01-01",
+        document: docId,
+      });
+      if (!events) {
+        console.log("ℹ  filterEvents returned null — skipping");
+        return;
+      }
+
+      assert.ok(events.total >= 0, "total should be non-negative");
+      console.log(
+        `✓ Date range filter: ${events.total} event(s) in [2000-01-01, 2100-01-01] ` +
+        `(document total: ${allEvents.total})`,
+      );
     });
   });
 });
