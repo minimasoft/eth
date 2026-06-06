@@ -283,27 +283,19 @@ async def merge_entities(request: MergeRequest) -> MergeResponse:
                 request.target_id, request.source_id,
             )
 
-            try:
-                await db.execute(
-                    "UPDATE event SET location_place_id = $1 "
-                    "WHERE location_place_id = $2",
-                    request.target_id, request.source_id,
-                )
-            except Exception as exc:
-                logger.warning(
-                    "location_place_id rewire skipped (may not exist yet): %s", exc,
-                )
+            loc_result = await db.execute(
+                "UPDATE event SET location_place_id = $1 "
+                "WHERE location_place_id = $2",
+                request.target_id, request.source_id,
+            )
+            loc_affected = int(loc_result.split()[-1]) if loc_result else 0
 
-            try:
-                await db.execute(
-                    "UPDATE event_participant SET out_entity = $1 "
-                    "WHERE out_entity = $2",
-                    request.target_id, request.source_id,
-                )
-            except Exception as exc:
-                logger.warning(
-                    "event_participant rewire skipped (may not exist yet): %s", exc,
-                )
+            part_result = await db.execute(
+                "UPDATE event_participant SET out_entity = $1 "
+                "WHERE out_entity = $2",
+                request.target_id, request.source_id,
+            )
+            part_affected = int(part_result.split()[-1]) if part_result else 0
 
             await db.execute(
                 "UPDATE canonical_entity SET "
@@ -313,21 +305,24 @@ async def merge_entities(request: MergeRequest) -> MergeResponse:
             )
 
         logger.info(
-            "Merge complete: source=%s target=%s rewired=%d references",
+            "Merge complete: source=%s target=%s rewired=%d references, "
+            "%d events' location_place_id, %d event_participant edges",
             request.source_id,
             request.target_id,
             rewired_count,
+            loc_affected,
+            part_affected,
         )
     except Exception as exc:
         logger.error(
-            "Failed to execute merge source=%s target=%s: %s",
+            "Merge failed during reference/location/participant rewiring: source=%s target=%s: %s",
             request.source_id,
             request.target_id,
             exc,
         )
         raise HTTPException(
             status_code=502,
-            detail="Failed to execute merge operation.",
+            detail=f"Merge failed during reference/location/participant rewiring: {exc}",
         ) from exc
 
     return MergeResponse(
@@ -559,6 +554,39 @@ async def split_entity(
         total_moved,
         [e["name"] for e in new_entities_info],
     )
+
+    # Log retention counts for v6.0 structured fields: location_place_id and
+    # event_participant edges are NOT transferred to new split entities per
+    # the "appropriate partition" principle — new entities are separate from
+    # the original and should not inherit its event connections.
+    try:
+        async with get_db() as db:
+            loc_count = await db.fetchval(
+                "SELECT COUNT(*) AS cnt FROM event WHERE location_place_id = $1",
+                entity_id,
+            ) or 0
+            part_count = await db.fetchval(
+                "SELECT COUNT(*) AS cnt FROM event_participant WHERE out_entity = $1",
+                entity_id,
+            ) or 0
+            loc_count = int(loc_count)
+            part_count = int(part_count)
+            logger.info(
+                "Split entity %s (%s): %d events with location_place_id retained by original, "
+                "%d event_participant edges retained by original "
+                "(no links transferred to new entities — appropriate partition)",
+                entity_id,
+                entity_type,
+                loc_count,
+                part_count,
+            )
+    except Exception as exc:
+        logger.warning(
+            "Failed to query location_place_id/event_participant retention counts "
+            "for split entity %s: %s",
+            entity_id,
+            exc,
+        )
 
     return SplitResponse(
         success=True,
