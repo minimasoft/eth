@@ -4,14 +4,14 @@ milestone: v6.0
 milestone_name: — Event-Centric Data Quality & UI
 status: executing
 stopped_at: Phase 26 execution complete — merge/split endpoint hardening (no silent try/except for location_place_id/event_participant rewiring, row-count logging, split retention diagnostics) + API filter integration tests (filterReferences/filterEvents helpers, 7 new tests across 2 test groups)
-last_updated: "2026-06-06T22:30:00.000Z"
+last_updated: "2026-06-06T22:45:00.000Z"
 last_activity: 2026-06-06
 progress:
   total_phases: 15
-  completed_phases: 3
-  total_plans: 5
-  completed_plans: 5
-  percent: 33
+  completed_phases: 4
+  total_plans: 7
+  completed_plans: 7
+  percent: 40
 ---
 
 # Project State
@@ -45,6 +45,21 @@ Phase 26 (API Endpoints) — **Complete** ✅
 - Split entity logs retention counts documenting the "appropriate partition" design decision
 - 7 new integration tests (4 reference filter tests + 3 event filter tests) with skipIfDegraded
 
+### Phase 27 Execution Status
+
+Phase 27 (References UI) — **Complete** ✅
+
+- Plan 27-01: Backend model + context excerpt — 1/1 plans complete
+- Plan 27-02: Frontend UI refinements — 1/1 plans complete
+- Requirements: REFS-01, REFS-02, REFS-03
+- Added `page_offset_start`, `page_offset_end`, `context_excerpt` to ReferenceListItem model
+- Context excerpt computed at query time from document text_content (~80 chars before/after span)
+- Entity filter dropdown in References tab toolbar
+- Contexto column with verbatim text bolded in excerpt
+- Página/Offset column showing provenance
+- Clickable reference counts in Entities tab navigating to filtered References tab
+- Fixed navigateToDocument using openLogEntry for proper document navigation
+
 ## Performance Metrics
 
 ### v6.0 Event-Centric Data Quality & UI (Phase 28 Finale)
@@ -54,7 +69,7 @@ Phase 26 (API Endpoints) — **Complete** ✅
 | 24. Schema & Data Model Foundation | 1/1 | Complete | 2026-06-04 |
 | 25. LLM Extraction & Pipeline | 1/1 | Complete | 2026-06-06 |
 | 26. API Endpoints | 2/2 | Complete | 2026-06-06 |
-| 27. References UI | — | Not started | — |
+| 27. References UI | 2/2 | Complete | 2026-06-06 |
 | 28. Integration Tests & Verification | 0/0 | Not started | — |
 
 ### Prior Milestones
@@ -114,11 +129,17 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-06T22:28:16.000Z
-Stopped at: Phase 26 execution complete — merge/split endpoint hardening + API filter integration tests
+Last session: 2026-06-06T22:45:00.000Z
+Stopped at: Phase 27 execution complete — References UI (backend model + frontend UI refinements)
 Resume file: None
 
-### Phase 26 Artifacts
+### Phase 27 Artifacts
+
+- **Plan 27-01 SUMMARY:** `.planning/phases/27-references-ui/27-01-SUMMARY.md`
+- **Plan 27-02 SUMMARY:** `.planning/phases/27-references-ui/27-02-SUMMARY.md`
+- **Backend model + context excerpt commits:** `bed4002`, `cd417ca`
+- **Frontend UI commits:** `14ec7d2`, `aae1123`, `5e43f77`
+- **Requirements completed:** REFS-01, REFS-02, REFS-03
 
 - **Plan 26-01 SUMMARY:** `.planning/phases/26-api-endpoints/26-01-SUMMARY.md`
 - **Plan 26-02 SUMMARY:** `.planning/phases/26-api-endpoints/26-02-SUMMARY.md`
