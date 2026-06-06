@@ -433,7 +433,7 @@ it("4. Temporal replay safety — no duplicate edges on reprocess", async () => 
 | A3 | `after` hook cleanup will run even if earlier tests fail | Code Examples | Node:test `after` runs regardless of test pass/fail. Verified by existing pattern. |
 | A4 | Cascade delete of document cascades to event_participant edges | Code Examples | Verified: `in_event TEXT REFERENCES event(id) ON DELETE CASCADE` is in schema.sql. Additionally, code explicitly deletes event_participant before event. |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Does the golden fixture text need to be reviewed by a Spanish speaker for legal accuracy?**
    - What we know: The fixture needs to produce reliable LLM extraction. The existing test fixture in e2e_pipeline.test.ts uses similar Spanish legal text and works.

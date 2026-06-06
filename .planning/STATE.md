@@ -1,10 +1,11 @@
 ---
 gsd_state_version: 1.0
 milestone: v6.0
-milestone_name: Event-Centric Data Quality & UI (Phase 28 Finale)
-status: planning
-last_updated: "2026-06-06T21:00:38.669Z"
-last_activity: 2026-06-06
+milestone_name: — Event-Centric Data Quality & UI
+status: executing
+stopped_at: Completed quick task 260605-l4s — fix canonical_entity_id column name bug, add entity delete endpoint + UI button, cleanup 181 orphan entities
+last_updated: "2026-06-06T21:18:01.669Z"
+last_activity: 2026-06-06 — Phase 28 focus started
 progress:
   total_phases: 5
   completed_phases: 4
@@ -27,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-06-04)
 
 Phase: 28 of 28 (Integration Tests & Verification)
 Plan: —
-Status: Defining requirements
+Status: Ready to execute
 Last activity: 2026-06-06 — Phase 28 focus started
 
 Progress: [████████░░] 80%
