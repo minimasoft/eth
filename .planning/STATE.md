@@ -1,16 +1,16 @@
 ---
 gsd_state_version: 1.0
 milestone: v6.0
-milestone_name: Event-Centric Data Quality & UI
-status: roadmap
-last_updated: "2026-06-05"
-last_activity: 2026-06-05 — Completed quick task 260605-rm0: Fix orphan entity bug in delete_document ordering + reference_count + test
+milestone_name: Event-Centric Data Quality & UI (Phase 28 Finale)
+status: planning
+last_updated: "2026-06-06T21:00:38.669Z"
+last_activity: 2026-06-06
 progress:
   total_phases: 5
-  completed_phases: 0
+  completed_phases: 4
   total_plans: 0
   completed_plans: 0
-  percent: 0
+  percent: 80
 ---
 
 # Project State
@@ -21,27 +21,27 @@ See: .planning/PROJECT.md (updated 2026-06-04)
 
 **Core value:** Every extracted event must be traceable to its exact source text in the original document, and every resolved entity must show its evidential references.
 
-**Current focus:** Milestone v6.0 — Event-Centric Data Quality & UI (roadmap approved, ready to plan)
+**Current focus:** Milestone v6.0 — Event-Centric Data Quality & UI (Phase 28: Integration Tests & Verification)
 
 ## Current Position
 
-Phase: 24 of 28 (Schema & Data Model Foundation)
+Phase: 28 of 28 (Integration Tests & Verification)
 Plan: —
-Status: Roadmap created — ready for planning
-Last activity: 2026-06-05 — Completed quick task 260605-rm0: Fix orphan entity bug in delete_document ordering + reference_count + test
+Status: Defining requirements
+Last activity: 2026-06-06 — Phase 28 focus started
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [████████░░] 80%
 
 ## Performance Metrics
 
-### v6.0 Event-Centric Data Quality & UI
+### v6.0 Event-Centric Data Quality & UI (Phase 28 Finale)
 
 | Phase | Plans | Status | Completed |
 |-------|-------|--------|-----------|
-| 24. Schema & Data Model Foundation | 0/0 | Not started | — |
-| 25. LLM Extraction & Pipeline | 0/0 | Not started | — |
-| 26. API Endpoints | 0/0 | Not started | — |
-| 27. References UI | 0/0 | Not started | — |
+| 24. Schema & Data Model Foundation | — | Complete | 2026-06-04 |
+| 25. LLM Extraction & Pipeline | — | Complete | 2026-06-04 |
+| 26. API Endpoints | — | Complete | 2026-06-05 |
+| 27. References UI | — | Complete | 2026-06-05 |
 | 28. Integration Tests & Verification | 0/0 | Not started | — |
 
 ### Prior Milestones

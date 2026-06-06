@@ -29,20 +29,16 @@ Every extracted event must be traceable to its exact source text in the original
 
 **v4.0: Pipeline Quality & Entity Resolution — COMPLETE.** Reference offsets (character + page), structured event objects as canonical entities, per-document processing logs, search-first entity resolution (20-50% LLM call savings), real Spanish legal document test corpus, and comprehensive README/docs.
 
-## Current Milestone: v6.0 Event-Centric Data Quality & UI
+## Current Milestone: v6.0 Event-Centric Data Quality & UI (Phase 28)
 
-**Goal:** Improve data structure quality for references and entities so events can be represented on a timeline, map, and listed by participants.
+**Goal:** Complete verification — all new v6.0 data structures, pipeline behavior, API endpoints, and backward compatibility are verified by integration tests.
 
 **Target features:**
-- Schema refactoring for events (time window, participants, location, act/description, N references)
-- Event entities linked to canonical places/persons/objects
-- References UI tab (between Documents and Entities)
-- Timeline visualization for events
-- Map view for geolocated events
-- Participant-based event listing
-- LLM prompt improvements for structured event extraction
-- API endpoint improvements for new data structures
-- E2E test improvements for validation
+- Golden test fixture — crafted Spanish legal document with known expected output
+- Integration tests verify structured event fields (time_window, location_place_id, event_participant edges)
+- Cascade delete test — DELETE document cleans up event_participant edges and references
+- Temporal replay safety — reprocess same document, no duplicates
+- Zero regressions — all 37 existing tests continue to pass
 
 ## Requirements
 
@@ -62,15 +58,11 @@ Every extracted event must be traceable to its exact source text in the original
 
 <!-- Current scope. Building toward these. -->
 
-- [ ] Event data model improved — time window, participants, location, act/description per event
-- [ ] Events linked to canonical entities (places, persons, objects) with N references
-- [ ] LLM extraction prompts improved for structured event data
-- [ ] References UI tab (between Documents and Entities)
-- [ ] Timeline visualization for events
-- [ ] Map view for geolocated events
-- [ ] Participant-based event listing
-- [ ] API endpoint improvements for new data structures
-- [ ] E2E tests verify event data quality
+- [ ] Golden test fixture with known expected output (2 events, 3 persons, 1 place, exact times, explicit references)
+- [ ] Integration tests verify structured event fields after full pipeline run
+- [ ] Cascade delete test — DELETE document cleans up event_participant edges and references
+- [ ] Temporal replay safety — reprocess same document, no duplicate edges or records
+- [ ] Zero regressions — all 37 existing tests continue to pass
 
 ### Out of Scope
 
@@ -83,11 +75,9 @@ Every extracted event must be traceable to its exact source text in the original
 
 ## Context
 
-Current pipeline extracts raw events with verbatim references. Events have time/place/participant/objects/que-paso fields but the data quality needs improvement — references are not explicitly linked to specific event elements (which reference established the time, which established the participant). Entity resolution works (search-first with merge/split correction) but references live as flat collections rather than structured evidence for each event element. The UI has Documents and Entities tabs but no References tab, timeline, map, or participant views.
+Current pipeline extracts raw events with verbatim references. Phases 24-27 of v6.0 are complete: schema changes (time_window, location_point, event_participant junction, element_field, reference_index), expanded LLM extraction with structured dates/participants/location, enhanced API endpoints (GET /events, GET /references filters, merge/split), and the References UI tab with cross-tab navigation.
 
-v6.0 focuses on making events first-class: each event requires N references to establish its time window, participants, location, and key objects. References become a first-class UI concept (new tab). Timeline and map visualizations enable spatial-temporal browsing. Participant views list events by involved persons.
-
-The existing vanilla JS SPA at /ui will be extended with new tabs — no separate frontend app.
+Phase 28 is the final verification phase: golden test fixture, integration tests for structured event fields, cascade delete verification, Temporal replay safety, and zero-regression check against all 37 existing tests.
 
 ## Architecture / Key Patterns
 
@@ -138,4 +128,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---  
-*Last updated: 2026-06-04 after v6.0 milestone start*
+*Last updated: 2026-06-06 after v6.0 Phase 28 start*
