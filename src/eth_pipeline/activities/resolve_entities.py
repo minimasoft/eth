@@ -78,6 +78,7 @@ async def resolve_entities_activity(document_id: str) -> dict:
             )
             await conn.execute(
                 "UPDATE reference SET canonical_entity = NULL, "
+                "entity_id = NULL, "
                 "resolution_confidence = NULL "
                 "WHERE event IN (SELECT id FROM event WHERE document = $1)",
                 document_id,
@@ -329,6 +330,13 @@ async def resolve_entities_activity(document_id: str) -> dict:
                         event_person_pairs.add((str(evt), str(ce)))
                 for eid, ce_id in event_person_pairs:
                     try:
+                        existing_edge = await conn.fetchrow(
+                            "SELECT id FROM event_participant "
+                            "WHERE in_event = $1 AND out_entity = $2",
+                            eid, ce_id,
+                        )
+                        if existing_edge:
+                            continue
                         participant_id = uuid.uuid4().hex
                         await conn.execute(
                             "INSERT INTO event_participant "

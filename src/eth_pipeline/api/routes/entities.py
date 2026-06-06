@@ -4,7 +4,6 @@ import logging
 
 from fastapi import APIRouter, HTTPException, Query
 
-from eth_pipeline.api import app
 from eth_pipeline.api.models import (
     EntityDeleted,
     EntityDetailReference,

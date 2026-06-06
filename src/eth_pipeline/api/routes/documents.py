@@ -7,7 +7,6 @@ import logging
 import os
 import uuid
 
-import asyncpg
 from fastapi import APIRouter, File, HTTPException, Query, UploadFile
 
 from eth_pipeline.api import app

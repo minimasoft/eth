@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 import uuid
 
 from temporalio import activity
@@ -183,6 +182,7 @@ async def store_extraction_results_activity(
                     p_role = str(p.get("role", "subject"))
                     if not p_name:
                         continue
+                    p_rid: str | None = None
                     try:
                         p_row = await conn.fetchrow(
                             "SELECT id FROM canonical_entity "
@@ -200,8 +200,24 @@ async def store_extraction_results_activity(
                                 p_create_id, p_name,
                             )
                             if not p_create:
+                                activity.logger.warning(
+                                    "Failed to create canonical_entity for participant %s — skipping",
+                                    p_name,
+                                )
                                 continue
                             p_rid = p_create["id"]
+                    except Exception as exc:
+                        activity.logger.error(
+                            "Failed to look up or create canonical_entity for "
+                            "participant %s [event=%s]: %s",
+                            p_name, event_rid, exc,
+                        )
+                        continue
+
+                    if p_rid is None:
+                        continue
+
+                    try:
                         participant_id = uuid.uuid4().hex
                         await conn.execute(
                             "INSERT INTO event_participant "

@@ -47,8 +47,13 @@ CREATE TABLE IF NOT EXISTS event (
     objetos TEXT,
     document TEXT NOT NULL REFERENCES document(id) ON DELETE CASCADE,
     extraction_confidence REAL NOT NULL DEFAULT 1.0 CHECK (extraction_confidence >= 0 AND extraction_confidence <= 1),
+    -- Expected shape: {"start": "ISO datetime", "end": "ISO datetime", "precision": "day|month|year" | null}
     time_window JSONB,
+    -- Expected shape: {"lat": float, "lon": float, "label": string | null}
     location_point JSONB,
+    -- NOTE: entity_type='place' constraint for location_place_id is enforced at
+    -- application level (store_extraction_results.py line 131-136, resolve_entities.py
+    -- line 284-293). PostgreSQL CHECK constraints cannot reference other tables.
     location_place_id TEXT REFERENCES canonical_entity(id) ON DELETE SET NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -83,6 +88,13 @@ CREATE TABLE IF NOT EXISTS event_entity_link (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- event_participant: Graph edge linking an event record directly to a participant
+-- (person-type canonical_entity). IN→event, OUT→canonical_entity (person type).
+-- Populated by pipeline activities (resolve_entities, store_extraction_results).
+-- Distinguished from event_entity_link:
+--   event_participant connects event records directly to person entities.
+--   event_entity_link connects event-type canonical entities to any entity type
+--   (place/person/object) via the RELATE pattern.
 CREATE TABLE IF NOT EXISTS event_participant (
     id TEXT PRIMARY KEY,
     in_event TEXT NOT NULL REFERENCES event(id) ON DELETE CASCADE,

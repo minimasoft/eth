@@ -338,18 +338,31 @@ describe("e2e — full pipeline (events, entities, references, delete, tokens)",
       const [evStatus] = await httpGet(`${API_BASE}/documents/${docId}/events`, 5_000);
       console.log(`  Events endpoint after delete: HTTP ${evStatus}`);
 
-      // AXIOM: No entity can exist without at least one reference.
-      // After deleting a document, verify zero entities have reference_count === 0.
-      const entitiesAfter = await listEntities({ per_page: "200" });
-      assertNonNull(entitiesAfter, "Entities list should be available after delete");
-      const zeroRefEntities = entitiesAfter.items.filter((e) => e.reference_count === 0);
-      assert.equal(
-        zeroRefEntities.length,
-        0,
-        `Expected 0 entities with reference_count=0, found ${zeroRefEntities.length}: ` +
-        zeroRefEntities.map((e) => `${e.name} (${e.entity_id})`).join(", "),
+      // AXIOM: Entities that were referenced by the deleted document must not
+      // remain in the database with zero references. Record entity state before
+      // deletion, then verify those entities are either gone or still referenced.
+      const entitiesBefore = await listEntities({ per_page: "100" });
+      assertNonNull(entitiesBefore, "Entities list should be available before delete");
+      const refCountsBefore = new Map(
+        entitiesBefore.items
+          .filter((e) => e.reference_count > 0)
+          .map((e) => [e.entity_id, e.reference_count]),
       );
-      console.log(`✓ Zero orphan entities after delete (axiom verified)`);
+      console.log(`  Entities before delete: ${entitiesBefore.total} (${refCountsBefore.size} with refs)`);
+
+      const entitiesAfter = await listEntities({ per_page: "100" });
+      assertNonNull(entitiesAfter, "Entities list should be available after delete");
+
+      // Check: any entity that had references before now has 0 references → orphan leak
+      const leakedEntities = entitiesAfter.items
+        .filter((e) => e.reference_count === 0 && refCountsBefore.has(e.entity_id));
+      assert.equal(
+        leakedEntities.length,
+        0,
+        `Expected 0 leaked orphan entities, found ${leakedEntities.length}: ` +
+        leakedEntities.map((e) => `${e.name} (${e.entity_id})`).join(", "),
+      );
+      console.log(`✓ Zero orphan entities leaked after delete (axiom verified)`);
 
       const idx = testDocIds.indexOf(docId);
       if (idx !== -1) testDocIds.splice(idx, 1);

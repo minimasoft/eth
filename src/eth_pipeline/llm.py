@@ -253,16 +253,17 @@ EXTRACTION_CHUNK_SIZE = 400_000
 class LLMProvider(Protocol):
     """Protocol for LLM providers that extract structured events from text."""
 
-    async def extract_events(self, text: str, prior_events: list[dict] | None = None) -> dict:
+    async def extract_events(self, text: str, prior_events: list[dict] | None = None) -> tuple[dict, dict | None]:
         """Extract structured events from *text*.
 
         When *prior_events* is provided, the model is instructed to find
         NEW events not already present in the prior list — enabling
         sequential chunk-by-chunk processing of large documents.
 
-        Returns a dict matching ``EVENT_EXTRACTION_SCHEMA`` (top-level key
-        ``"events"`` containing a list of event objects with verbatim
-        references).
+        Returns
+        -------
+        tuple[dict, dict | None]
+            (parsed JSON matching ``EVENT_EXTRACTION_SCHEMA``, usage dict from OpenRouter response or None).
         """
         ...
 
@@ -416,18 +417,13 @@ class OpenRouterProvider:
                 logger.warning("LLM API call cancelled [model=%s] [url=%s]", self._model, url)
                 raise
 
-        logger.info(
-            "LLM request succeeded [model=%s] [response_keys=%s]",
-            self._model,
-            list(data.keys()),
-        )
-
         duration_ms = int((time.monotonic() - start) * 1000)
 
         logger.info(
-            "LLM request succeeded [model=%s] [response_keys=%s]",
+            "LLM request succeeded [model=%s] [response_keys=%s] [duration_ms=%d]",
             self._model,
             list(data.keys()),
+            duration_ms,
         )
 
         usage_raw: dict | None = data.get("usage")

@@ -54,13 +54,18 @@ async function cleanupTestDocuments(): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
+// Cleanup after all test groups
+// ---------------------------------------------------------------------------
+
+after(async () => {
+  await cleanupTestDocuments();
+});
+
+// ---------------------------------------------------------------------------
 // Test suite
 // ---------------------------------------------------------------------------
 
 describe("v6.0 — structured event fields, cascade, replay safety", () => {
-  after(async () => {
-    await cleanupTestDocuments();
-  });
 
   // ===================================================================
   // Test Group 1: Golden fixture — process and verify basic output
