@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v6.0
 milestone_name: — Event-Centric Data Quality & UI
-status: executing
-stopped_at: Phase 26 execution complete — merge/split endpoint hardening (no silent try/except for location_place_id/event_participant rewiring, row-count logging, split retention diagnostics) + API filter integration tests (filterReferences/filterEvents helpers, 7 new tests across 2 test groups)
-last_updated: "2026-06-06T22:45:00.000Z"
+status: complete
+stopped_at: All v6.0 phases (24-28) complete — milestone shipped 2026-06-06. 9/9 integration tests passing, 23/23 requirements satisfied.
+last_updated: "2026-06-06T23:30:00.000Z"
 last_activity: 2026-06-06
 progress:
-  total_phases: 15
-  completed_phases: 4
+  total_phases: 5
+  completed_phases: 5
   total_plans: 7
   completed_plans: 7
-  percent: 40
+  percent: 100
 ---
 
 # Project State
@@ -22,43 +22,41 @@ See: .planning/PROJECT.md (updated 2026-06-04)
 
 **Core value:** Every extracted event must be traceable to its exact source text in the original document, and every resolved entity must show its evidential references.
 
-**Current focus:** Phase 28 — Integration Tests & Verification
+**Current focus:** v6.0 milestone complete — all 5 phases delivered and verified.
 
 ## Current Position
 
-Phase: 28
-Plan: Not started
-Status: Executing Phase 28
+Phase: All — v6.0 complete
+Plan: N/A
+Status: Milestone shipped 2026-06-06
 Last activity: 2026-06-06
 
-Progress: [████████░░] 80%
+Progress: [██████████] 100%
 
-### Phase 26 Execution Status
+### Milestone Execution Status
 
-Phase 26 (API Endpoints) — **Complete** ✅
+v6.0 Event-Centric Data Quality & UI — **Complete** ✅ (Shipped 2026-06-06)
 
-- Plan 26-01: Merge/split endpoint hardening — 1/1 plans complete
-- Plan 26-02: API filter integration tests — 1/1 plans complete
-- Requirements: API-01 ✅, API-02 ✅, API-03 ✅
-- Merge endpoint commits: `6a1f58f` (removed silent try/except), `4f1647e` (test helpers + test groups)
-- All location_place_id and event_participant rewire errors now propagate visibly (no silent success)
-- Split entity logs retention counts documenting the "appropriate partition" design decision
-- 7 new integration tests (4 reference filter tests + 3 event filter tests) with skipIfDegraded
+All 5 phases (24-28) delivered and verified:
 
-### Phase 27 Execution Status
+| Phase | Plans | Status | Completed | Verification |
+|-------|-------|--------|-----------|-------------|
+| 24. Schema & Data Model Foundation | 1/1 | Complete | 2026-06-04 | ✅ Passed — 5/5 success criteria |
+| 25. LLM Extraction & Pipeline | 1/1 | Complete | 2026-06-06 | ✅ Passed — 9/9 success criteria |
+| 26. API Endpoints | 2/2 | Complete | 2026-06-06 | ✅ Passed — code review issues fixed |
+| 27. References UI | 2/2 | Complete | 2026-06-06 | ✅ Passed — 5 review warnings fixed |
+| 28. Integration Tests & Verification | 1/1 | Complete | 2026-06-06 | ✅ Passed — 7/7 truths, 9/9 tests pass |
 
-Phase 27 (References UI) — **Complete** ✅
+**Key accomplishments:**
 
-- Plan 27-01: Backend model + context excerpt — 1/1 plans complete
-- Plan 27-02: Frontend UI refinements — 1/1 plans complete
-- Requirements: REFS-01, REFS-02, REFS-03
-- Added `page_offset_start`, `page_offset_end`, `context_excerpt` to ReferenceListItem model
-- Context excerpt computed at query time from document text_content (~80 chars before/after span)
-- Entity filter dropdown in References tab toolbar
-- Contexto column with verbatim text bolded in excerpt
-- Página/Offset column showing provenance
-- Clickable reference counts in Entities tab navigating to filtered References tab
-- Fixed navigateToDocument using openLogEntry for proper document navigation
+- Additive schema changes (time_window JSONB, event_participant junction, element_field, reference_index)
+- Expanded LLM extraction with structured dates, location, participants
+- Enhanced API endpoints (GET /events, GET /references filters, merge/split hardening)
+- References UI tab with entity grouping, filtering, cross-tab navigation
+- 9/9 integration tests passing (5 existing e2e + 4 new v6.0)
+- 23/23 v6.0 requirements satisfied — 100%
+
+**Tech debt carried forward:** 4 items documented in MILESTONE-AUDIT.md (stale "37 tests" figure, participant_failures counter, REQUIREMENTS.md checkboxes, span_start > span_end guard)
 
 ## Performance Metrics
 
@@ -70,7 +68,7 @@ Phase 27 (References UI) — **Complete** ✅
 | 25. LLM Extraction & Pipeline | 1/1 | Complete | 2026-06-06 |
 | 26. API Endpoints | 2/2 | Complete | 2026-06-06 |
 | 27. References UI | 2/2 | Complete | 2026-06-06 |
-| 28. Integration Tests & Verification | 0/0 | Not started | — |
+| 28. Integration Tests & Verification | 1/1 | Complete | 2026-06-06 |
 
 ### Prior Milestones
 
@@ -129,20 +127,14 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-06T22:45:00.000Z
-Stopped at: Phase 27 execution complete — References UI (backend model + frontend UI refinements)
-Resume file: None
+Last session: 2026-06-06T23:30:00.000Z
+Completed: v6.0 milestone shipped — all 5 phases (24-28) delivered and verified
+Next: Begin v6.1 planning (Map View, Participant-Based Event Listing, Timeline Visualization)
 
-### Phase 27 Artifacts
+### v6.0 Archive
 
-- **Plan 27-01 SUMMARY:** `.planning/phases/27-references-ui/27-01-SUMMARY.md`
-- **Plan 27-02 SUMMARY:** `.planning/phases/27-references-ui/27-02-SUMMARY.md`
-- **Backend model + context excerpt commits:** `bed4002`, `cd417ca`
-- **Frontend UI commits:** `14ec7d2`, `aae1123`, `5e43f77`
-- **Requirements completed:** REFS-01, REFS-02, REFS-03
-
-- **Plan 26-01 SUMMARY:** `.planning/phases/26-api-endpoints/26-01-SUMMARY.md`
-- **Plan 26-02 SUMMARY:** `.planning/phases/26-api-endpoints/26-02-SUMMARY.md`
-- **Merge/split hardening commit:** `6a1f58f` — removed silent try/except, added row-count logging and split retention diagnostics
-- **API filter tests commit:** `4f1647e` — filterReferences/filterEvents helpers + 7 new integration tests
-- **Requirements completed:** API-01, API-02, API-03
+Milestone archive created at `.planning/milestones/v6.0-*`:
+- `.planning/milestones/v6.0-ROADMAP.md` — ROADMAP snapshot at ship time
+- `.planning/milestones/v6.0-MILESTONE-AUDIT.md` — Full milestone audit (23/23 requirements, 5/5 phases)
+- `.planning/milestones/v6.0-REQUIREMENTS.md` — Requirements snapshot
+- `.planning/milestones/v6.0-phases/` — Archived phase directories for phases 24-28

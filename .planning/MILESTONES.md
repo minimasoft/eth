@@ -1,5 +1,21 @@
 # Milestones
 
+## v6.0 Event-Centric Data Quality & UI (Shipped: 2026-06-06)
+
+**Phases completed:** 5 phases, 7 plans
+
+**Key accomplishments:**
+
+- Additive schema changes (time_window JSONB, event_participant junction, element_field, reference_index)
+- Expanded LLM extraction with structured dates (ISO 8601), location links, participant graph edges
+- Enhanced API endpoints (GET /events, GET /references filters, merge/split hardening for new fields)
+- References UI tab with entity grouping, context excerpt, page/offset provenance, cross-tab navigation
+- 4 new v6.0 integration tests (golden fixture, structured fields, cascade delete, replay safety)
+- 9/9 integration tests pass with zero regressions — 23/23 v6.0 requirements satisfied
+- 4 tech debt items documented for post-ship cleanup; 5 features deferred to v6.1/v6.2
+
+---
+
 ## v5.1 Entity Resolution Prompt & Batching Fix (Shipped: 2026-06-04)
 
 **Phases completed:** 1 phase, 1 plan, 0 tasks
