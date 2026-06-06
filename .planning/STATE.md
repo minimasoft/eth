@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v6.0
 milestone_name: — Event-Centric Data Quality & UI
 status: executing
-stopped_at: Phase 24 execution verification complete — all v6.0 schema changes confirmed in codebase, downstream code consuming new fields, SUMMARY.md produced
-last_updated: "2026-06-06T22:17:04.336Z"
+stopped_at: Phase 26 execution complete — merge/split endpoint hardening (no silent try/except for location_place_id/event_participant rewiring, row-count logging, split retention diagnostics) + API filter integration tests (filterReferences/filterEvents helpers, 7 new tests across 2 test groups)
+last_updated: "2026-06-06T22:30:00.000Z"
 last_activity: 2026-06-06
 progress:
   total_phases: 15
   completed_phases: 3
-  total_plans: 3
-  completed_plans: 3
-  percent: 20
+  total_plans: 5
+  completed_plans: 5
+  percent: 33
 ---
 
 # Project State
@@ -33,15 +33,17 @@ Last activity: 2026-06-06
 
 Progress: [████████░░] 80%
 
-### Phase 24 Execution Status
+### Phase 26 Execution Status
 
-Phase 24 (Schema & Data Model Foundation) — **Complete** ✅
+Phase 26 (API Endpoints) — **Complete** ✅
 
-- Plan: 24-01-PLAN — 1/1 plans complete
-- Requirements: SCHE-01 ✅, SCHE-02 ✅, SCHE-03 ✅, SCHE-04 ✅
-- Schema commit: `5e6d428` (v6.0 DDL block)
-- All v6.0 fields preserved through PostgreSQL migration (`bb904af`)
-- Downstream code: events API, references API, merge/split, cascade delete, pipeline activities, integration tests all consume new fields
+- Plan 26-01: Merge/split endpoint hardening — 1/1 plans complete
+- Plan 26-02: API filter integration tests — 1/1 plans complete
+- Requirements: API-01 ✅, API-02 ✅, API-03 ✅
+- Merge endpoint commits: `6a1f58f` (removed silent try/except), `4f1647e` (test helpers + test groups)
+- All location_place_id and event_participant rewire errors now propagate visibly (no silent success)
+- Split entity logs retention counts documenting the "appropriate partition" design decision
+- 7 new integration tests (4 reference filter tests + 3 event filter tests) with skipIfDegraded
 
 ## Performance Metrics
 
@@ -49,10 +51,10 @@ Phase 24 (Schema & Data Model Foundation) — **Complete** ✅
 
 | Phase | Plans | Status | Completed |
 |-------|-------|--------|-----------|
-| 24. Schema & Data Model Foundation | — | Complete | 2026-06-04 |
-| 25. LLM Extraction & Pipeline | 1/1 | Complete | 2026-06-04 |
-| 26. API Endpoints | — | Complete | 2026-06-05 |
-| 27. References UI | — | Complete | 2026-06-05 |
+| 24. Schema & Data Model Foundation | 1/1 | Complete | 2026-06-04 |
+| 25. LLM Extraction & Pipeline | 1/1 | Complete | 2026-06-06 |
+| 26. API Endpoints | 2/2 | Complete | 2026-06-06 |
+| 27. References UI | — | Not started | — |
 | 28. Integration Tests & Verification | 0/0 | Not started | — |
 
 ### Prior Milestones
@@ -112,13 +114,14 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-06T22:16:57.779Z
-Stopped at: Phase 24 execution verification complete — all v6.0 schema changes confirmed in codebase, downstream code consuming new fields, SUMMARY.md produced
+Last session: 2026-06-06T22:28:16.000Z
+Stopped at: Phase 26 execution complete — merge/split endpoint hardening + API filter integration tests
 Resume file: None
 
-### Phase 24 Artifacts
+### Phase 26 Artifacts
 
-- **SUMMARY:** `.planning/phases/24-schema-data-model-foundation/24-SUMMARY.md`
-- **Schema commit:** `5e6d428` — original v6.0 schema block in `schema.surql`
-- **PostgreSQL migration:** `bb904af` — schema migrated to `schema.sql` with all v6.0 fields preserved
-- **Requirements completed:** SCHE-01, SCHE-02, SCHE-03, SCHE-04
+- **Plan 26-01 SUMMARY:** `.planning/phases/26-api-endpoints/26-01-SUMMARY.md`
+- **Plan 26-02 SUMMARY:** `.planning/phases/26-api-endpoints/26-02-SUMMARY.md`
+- **Merge/split hardening commit:** `6a1f58f` — removed silent try/except, added row-count logging and split retention diagnostics
+- **API filter tests commit:** `4f1647e` — filterReferences/filterEvents helpers + 7 new integration tests
+- **Requirements completed:** API-01, API-02, API-03

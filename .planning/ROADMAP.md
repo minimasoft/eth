@@ -255,7 +255,7 @@ Plans:
 
 - [ ] **Phase 24: Schema & Data Model Foundation** — Additive SurrealDB DDL for time_window, location_point, location_place_id, event_participant junction, element_field, reference_index
 - [x] **Phase 25: LLM Extraction & Pipeline** — Expanded extraction schema, structured date/participant/location output, pipeline activity updates, reference cap + dedup, Temporal replay safety, cascade delete (completed 2026-06-06)
-- [ ] **Phase 26: API Endpoints** — GET /events (paginated + filters), GET /references enhancements, merge/split endpoint extensions for new fields
+- [x] **Phase 26: API Endpoints** — Merge/split endpoint hardening + API filter integration tests (completed 2026-06-06)
 - [ ] **Phase 27: References UI** — New References tab with pagination, filtering, entity grouping, element_field badges, cross-tab navigation to entities and documents
 - [x] **Phase 28: Integration Tests & Verification** — Golden test fixture, structured field validation, cascade delete, replay safety, zero regressions (37/37 existing tests) (completed 2026-06-06)
 
@@ -502,8 +502,8 @@ Plans:
 
 Plans:
 
-- [ ] 26-01-PLAN.md — Merge/split endpoint hardening: remove silent try/except on location_place_id and event_participant rewiring, add explicit split behavior logging
-- [ ] 26-02-PLAN.md — Enhanced API integration tests: reference filters (document, event_element, entity_type, entity_id) and event filters (entity_type, entity_id, date_range)
+- [x] 26-01-PLAN.md — Merge/split endpoint hardening: remove silent try/except on location_place_id and event_participant rewiring, add explicit split behavior logging
+- [x] 26-02-PLAN.md — Enhanced API integration tests: reference filters (document, event_element, entity_type, entity_id) and event filters (entity_type, entity_id, date_range)
 
 ### Phase 27: References UI
 
@@ -567,6 +567,6 @@ Plans:
 | 23. Entity Resolution Prompt & Batching Fix | v5.1 | 1/1 | Complete | 2026-06-04 |
 | 24. Schema & Data Model Foundation | v6.0 | 1/1 | Complete | 2026-06-04 |
 | 25. LLM Extraction & Pipeline | v6.0 | 1/1 | Complete   | 2026-06-06 |
-| 26. API Endpoints | v6.0 | 2/0 | In progress | - |
+| 26. API Endpoints | v6.0 | 2/2 | Complete | 2026-06-06 |
 | 27. References UI | v6.0 | 0/0 | Not started | - |
 | 28. Integration Tests & Verification | v6.0 | 1/1 | Complete    | 2026-06-06 |
