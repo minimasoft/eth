@@ -492,13 +492,18 @@ Plans:
 **Requirements**: API-01, API-02, API-03
 **Success Criteria** (what must be TRUE):
 
-  1. `GET /references` accepts new filter parameters (`document`, `event_element`, `entity_type`, `entity_id`) and returns paginated envelope `{ items, total, page, per_page, pages }` — existing callers continue to work without the new params
-  2. `GET /events` returns paginated, filterable event list (by `document`, `date_range`, `entity_type`) with structured event fields (`time_window`, `location_point`, `location_place_id`, participant edges) in response
-  3. `POST /entities/merge` rewires `location_place_id` and `event_participant` edges correctly when merging entities — target entity inherits all location and participant links
-  4. `POST /entities/{type}/{id}/split` rewires `location_place_id` and `event_participant` edges correctly when splitting entities — new entities get appropriate partition of links
-  5. Timeline query (`GET /events/timeline`) returns date-ordered events within a range with response time <200ms at 500 events (JSON path index + pagination)
+   1. `GET /references` accepts new filter parameters (`document`, `event_element`, `entity_type`, `entity_id`) and returns paginated envelope `{ items, total, page, per_page, pages }` — existing callers continue to work without the new params
+   2. `GET /events` returns paginated, filterable event list (by `document`, `date_range`, `entity_type`) with structured event fields (`time_window`, `location_point`, `location_place_id`, participant edges) in response
+   3. `POST /entities/merge` rewires `location_place_id` and `event_participant` edges correctly when merging entities — target entity inherits all location and participant links
+   4. `POST /entities/{type}/{id}/split` rewires `location_place_id` and `event_participant` edges correctly when splitting entities — new entities get appropriate partition of links
+   5. ~~Timeline query (`GET /events/timeline`) — deferred to v6.1 per D051~~
 
-**Plans**: TBD
+**Plans**: 2 plans
+
+Plans:
+
+- [ ] 26-01-PLAN.md — Merge/split endpoint hardening: remove silent try/except on location_place_id and event_participant rewiring, add explicit split behavior logging
+- [ ] 26-02-PLAN.md — Enhanced API integration tests: reference filters (document, event_element, entity_type, entity_id) and event filters (entity_type, entity_id, date_range)
 
 ### Phase 27: References UI
 
@@ -562,6 +567,6 @@ Plans:
 | 23. Entity Resolution Prompt & Batching Fix | v5.1 | 1/1 | Complete | 2026-06-04 |
 | 24. Schema & Data Model Foundation | v6.0 | 1/1 | Complete | 2026-06-04 |
 | 25. LLM Extraction & Pipeline | v6.0 | 1/1 | Complete   | 2026-06-06 |
-| 26. API Endpoints | v6.0 | 0/0 | Not started | - |
+| 26. API Endpoints | v6.0 | 2/0 | In progress | - |
 | 27. References UI | v6.0 | 0/0 | Not started | - |
 | 28. Integration Tests & Verification | v6.0 | 1/1 | Complete    | 2026-06-06 |
