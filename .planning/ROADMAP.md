@@ -512,14 +512,19 @@ Plans:
 **Requirements**: REFS-01, REFS-02, REFS-03
 **Success Criteria** (what must be TRUE):
 
-  1. New References tab appears between Documents and Entities in the SPA navigation bar — clicking it shows the reference browsing interface
-  2. References tab shows paginated, filterable reference list (by type, document, entity) with verbatim text, context excerpt, page/offset provenance, color-coded type badges, and `element_field` badges
-  3. References are grouped by canonical entity — each entity section shows its accumulated references with the entity's name and type as the section header
-  4. Cross-tab navigation: clicking a reference count in the Entity tab navigates to the References tab filtered to that entity's references
-  5. Cross-tab navigation: clicking a reference in the References tab navigates to its source document in the Documents tab
-  6. Empty state: a page with no references shows a clear "No se encontraron referencias" message with filtering guidance
+   1. New References tab appears between Documents and Entities in the SPA navigation bar — clicking it shows the reference browsing interface
+   2. References tab shows paginated, filterable reference list (by type, document, entity) with verbatim text, context excerpt, page/offset provenance, color-coded type badges, and `element_field` badges
+   3. References are grouped by canonical entity — each entity section shows its accumulated references with the entity's name and type as the section header
+   4. Cross-tab navigation: clicking a reference count in the Entity tab navigates to the References tab filtered to that entity's references
+   5. Cross-tab navigation: clicking a reference in the References tab navigates to its source document in the Documents tab
+   6. Empty state: a page with no references shows a clear "No se encontraron referencias" message with filtering guidance
 
-**Plans**: TBD
+**Plans**: 2 plans
+
+Plans:
+
+- [ ] 27-01-PLAN.md — Backend API: expose page_offset_start, page_offset_end, context_excerpt in GET /references
+- [ ] 27-02-PLAN.md — Frontend UI: entity filter dropdown, Contexto/Página-Offset columns, cross-tab navigation
 **UI hint**: yes
 
 ### Phase 28: Integration Tests & Verification
@@ -568,5 +573,5 @@ Plans:
 | 24. Schema & Data Model Foundation | v6.0 | 1/1 | Complete | 2026-06-04 |
 | 25. LLM Extraction & Pipeline | v6.0 | 1/1 | Complete   | 2026-06-06 |
 | 26. API Endpoints | v6.0 | 2/2 | Complete | 2026-06-06 |
-| 27. References UI | v6.0 | 0/0 | Not started | - |
+| 27. References UI | v6.0 | 2/2 | In progress | - |
 | 28. Integration Tests & Verification | v6.0 | 1/1 | Complete    | 2026-06-06 |
