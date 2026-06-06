@@ -44,11 +44,11 @@ Requirements for this milestone. Each maps to roadmap phases.
 
 ### Tests
 
-- [ ] **TEST-01**: Golden test fixture — crafted Spanish legal document with known expected output (2 events, 3 persons, 1 place, exact times, explicit references)
-- [ ] **TEST-02**: Integration tests verify structured event fields populated after full pipeline run (time_start, time_end, location_place_id, event_participant edges)
-- [ ] **TEST-03**: Cascade delete test — DELETE document verifies event_participant edges and references cleaned up
-- [ ] **TEST-04**: Temporal replay safety — reprocess same document, verify no duplicate event_participant edges or reference records
-- [ ] **TEST-05**: All existing tests (37/37) continue to pass — zero regressions
+- [x] **TEST-01**: Golden test fixture — crafted Spanish legal document with known expected output (2 events, 3 persons, 1 place, exact times, explicit references)
+- [x] **TEST-02**: Integration tests verify structured event fields populated after full pipeline run (time_start, time_end, location_place_id, event_participant edges)
+- [x] **TEST-03**: Cascade delete test — DELETE document verifies event_participant edges and references cleaned up
+- [x] **TEST-04**: Temporal replay safety — reprocess same document, verify no duplicate event_participant edges or reference records
+- [x] **TEST-05**: All existing tests (37/37) continue to pass — zero regressions
 
 ## v6.1 Requirements
 
@@ -99,18 +99,20 @@ Which phases cover which requirements. Updated during roadmap creation.
 | API-01 | Phase 26 | Pending |
 | API-02 | Phase 26 | Pending |
 | API-03 | Phase 26 | Pending |
-| TEST-01 | Phase 28 | Pending |
-| TEST-02 | Phase 28 | Pending |
-| TEST-03 | Phase 28 | Pending |
-| TEST-04 | Phase 28 | Pending |
-| TEST-05 | Phase 28 | Pending |
+| TEST-01 | Phase 28 | Complete |
+| TEST-02 | Phase 28 | Complete |
+| TEST-03 | Phase 28 | Complete |
+| TEST-04 | Phase 28 | Complete |
+| TEST-05 | Phase 28 | Complete |
 
 **Coverage:**
+
 - v6.0 requirements: 23 total
 - Mapped to phases: 23 ✓
 - Unmapped: 0
 
 **By Phase:**
+
 - Phase 24: SCHE-01, SCHE-02, SCHE-03, SCHE-04 (4 schema requirements)
 - Phase 25: EXTR-01..05, PIPE-01..04 (9 pipeline requirements)
 - Phase 26: API-01, API-02, API-03 (3 API requirements)

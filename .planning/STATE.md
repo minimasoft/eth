@@ -4,14 +4,14 @@ milestone: v6.0
 milestone_name: — Event-Centric Data Quality & UI
 status: executing
 stopped_at: Completed quick task 260605-l4s — fix canonical_entity_id column name bug, add entity delete endpoint + UI button, cleanup 181 orphan entities
-last_updated: "2026-06-06T21:18:01.669Z"
-last_activity: 2026-06-06 — Phase 28 focus started
+last_updated: "2026-06-06T21:49:35.915Z"
+last_activity: 2026-06-06
 progress:
-  total_phases: 5
-  completed_phases: 4
-  total_plans: 0
-  completed_plans: 0
-  percent: 80
+  total_phases: 15
+  completed_phases: 1
+  total_plans: 3
+  completed_plans: 1
+  percent: 7
 ---
 
 # Project State
@@ -22,14 +22,14 @@ See: .planning/PROJECT.md (updated 2026-06-04)
 
 **Core value:** Every extracted event must be traceable to its exact source text in the original document, and every resolved entity must show its evidential references.
 
-**Current focus:** Milestone v6.0 — Event-Centric Data Quality & UI (Phase 28: Integration Tests & Verification)
+**Current focus:** Phase 28 — Integration Tests & Verification
 
 ## Current Position
 
-Phase: 28 of 28 (Integration Tests & Verification)
-Plan: —
-Status: Ready to execute
-Last activity: 2026-06-06 — Phase 28 focus started
+Phase: 28
+Plan: Not started
+Status: Executing Phase 28
+Last activity: 2026-06-06
 
 Progress: [████████░░] 80%
 
