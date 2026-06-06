@@ -17,18 +17,18 @@ Requirements for this milestone. Each maps to roadmap phases.
 
 ### LLM Extraction
 
-- [ ] **EXTR-01**: Expanded EVENT_EXTRACTION_SCHEMA with optional structured fields — date_start, date_end, date_precision, location, participants array — all new fields optional, not in required
-- [ ] **EXTR-02**: LLM outputs ISO 8601 datetime for date_start/date_end alongside free-form tiempo, with confidence (0.0-1.0) and precision (day/month/year) markers
-- [ ] **EXTR-03**: LLM identifies participants per event and links them to canonical person entities via event_participant RELATE (with role: subject/object/witness)
-- [ ] **EXTR-04**: LLM identifies location per event and links to canonical place entity via location_place_id record link
-- [ ] **EXTR-05**: Reference cap (max 5 per event field) + post-extraction dedup — prevents reference explosion in high-density chunks
+- [x] **EXTR-01**: Expanded EVENT_EXTRACTION_SCHEMA with optional structured fields — date_start, date_end, date_precision, location, participants array — all new fields optional, not in required
+- [x] **EXTR-02**: LLM outputs ISO 8601 datetime for date_start/date_end alongside free-form tiempo, with confidence (0.0-1.0) and precision (day/month/year) markers
+- [x] **EXTR-03**: LLM identifies participants per event and links them to canonical person entities via event_participant RELATE (with role: subject/object/witness)
+- [x] **EXTR-04**: LLM identifies location per event and links to canonical place entity via location_place_id record link
+- [x] **EXTR-05**: Reference cap (max 5 per event field) + post-extraction dedup — prevents reference explosion in high-density chunks
 
 ### Pipeline & Temporal
 
-- [ ] **PIPE-01**: store_extraction_results_activity writes time_window, location_point, location_place_id, event_participant edges, element_field, reference_index
-- [ ] **PIPE-02**: Nullify-then-recreate extended — event_participant edges cleared before reprocess (no duplicates on Temporal replay)
-- [ ] **PIPE-03**: Cascade delete (DELETE /documents/{id}) includes event_participant edges — zero orphan records after document deletion
-- [ ] **PIPE-04**: Entity resolution (resolve_entities_activity) preserves location_place_id links for place entities, sets canonical entity IDs on participant references
+- [x] **PIPE-01**: store_extraction_results_activity writes time_window, location_point, location_place_id, event_participant edges, element_field, reference_index
+- [x] **PIPE-02**: Nullify-then-recreate extended — event_participant edges cleared before reprocess (no duplicates on Temporal replay)
+- [x] **PIPE-03**: Cascade delete (DELETE /documents/{id}) includes event_participant edges — zero orphan records after document deletion
+- [x] **PIPE-04**: Entity resolution (resolve_entities_activity) preserves location_place_id links for place entities, sets canonical entity IDs on participant references
 
 ### References UI
 
@@ -84,15 +84,15 @@ Which phases cover which requirements. Updated during roadmap creation.
 | SCHE-02 | Phase 24 | Complete |
 | SCHE-03 | Phase 24 | Complete |
 | SCHE-04 | Phase 24 | Complete |
-| EXTR-01 | Phase 25 | Pending |
-| EXTR-02 | Phase 25 | Pending |
-| EXTR-03 | Phase 25 | Pending |
-| EXTR-04 | Phase 25 | Pending |
-| EXTR-05 | Phase 25 | Pending |
-| PIPE-01 | Phase 25 | Pending |
-| PIPE-02 | Phase 25 | Pending |
-| PIPE-03 | Phase 25 | Pending |
-| PIPE-04 | Phase 25 | Pending |
+| EXTR-01 | Phase 25 | Complete |
+| EXTR-02 | Phase 25 | Complete |
+| EXTR-03 | Phase 25 | Complete |
+| EXTR-04 | Phase 25 | Complete |
+| EXTR-05 | Phase 25 | Complete |
+| PIPE-01 | Phase 25 | Complete |
+| PIPE-02 | Phase 25 | Complete |
+| PIPE-03 | Phase 25 | Complete |
+| PIPE-04 | Phase 25 | Complete |
 | REFS-01 | Phase 27 | Pending |
 | REFS-02 | Phase 27 | Pending |
 | REFS-03 | Phase 27 | Pending |

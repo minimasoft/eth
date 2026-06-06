@@ -254,7 +254,7 @@ Plans:
 ### v6.0 — Event-Centric Data Quality & UI
 
 - [ ] **Phase 24: Schema & Data Model Foundation** — Additive SurrealDB DDL for time_window, location_point, location_place_id, event_participant junction, element_field, reference_index
-- [ ] **Phase 25: LLM Extraction & Pipeline** — Expanded extraction schema, structured date/participant/location output, pipeline activity updates, reference cap + dedup, Temporal replay safety, cascade delete
+- [x] **Phase 25: LLM Extraction & Pipeline** — Expanded extraction schema, structured date/participant/location output, pipeline activity updates, reference cap + dedup, Temporal replay safety, cascade delete (completed 2026-06-06)
 - [ ] **Phase 26: API Endpoints** — GET /events (paginated + filters), GET /references enhancements, merge/split endpoint extensions for new fields
 - [ ] **Phase 27: References UI** — New References tab with pagination, filtering, entity grouping, element_field badges, cross-tab navigation to entities and documents
 - [x] **Phase 28: Integration Tests & Verification** — Golden test fixture, structured field validation, cascade delete, replay safety, zero regressions (37/37 existing tests) (completed 2026-06-06)
@@ -561,7 +561,7 @@ Plans:
 | 22. No-Regression Verification | 0/0 | Complete | 2026-06-04 |
 | 23. Entity Resolution Prompt & Batching Fix | v5.1 | 1/1 | Complete | 2026-06-04 |
 | 24. Schema & Data Model Foundation | v6.0 | 1/1 | Complete | 2026-06-04 |
-| 25. LLM Extraction & Pipeline | v6.0 | 0/0 | Not started | - |
+| 25. LLM Extraction & Pipeline | v6.0 | 1/1 | Complete   | 2026-06-06 |
 | 26. API Endpoints | v6.0 | 0/0 | Not started | - |
 | 27. References UI | v6.0 | 0/0 | Not started | - |
 | 28. Integration Tests & Verification | v6.0 | 1/1 | Complete    | 2026-06-06 |
