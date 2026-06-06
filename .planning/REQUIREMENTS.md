@@ -10,10 +10,10 @@ Requirements for this milestone. Each maps to roadmap phases.
 
 ### Schema & Data Model
 
-- [ ] **SCHE-01**: Event table extended with time_window (FLEXIBLE, {start, end}), location_point (FLEXIBLE, {lat, lon, label}), and location_place_id (record<canonical_entity>) — all nullable DEFAULT null
-- [ ] **SCHE-02**: New event_participant junction table (TYPE RELATION in→event, out→canonical_entity, role string) with graph-traversal index
-- [ ] **SCHE-03**: Reference table extended with element_field (string, which event element this ref substantiates) and reference_index (int, ordering within element) — nullable DEFAULT null
-- [ ] **SCHE-04**: Additive schema only — no destructive migrations, existing documents unaffected
+- [x] **SCHE-01**: Event table extended with time_window (FLEXIBLE, {start, end}), location_point (FLEXIBLE, {lat, lon, label}), and location_place_id (record<canonical_entity>) — all nullable DEFAULT null
+- [x] **SCHE-02**: New event_participant junction table (TYPE RELATION in→event, out→canonical_entity, role string) with graph-traversal index
+- [x] **SCHE-03**: Reference table extended with element_field (string, which event element this ref substantiates) and reference_index (int, ordering within element) — nullable DEFAULT null
+- [x] **SCHE-04**: Additive schema only — no destructive migrations, existing documents unaffected
 
 ### LLM Extraction
 
@@ -80,10 +80,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| SCHE-01 | Phase 24 | Pending |
-| SCHE-02 | Phase 24 | Pending |
-| SCHE-03 | Phase 24 | Pending |
-| SCHE-04 | Phase 24 | Pending |
+| SCHE-01 | Phase 24 | Complete |
+| SCHE-02 | Phase 24 | Complete |
+| SCHE-03 | Phase 24 | Complete |
+| SCHE-04 | Phase 24 | Complete |
 | EXTR-01 | Phase 25 | Pending |
 | EXTR-02 | Phase 25 | Pending |
 | EXTR-03 | Phase 25 | Pending |
@@ -109,11 +109,13 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 - v6.0 requirements: 23 total
 - Mapped to phases: 23 ✓
+- Completed: 9 (SCHE-01..04, TEST-01..05)
+- In progress: 14 (EXTR-01..05, PIPE-01..04, API-01..03, REFS-01..03)
 - Unmapped: 0
 
 **By Phase:**
 
-- Phase 24: SCHE-01, SCHE-02, SCHE-03, SCHE-04 (4 schema requirements)
+- Phase 24: SCHE-01, SCHE-02, SCHE-03, SCHE-04 (4 schema requirements) ✅ Complete
 - Phase 25: EXTR-01..05, PIPE-01..04 (9 pipeline requirements)
 - Phase 26: API-01, API-02, API-03 (3 API requirements)
 - Phase 27: REFS-01, REFS-02, REFS-03 (3 UI requirements)
@@ -121,4 +123,4 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 ---
 *Requirements defined: 2026-06-04*
-*Last updated: 2026-06-04 after initial definition*
+*Last updated: 2026-06-06 (Phase 24 completion verified)*

@@ -4,7 +4,7 @@ milestone: v6.0
 milestone_name: — Event-Centric Data Quality & UI
 status: executing
 stopped_at: Completed quick task 260605-l4s — fix canonical_entity_id column name bug, add entity delete endpoint + UI button, cleanup 181 orphan entities
-last_updated: "2026-06-06T21:49:35.915Z"
+last_updated: "2026-06-06T22:09:30.000Z"
 last_activity: 2026-06-06
 progress:
   total_phases: 15
@@ -32,6 +32,15 @@ Status: Executing Phase 28
 Last activity: 2026-06-06
 
 Progress: [████████░░] 80%
+
+### Phase 24 Execution Status
+
+Phase 24 (Schema & Data Model Foundation) — **Complete** ✅
+- Plan: 24-01-PLAN — 1/1 plans complete
+- Requirements: SCHE-01 ✅, SCHE-02 ✅, SCHE-03 ✅, SCHE-04 ✅
+- Schema commit: `5e6d428` (v6.0 DDL block)
+- All v6.0 fields preserved through PostgreSQL migration (`bb904af`)
+- Downstream code: events API, references API, merge/split, cascade delete, pipeline activities, integration tests all consume new fields
 
 ## Performance Metrics
 
@@ -67,6 +76,7 @@ Progress: [████████░░] 80%
 - D050: EXTR-01 (expanded EVENT_EXTRACTION_SCHEMA) grouped with Phase 25 Pipeline, not Phase 24 Schema — schema design and LLM prompt engineering are coupled
 - D051: Timeline, Map, and Participant views deferred to v6.1 per research recommendation — v6.0 delivers data foundation + References UI
 - D052: LLM prompt benchmark required before merge — <10% event count change gate (Pitfall 5 prevention)
+- D053: v6.0 schema fields preserved during PostgreSQL migration — time_window→JSONB, event_participant→FK table, all nullable — no data loss or semantic drift
 
 ### v5.1 Decisions (reference)
 
@@ -101,6 +111,13 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-05
-Stopped at: Completed quick task 260605-l4s — fix canonical_entity_id column name bug, add entity delete endpoint + UI button, cleanup 181 orphan entities
+Last session: 2026-06-06
+Stopped at: Phase 24 execution verification complete — all v6.0 schema changes confirmed in codebase, downstream code consuming new fields, SUMMARY.md produced
 Resume file: None
+
+### Phase 24 Artifacts
+
+- **SUMMARY:** `.planning/phases/24-schema-data-model-foundation/24-SUMMARY.md`
+- **Schema commit:** `5e6d428` — original v6.0 schema block in `schema.surql`
+- **PostgreSQL migration:** `bb904af` — schema migrated to `schema.sql` with all v6.0 fields preserved
+- **Requirements completed:** SCHE-01, SCHE-02, SCHE-03, SCHE-04

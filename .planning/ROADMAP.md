@@ -560,7 +560,7 @@ Plans:
 | 21. UI Token Display | 0/0 | Complete | 2026-06-04 |
 | 22. No-Regression Verification | 0/0 | Complete | 2026-06-04 |
 | 23. Entity Resolution Prompt & Batching Fix | v5.1 | 1/1 | Complete | 2026-06-04 |
-| 24. Schema & Data Model Foundation | v6.0 | 0/0 | Not started | - |
+| 24. Schema & Data Model Foundation | v6.0 | 1/1 | Complete | 2026-06-04 |
 | 25. LLM Extraction & Pipeline | v6.0 | 0/0 | Not started | - |
 | 26. API Endpoints | v6.0 | 0/0 | Not started | - |
 | 27. References UI | v6.0 | 0/0 | Not started | - |
