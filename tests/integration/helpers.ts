@@ -140,6 +140,10 @@ export interface EventListItem {
   tiempo: string | null;
   humanos: string | null;
   objetos: string | null;
+  time_window: Record<string, string> | null;
+  location_point: Record<string, unknown> | null;
+  location_place_name: string | null;
+  document_filename: string | null;
   document_id: string;
   reference_count: number;
   participant_count: number;
@@ -157,11 +161,20 @@ export interface ReferenceListItem {
   reference_id: string;
   reference_type: string;
   verbatim_text: string;
-  event_id: string;
-  canonical_entity: string | null;
+  span_start: number | null;
+  span_end: number | null;
+  page_number: number | null;
+  element_field: string | null;
+  reference_index: number | null;
+  resolution_confidence: number | null;
   event_que_paso: string;
+  event_id: string;
   document_filename: string;
   document_id: string;
+  canonical_entity: string | null;
+  canonical_entity_name: string | null;
+  canonical_entity_id: string | null;
+  canonical_entity_type: string | null;
 }
 
 export interface ReferenceListResponse {
