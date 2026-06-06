@@ -72,6 +72,7 @@ async def list_references(
                     f"SELECT r.*, "
                     f"e.id AS ev_id, e.que_paso AS ev_que_paso, "
                     f"d.id AS doc_id, d.filename AS doc_filename, "
+                    f"d.text_content AS doc_text_content, "
                     f"ce.id AS ce_id, ce.name AS ce_name, ce.entity_type AS ce_type "
                     f"FROM reference r "
                     f"LEFT JOIN event e ON e.id = r.event "
@@ -100,6 +101,25 @@ async def list_references(
 
     items: list[ReferenceListItem] = []
     for record in data_result:
+        # Compute context_excerpt from document text_content and span data
+        context_excerpt = None
+        doc_text = record.get("doc_text_content")
+        span_start = record.get("span_start")
+        span_end = record.get("span_end")
+        if doc_text and span_start is not None and span_end is not None:
+            ctx_before = 80
+            ctx_after = 80
+            start = max(0, span_start - ctx_before)
+            end = min(len(doc_text), span_end + ctx_after)
+            excerpt = doc_text[start:end]
+            # If the excerpt doesn't start at the beginning of text, prefix with "..."
+            if start > 0:
+                excerpt = "..." + excerpt
+            # If the excerpt doesn't end at the end of text, suffix with "..."
+            if end < len(doc_text):
+                excerpt = excerpt + "..."
+            context_excerpt = excerpt
+
         items.append(ReferenceListItem(
             reference_id=str(record["id"]),
             reference_type=record.get("reference_type", ""),
@@ -107,6 +127,9 @@ async def list_references(
             span_start=record.get("span_start"),
             span_end=record.get("span_end"),
             page_number=record.get("page_number"),
+            page_offset_start=record.get("page_offset_start"),
+            page_offset_end=record.get("page_offset_end"),
+            context_excerpt=context_excerpt,
             element_field=record.get("element_field"),
             reference_index=record.get("reference_index"),
             resolution_confidence=record.get("resolution_confidence"),
