@@ -1890,6 +1890,7 @@
     const refSearch = document.getElementById('ref-search');
     const refSearchClear = document.getElementById('ref-search-clear');
     const refTypeFilter = document.getElementById('ref-type-filter');
+    const refEntityFilter = document.getElementById('ref-entity-filter');
     const refTbody = document.getElementById('references-tbody');
     const refTableContainer = document.getElementById('references-table-container');
     const refLoading = document.getElementById('references-loading');
@@ -1902,6 +1903,7 @@
     let refsCurrentPage = 1;
     let refsSearchTerm = '';
     let refsTypeFilter = '';
+    let refsEntityFilter = '';
     let refsLoadingFlag = false;
 
     function showRefLoading() {
@@ -1921,7 +1923,7 @@
       return text.slice(0, maxLen) + '...';
     }
 
-    async function fetchReferences(documentId) {
+    async function fetchReferences(documentId, entityId) {
       if (refsLoadingFlag) return;
       refsLoadingFlag = true;
       var loader = deferredLoading('refs', showRefLoading, hideRefLoading);
@@ -1931,6 +1933,8 @@
       params.set('per_page', '20');
       if (refsSearchTerm) params.set('search', refsSearchTerm);
       if (refsTypeFilter) params.set('reference_type', refsTypeFilter);
+      if (refsEntityFilter) params.set('entity_id', refsEntityFilter);
+      if (entityId) params.set('entity_id', entityId);
       if (documentId) params.set('document', documentId);
 
       try {
@@ -1942,6 +1946,7 @@
         }
         const data = await res.json();
         renderReferences(data);
+        populateEntityFilter(data.items);
       } catch (err) {
         console.error('fetchReferences error:', err);
         loader.done();
@@ -1996,14 +2001,45 @@
         if (item.canonical_entity_name) {
           entityLink = '<br><small style="color:var(--primary-color)">' + escapeHtml(item.canonical_entity_name) + conf + '</small>';
         }
-        var docLink = '<span class="entity-ref-row-clickable" onclick="navigateToDocument(\'' + escapeHtml(item.document_id || '') + '\')" title="Ver documento">' + escapeHtml(item.document_filename || '-') + '</span>';
+        var docFilename = escapeHtml(item.document_filename || '-');
+        var docLink = '<span class="entity-ref-row-clickable" onclick="navigateToDocument(\'' + escapeHtml(item.document_id || '') + '\', \'' + escapeHtml((item.document_filename || '').replace(/'/g, "\\'")) + '\')" title="Ver documento">' + docFilename + '</span>';
+
+        // Context excerpt column
+        var contextExcerptTd = '';
+        if (item.context_excerpt) {
+          var excerpt = escapeHtml(item.context_excerpt);
+          var vt = escapeHtml(item.verbatim_text || '');
+          // Bold the verbatim text within the excerpt
+          var bolded = excerpt.indexOf(vt) !== -1 ? excerpt.replace(vt, '<strong>' + vt + '</strong>') : excerpt;
+          contextExcerptTd = '<td style="max-width:260px;font-size:13px;line-height:1.4" title="' + escapeHtml(item.context_excerpt) + '">' + bolded + '</td>';
+        } else {
+          contextExcerptTd = '<td style="max-width:260px;font-size:13px;color:#94a3b8">—</td>';
+        }
+
+        // Page/Offset column
+        var pageOffsetTd = '';
+        var pn = item.page_number;
+        var pos = item.page_offset_start;
+        var poe = item.page_offset_end;
+        if (pn == null && pos == null) {
+          pageOffsetTd = '<td style="color:#94a3b8;font-size:12px">—</td>';
+        } else {
+          var parts = [];
+          if (pn != null) parts.push('Pág. ' + pn);
+          if (pos != null && poe != null) parts.push(pos + '-' + poe);
+          else if (pos != null) parts.push('offset ' + pos);
+          pageOffsetTd = '<td style="font-variant-numeric:tabular-nums;font-size:13px">' + escapeHtml(parts.join(' · ')) + '</td>';
+        }
+
         tr.innerHTML =
           '<td style="max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + escapeHtml(item.verbatim_text || '') + '">' +
             escapeHtml(truncateText(item.verbatim_text, 100)) + entityLink +
           '</td>' +
+          contextExcerptTd +
           '<td>' + (elField ? '<span class="entity-type-label">' + escapeHtml(elField) + '</span>' : '') + '</td>' +
           '<td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + escapeHtml(item.event_que_paso || '') + '">' + escapeHtml(truncateText(item.event_que_paso, 60)) + '</td>' +
-          '<td>' + docLink + '</td>';
+          '<td>' + docLink + '</td>' +
+          pageOffsetTd;
         refTbody.appendChild(tr);
       }
 
@@ -2012,7 +2048,7 @@
         var g = grouped[key];
         var headerRow = document.createElement('tr');
         headerRow.className = 'ref-entity-group-header';
-        headerRow.innerHTML = '<td colspan="4" style="font-weight:600;padding:10px 12px;background:var(--bg-color);border-bottom:2px solid var(--border-color)">' +
+        headerRow.innerHTML = '<td colspan="6" style="font-weight:600;padding:10px 12px;background:var(--bg-color);border-bottom:2px solid var(--border-color)">' +
           escapeHtml(g.name) + ' <span class="entity-type-label">' + escapeHtml(g.type) + '</span> (' + g.items.length + ' refs)</td>';
         refTbody.appendChild(headerRow);
         g.items.forEach(renderRow);
@@ -2026,6 +2062,26 @@
       refPageInfo.textContent = 'Página ' + page + ' de ' + pages;
       refPrevBtn.disabled = page <= 1;
       refNextBtn.disabled = page >= pages;
+    }
+
+    function populateEntityFilter(items) {
+      var currentVal = refEntityFilter.value;
+      var entities = {};
+      items.forEach(function(item) {
+        if (item.canonical_entity_id && item.canonical_entity_name) {
+          entities[item.canonical_entity_id] = item.canonical_entity_name;
+        }
+      });
+      var keys = Object.keys(entities);
+      if (keys.length === 0) return;
+      refEntityFilter.innerHTML = '<option value="">Todas las entidades</option>';
+      keys.forEach(function(id) {
+        var opt = document.createElement('option');
+        opt.value = id;
+        opt.textContent = entities[id];
+        if (id === currentVal) opt.selected = true;
+        refEntityFilter.appendChild(opt);
+      });
     }
 
     function navigateToDocument(docId) {
@@ -2065,6 +2121,13 @@
     // Type filter change
     refTypeFilter.addEventListener('change', function() {
       refsTypeFilter = refTypeFilter.value;
+      refsCurrentPage = 1;
+      fetchReferences();
+    });
+
+    // Entity filter change
+    refEntityFilter.addEventListener('change', function() {
+      refsEntityFilter = refEntityFilter.value;
       refsCurrentPage = 1;
       fetchReferences();
     });
