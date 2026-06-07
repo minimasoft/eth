@@ -11,6 +11,7 @@
 - ✅ **v5.0 LLM Cost & Usage Tracking** — Phases 19-22 (shipped 2026-06-04)
 - ✅ **v5.1 Entity Resolution Prompt & Batching Fix** — Phase 23 (shipped 2026-06-04)
 - ✅ **v6.0 Event-Centric Data Quality & UI** — Phases 24-28 (shipped 2026-06-06)
+- [ ] **v6.1 LLM Call Logging & Viewer** — Phases 29-32
 
 ## Phases
 
@@ -258,6 +259,13 @@ Plans:
 - [x] **Phase 26: API Endpoints** — Merge/split endpoint hardening + API filter integration tests (completed 2026-06-06)
 - [x] **Phase 27: References UI** — New References tab with pagination, filtering, entity grouping, element_field badges, cross-tab navigation to entities and documents (completed 2026-06-06)
 - [x] **Phase 28: Integration Tests & Verification** — Golden test fixture, structured field validation, cascade delete, replay safety, zero regressions (completed 2026-06-06)
+
+### v6.1 — LLM Call Logging & Viewer
+
+- [ ] **Phase 29: LLM Call Log Schema** — New llm_call_log table with indexes in SurrealDB
+- [ ] **Phase 30: LLM Call Pipeline Recording** — Record LLM calls in extraction and entity resolution activities
+- [ ] **Phase 31: LLM Call API Endpoint** — GET /documents/{id}/llm-calls paginated endpoint
+- [ ] **Phase 32: LLM Call UI Viewer** — Per-document LLM call viewer in the Logs tab
 
 ## Phase Details
 
@@ -545,6 +553,79 @@ Plans:
 
 - [x] 28-01-PLAN.md — v6.0 integration test suite: golden fixture, structured field validation, cascade delete, replay safety, zero regressions
 
+### Phase 29: LLM Call Log Schema
+
+**Goal**: SurrealDB has a dedicated `llm_call_log` table ready to receive LLM call records from the pipeline, with indexes for fast per-document queries
+
+**Depends on**: Nothing (additive DDL — new table, no existing schema changes)
+
+**Requirements**: SCH-01, SCH-02
+
+**Success Criteria** (what must be TRUE):
+
+1. `llm_call_log` SCHEMAFULL table exists with fields: prompt_text, response_text, prompt_tokens, completion_tokens, total_tokens, cached_tokens, cost, duration_ms, model, activity_type, document (record link), timestamp — all nullable DEFAULT null
+2. Index exists on `document` field for fast per-document filtered queries
+3. Index exists on `timestamp` field for chronological ordering
+4. GraphQL proxy exposes `llm_call_log` table via schema introspection — no auto-GraphQL errors
+5. Existing tables are unaffected — all existing queries continue to return identical results
+
+**Plans**: TBD
+
+### Phase 30: LLM Call Pipeline Recording
+
+**Goal**: Every LLM call made during document processing (extraction + entity resolution) records its prompt, response, token usage, cost, duration, and model in the `llm_call_log` table with Temporal replay safety
+
+**Depends on**: Phase 29 (needs llm_call_log table to exist)
+
+**Requirements**: PIPE-01, PIPE-02, PIPE-03
+
+**Success Criteria** (what must be TRUE):
+
+1. After document processing completes, the `extract_events` activity has one or more `llm_call_log` records with non-null prompt_text, response_text, prompt_tokens, completion_tokens, total_tokens, cost, duration_ms, and model
+2. After document processing completes, the `resolve_entities` and `resolve_entities_with_search` activities have `llm_call_log` records with the same capture pattern — all fields populated
+3. Reprocessing a document via Temporal (delete events + re-process) produces identical `llm_call_log` records — old records are cleared via nullify-then-recreate, no duplicate accumulation
+4. `llm_call_log` records are deleted when a document's events are cleared (cascade includes the llm_call_log table) — reprocess cycle leaves zero orphan log entries
+5. Logging failure is non-fatal — if writing to `llm_call_log` fails, the pipeline continues without aborting extraction
+
+**Plans**: TBD
+
+### Phase 31: LLM Call API Endpoint
+
+**Goal**: Users can query LLM call logs for a specific document via a paginated REST API endpoint that returns full prompt/response text and all metrics
+
+**Depends on**: Phase 29 (needs llm_call_log table populated)
+
+**Requirements**: API-01, API-02
+
+**Success Criteria** (what must be TRUE):
+
+1. `GET /documents/{id}/llm-calls` returns paginated results matching the existing envelope pattern `{ items, total, page, per_page, pages }`
+2. Each item in the response includes prompt_text, response_text (full text), prompt_tokens, completion_tokens, total_tokens, cached_tokens, cost, duration_ms, model, activity_type, and timestamp
+3. Results are ordered by timestamp ascending (first call first)
+4. A document with no LLM call log entries returns `{ items: [], total: 0, page: 1, per_page: 20, pages: 1 }` — not a 404 error
+5. Pagination parameters (page, per_page) work correctly — `page=2&per_page=5` returns the second batch of 5 results
+
+**Plans**: TBD
+
+### Phase 32: LLM Call UI Viewer
+
+**Goal**: Users can view LLM call logs per document in the web UI's Logs tab — paginated table with expandable rows, token/cost summaries, and backward-compatible navigation
+
+**Depends on**: Phase 31 (needs API endpoint)
+
+**Requirements**: UI-01, UI-02, UI-03
+
+**Success Criteria** (what must be TRUE):
+
+1. Logs tab shows a new "LLM Calls" sub-tab with a paginated table listing columns: model, activity_type, prompt_tokens, completion_tokens, total_tokens, cost, duration, timestamp
+2. Clicking a row expands it to show full prompt_text and response_text rendered in monospace font with scrollable container — clicking again collapses
+3. A summary header at the top of the LLM Calls tab shows aggregated totals across all calls for the document: total tokens (input/output/cached), total cost, and total calls
+4. Toggling between "Processing Logs" and "LLM Calls" sub-tabs changes the displayed content without page reload
+5. Legacy documents (no llm_call_log records) show an empty state with a clear message — no JavaScript errors or broken UI
+
+**Plans**: TBD
+**UI hint**: yes
+
 ## Progress
 
 | Phase | Plans Complete | Status | Completed |
@@ -575,3 +656,7 @@ Plans:
 | 26. API Endpoints | v6.0 | 2/2 | Complete | 2026-06-06 |
 | 27. References UI | v6.0 | 2/2 | Complete | 2026-06-06 |
 | 28. Integration Tests & Verification | v6.0 | 1/1 | Complete    | 2026-06-06 |
+| 29. LLM Call Log Schema | v6.1 | 0/0 | Not started | — |
+| 30. LLM Call Pipeline Recording | v6.1 | 0/0 | Not started | — |
+| 31. LLM Call API Endpoint | v6.1 | 0/0 | Not started | — |
+| 32. LLM Call UI Viewer | v6.1 | 0/0 | Not started | — |

@@ -3,10 +3,10 @@ gsd_state_version: 1.0
 milestone: v6.1
 milestone_name: LLM Call Logging & Viewer
 status: planning
-last_updated: "2026-06-07T01:04:13.398Z"
+last_updated: "2026-06-07T01:05:00.000Z"
 last_activity: 2026-06-07
 progress:
-  total_phases: 0
+  total_phases: 4
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -17,18 +17,27 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-06-04)
+See: .planning/PROJECT.md (updated 2026-06-06)
 
 **Core value:** Every extracted event must be traceable to its exact source text in the original document, and every resolved entity must show its evidential references.
 
-**Current focus:** v6.0 milestone complete — all 5 phases delivered and verified.
+**Current focus:** v6.1 LLM Call Logging & Viewer — planning phase structure.
 
 ## Current Position
 
-Phase: Not started (defining requirements)
+Phase: 29 (LLM Call Log Schema)
 Plan: —
-Status: Defining requirements
-Last activity: 2026-06-07 — Milestone v6.1 started
+Status: Planning roadmap
+Last activity: 2026-06-07 — v6.1 roadmap created (Phases 29-32)
+
+### v6.1 Phase Structure
+
+| Phase | Goal | Requirements | Success Criteria | Status |
+|-------|------|--------------|------------------|--------|
+| 29. LLM Call Log Schema | New llm_call_log table with indexes | SCH-01, SCH-02 | 5 criteria | Planning |
+| 30. LLM Call Pipeline Recording | Record LLM calls in extraction + entity resolution | PIPE-01, PIPE-02, PIPE-03 | 5 criteria | Planning |
+| 31. LLM Call API Endpoint | GET /documents/{id}/llm-calls paginated endpoint | API-01, API-02 | 5 criteria | Planning |
+| 32. LLM Call UI Viewer | Per-document LLM call viewer in Logs tab | UI-01, UI-02, UI-03 | 5 criteria | Planning |
 
 ### Milestone Execution Status
 
@@ -117,16 +126,16 @@ Items acknowledged and carried forward from previous milestone close:
 
 | Category | Item | Status | Deferred At |
 |----------|------|--------|-------------|
-| Feature | Map View (Leaflet.js CDN) | Deferred to v6.1 | v6.0 planning |
-| Feature | Participant-Based Event Listing | Deferred to v6.1 | v6.0 planning |
-| Feature | Timeline Visualization (vis-timeline) | Deferred to v6.1 | v6.0 planning |
+| Feature | Map View (Leaflet.js CDN) | Deferred to future milestone | v6.0 planning |
+| Feature | Participant-Based Event Listing | Deferred to future milestone | v6.0 planning |
+| Feature | Timeline Visualization (vis-timeline) | Deferred to future milestone | v6.0 planning |
 | Feature | Co-occurrence Network | Deferred to v6.2 | v6.0 planning |
 
 ## Session Continuity
 
 Last session: 2026-06-06T23:30:00.000Z
 Completed: v6.0 milestone shipped — all 5 phases (24-28) delivered and verified
-Next: Begin v6.1 planning (Map View, Participant-Based Event Listing, Timeline Visualization)
+Next: Begin v6.1 planning — LLM Call Logging & Viewer roadmap created (Phases 29-32)
 
 ### v6.0 Archive
 

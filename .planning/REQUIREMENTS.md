@@ -55,21 +55,21 @@ Deferred to future release. Tracked but not in current roadmap.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| SCH-01 | — | Pending |
-| SCH-02 | — | Pending |
-| PIPE-01 | — | Pending |
-| PIPE-02 | — | Pending |
-| PIPE-03 | — | Pending |
-| API-01 | — | Pending |
-| API-02 | — | Pending |
-| UI-01 | — | Pending |
-| UI-02 | — | Pending |
-| UI-03 | — | Pending |
+| SCH-01 | Phase 29 | Pending |
+| SCH-02 | Phase 29 | Pending |
+| PIPE-01 | Phase 30 | Pending |
+| PIPE-02 | Phase 30 | Pending |
+| PIPE-03 | Phase 30 | Pending |
+| API-01 | Phase 31 | Pending |
+| API-02 | Phase 31 | Pending |
+| UI-01 | Phase 32 | Pending |
+| UI-02 | Phase 32 | Pending |
+| UI-03 | Phase 32 | Pending |
 
 **Coverage:**
 - v6.1 requirements: 10 total
-- Mapped to phases: 0
-- Unmapped: 10 ⚠️
+- Mapped to phases: 10
+- Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-06-07*
