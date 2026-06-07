@@ -1,17 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v6.0
-milestone_name: — Event-Centric Data Quality & UI
-status: complete
-stopped_at: All v6.0 phases (24-28) complete — milestone shipped 2026-06-06. 9/9 integration tests passing, 23/23 requirements satisfied.
-last_updated: "2026-06-06T23:30:00.000Z"
-last_activity: 2026-06-06
+milestone: v6.1
+milestone_name: LLM Call Logging & Viewer
+status: planning
+last_updated: "2026-06-07T01:04:13.398Z"
+last_activity: 2026-06-07
 progress:
-  total_phases: 5
-  completed_phases: 5
-  total_plans: 7
-  completed_plans: 7
-  percent: 100
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -26,12 +25,10 @@ See: .planning/PROJECT.md (updated 2026-06-04)
 
 ## Current Position
 
-Phase: All — v6.0 complete
-Plan: N/A
-Status: Milestone shipped 2026-06-06
-Last activity: 2026-06-06
-
-Progress: [██████████] 100%
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-06-07 — Milestone v6.1 started
 
 ### Milestone Execution Status
 
@@ -134,6 +131,7 @@ Next: Begin v6.1 planning (Map View, Participant-Based Event Listing, Timeline V
 ### v6.0 Archive
 
 Milestone archive created at `.planning/milestones/v6.0-*`:
+
 - `.planning/milestones/v6.0-ROADMAP.md` — ROADMAP snapshot at ship time
 - `.planning/milestones/v6.0-MILESTONE-AUDIT.md` — Full milestone audit (23/23 requirements, 5/5 phases)
 - `.planning/milestones/v6.0-REQUIREMENTS.md` — Requirements snapshot

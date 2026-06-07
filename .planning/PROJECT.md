@@ -29,25 +29,15 @@ Every extracted event must be traceable to its exact source text in the original
 
 **v4.0: Pipeline Quality & Entity Resolution — COMPLETE.** Reference offsets (character + page), structured event objects as canonical entities, per-document processing logs, search-first entity resolution (20-50% LLM call savings), real Spanish legal document test corpus, and comprehensive README/docs.
 
-## Current Milestone: v6.0 Event-Centric Data Quality & UI — COMPLETE
+## Current Milestone: v6.1 LLM Call Logging & Viewer
 
-**Phase 28 (Integration Tests & Verification) finished 2026-06-06 — all 37 existing tests + 4 new v6.0 tests pass.**
+**Goal:** Log every LLM call (prompt text, response text, tokens, cost, duration, model) per document in a new SurrealDB table, with a per-document viewer accessible from the existing Logs tab.
 
-**v6.0 Validated features:**
-- Golden test fixture — 343-word Spanish legal text produces 2 events, 3 persons, 1 place
-- Structured event field verification (time_window ISO dates, location_place_name, participant_count)
-- Cascade delete test — DELETE document cleans up event_participant edges
-- Temporal replay safety — reprocess same document produces no duplicate edges
-- Zero regressions — all 5 existing e2e tests + 4 new v6.0 tests pass (9/9)
-- Enhanced GET /references with document/event_element/entity_type/entity_id filters
-- New GET /events paginated endpoint with structured event fields
-- Merge/split endpoint extensions for location_place_id and event_participant edges
-- References UI tab with filtering, grouping, cross-tab navigation
-- Expanded LLM extraction with structured dates, participants, location
-- Additive schema changes (time_window, event_participant, element_field, reference_index)
-- Cascade delete test — DELETE document cleans up event_participant edges and references
-- Temporal replay safety — reprocess same document, no duplicates
-- Zero regressions — all 37 existing tests continue to pass
+**Target features:**
+- New `llm_call_log` table with prompt_text, response_text, tokens, cost, duration_ms, model, and document reference
+- Record LLM calls during document processing (extraction + entity resolution activities)
+- Per-document LLM call viewer in the Logs tab (expandable prompt/response pairs, token/cost summary)
+- Backward-compatible — no regression on existing 37+ integration tests
 
 ## Requirements
 
@@ -114,7 +104,8 @@ See `.planning/REQUIREMENTS.md` for the explicit capability contract, requiremen
 - [x] v4.0: Pipeline Quality & Entity Resolution — COMPLETE
 - [x] v5.0: LLM Cost & Usage Tracking — COMPLETE
 - [x] v5.1: Entity Resolution Prompt & Batching Fix — COMPLETE
-- [ ] **v6.0: Event-Centric Data Quality & UI** — Current milestone
+- [x] v6.0: Event-Centric Data Quality & UI — Phase 28 complete 2026-06-06. Golden test fixture, structured event fields, cascade delete, replay safety, 9/9 tests. 5 phases (24-28) delivered.
+- [ ] **v6.1: LLM Call Logging & Viewer** — Current milestone
 
 ## Evolution
 
@@ -134,4 +125,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---  
-*Last updated: 2026-06-06 — v6.0 milestone complete*
+*Last updated: 2026-06-06 — v6.1 milestone started*
