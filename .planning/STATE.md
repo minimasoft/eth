@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v6.1
 milestone_name: — LLM Call Logging & Viewer
 status: executing
-last_updated: "2026-06-07T04:00:51.400Z"
-last_activity: 2026-06-07 -- Phase 29 execution started
+last_updated: "2026-06-07T19:45:57.644Z"
+last_activity: 2026-06-07 -- Phase 30 execution started
 progress:
   total_phases: 19
-  completed_phases: 0
-  total_plans: 1
-  completed_plans: 0
-  percent: 0
+  completed_phases: 1
+  total_plans: 2
+  completed_plans: 1
+  percent: 5
 ---
 
 # Project State
@@ -21,14 +21,14 @@ See: .planning/PROJECT.md (updated 2026-06-06)
 
 **Core value:** Every extracted event must be traceable to its exact source text in the original document, and every resolved entity must show its evidential references.
 
-**Current focus:** Phase 29 — llm-call-log-schema
+**Current focus:** Phase 30 — LLM Call Pipeline Recording
 
 ## Current Position
 
-Phase: 29 (llm-call-log-schema) — EXECUTING
+Phase: 30 (LLM Call Pipeline Recording) — EXECUTING
 Plan: 1 of 1
-Status: Executing Phase 29
-Last activity: 2026-06-07 -- Phase 29 execution started
+Status: Executing Phase 30
+Last activity: 2026-06-07 -- Phase 30 execution started
 
 ### v6.1 Phase Structure
 
