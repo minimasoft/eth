@@ -262,7 +262,7 @@ Plans:
 
 ### v6.1 — LLM Call Logging & Viewer
 
-- [ ] **Phase 29: LLM Call Log Schema** — New llm_call_log table with indexes in SurrealDB
+- [x] **Phase 29: LLM Call Log Schema** — New llm_call_log table with indexes in SurrealDB (completed 2026-06-07)
 - [ ] **Phase 30: LLM Call Pipeline Recording** — Record LLM calls in extraction and entity resolution activities
 - [ ] **Phase 31: LLM Call API Endpoint** — GET /documents/{id}/llm-calls paginated endpoint
 - [ ] **Phase 32: LLM Call UI Viewer** — Per-document LLM call viewer in the Logs tab
@@ -573,7 +573,7 @@ Plans:
 **Plans**: 1 plan
 Plans:
 
-- [ ] 29-01-PLAN.md — llm_call_log table DDL (12 nullable fields, ON DELETE CASCADE FK, 2 indexes) + schema deployment + verification
+- [x] 29-01-PLAN.md — llm_call_log table DDL (12 nullable fields, ON DELETE CASCADE FK, 2 indexes) + schema deployment + verification
 
 ### Phase 30: LLM Call Pipeline Recording
 
@@ -660,7 +660,7 @@ Plans:
 | 26. API Endpoints | v6.0 | 2/2 | Complete | 2026-06-06 |
 | 27. References UI | v6.0 | 2/2 | Complete | 2026-06-06 |
 | 28. Integration Tests & Verification | v6.0 | 1/1 | Complete    | 2026-06-06 |
-| 29. LLM Call Log Schema | v6.1 | 0/0 | Not started | — |
+| 29. LLM Call Log Schema | v6.1 | 1/1 | Complete   | 2026-06-07 |
 | 30. LLM Call Pipeline Recording | v6.1 | 0/0 | Not started | — |
 | 31. LLM Call API Endpoint | v6.1 | 0/0 | Not started | — |
 | 32. LLM Call UI Viewer | v6.1 | 0/0 | Not started | — |
