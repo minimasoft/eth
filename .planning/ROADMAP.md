@@ -569,7 +569,11 @@ Plans:
 4. GraphQL proxy exposes `llm_call_log` table via schema introspection — no auto-GraphQL errors
 5. Existing tables are unaffected — all existing queries continue to return identical results
 
-**Plans**: TBD
+**Plans**: 1 plan
+
+Plans:
+
+- [ ] 29-01-PLAN.md — llm_call_log table DDL (12 nullable fields, ON DELETE CASCADE FK, 2 indexes) + schema deployment + verification
 
 ### Phase 30: LLM Call Pipeline Recording
 
