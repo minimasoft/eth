@@ -533,6 +533,7 @@ Plans:
 
 - [ ] 27-01-PLAN.md — Backend API: expose page_offset_start, page_offset_end, context_excerpt in GET /references
 - [ ] 27-02-PLAN.md — Frontend UI: entity filter dropdown, Contexto/Página-Offset columns, cross-tab navigation
+
 **UI hint**: yes
 
 ### Phase 28: Integration Tests & Verification
@@ -570,7 +571,6 @@ Plans:
 5. Existing tables are unaffected — all existing queries continue to return identical results
 
 **Plans**: 1 plan
-
 Plans:
 
 - [ ] 29-01-PLAN.md — llm_call_log table DDL (12 nullable fields, ON DELETE CASCADE FK, 2 indexes) + schema deployment + verification

@@ -1,10 +1,10 @@
 ---
 gsd_state_version: 1.0
 milestone: v6.1
-milestone_name: LLM Call Logging & Viewer
+milestone_name: — LLM Call Logging & Viewer
 status: planning
-last_updated: "2026-06-07T01:05:00.000Z"
-last_activity: 2026-06-07
+last_updated: "2026-06-07T02:59:20.823Z"
+last_activity: 2026-06-07 — v6.1 roadmap created (Phases 29-32)
 progress:
   total_phases: 4
   completed_phases: 0
