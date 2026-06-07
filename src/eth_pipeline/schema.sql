@@ -146,3 +146,27 @@ CREATE INDEX IF NOT EXISTS idx_event_participant_in ON event_participant(in_even
 CREATE INDEX IF NOT EXISTS idx_event_participant_out ON event_participant(out_entity);
 CREATE INDEX IF NOT EXISTS idx_document_event_log_document ON document_event_log(document);
 CREATE INDEX IF NOT EXISTS idx_llm_usage_document_created ON llm_usage(document, created_at);
+
+-- v6.1 Schema Evolution -- Phase 29: LLM Call Log
+-- Additive DDL: new llm_call_log table for recording LLM prompt/response
+-- pairs, token usage, cost, duration, and metadata per document.
+-- All fields are nullable DEFAULT null for additive safety.
+
+CREATE TABLE IF NOT EXISTS llm_call_log (
+    id TEXT PRIMARY KEY,
+    prompt_text TEXT DEFAULT NULL,
+    response_text TEXT DEFAULT NULL,
+    prompt_tokens INTEGER DEFAULT NULL,
+    completion_tokens INTEGER DEFAULT NULL,
+    total_tokens INTEGER DEFAULT NULL,
+    cached_tokens INTEGER DEFAULT NULL,
+    cost REAL DEFAULT NULL,
+    duration_ms INTEGER DEFAULT NULL,
+    model TEXT DEFAULT NULL,
+    activity_type TEXT DEFAULT NULL,
+    document TEXT NOT NULL REFERENCES document(id) ON DELETE CASCADE,
+    timestamp TIMESTAMPTZ DEFAULT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_llm_call_log_document ON llm_call_log(document);
+CREATE INDEX IF NOT EXISTS idx_llm_call_log_timestamp ON llm_call_log(timestamp);
