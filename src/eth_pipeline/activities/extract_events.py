@@ -10,6 +10,7 @@ from eth_pipeline.activities._common import _db_params, _extract_query_results
 from eth_pipeline.db import get_db
 from eth_pipeline.llm import DEFAULT_MODEL, EXTRACTION_CHUNK_SIZE, OpenRouterProvider
 from eth_pipeline.llm_usage import record_llm_usage
+from eth_pipeline.llm_call_recorder import record_llm_call_log
 from eth_pipeline.processing_log import ProcessingLogger
 
 
@@ -111,6 +112,21 @@ async def extract_events_activity(document_id: str) -> dict:
                 reasoning_tokens=usage.get("reasoning_tokens"),
                 cost=usage.get("cost"),
                 cost_source="openrouter" if usage.get("cost") is not None else None,
+            )
+            await record_llm_call_log(
+                db_params=params,
+                document_id=document_id,
+                activity_type="extract_events",
+                chunk_index=i,
+                prompt_text=usage["prompt_text"],
+                response_text=usage["response_text"],
+                model=model,
+                prompt_tokens=usage["prompt_tokens"],
+                completion_tokens=usage["completion_tokens"],
+                total_tokens=usage["total_tokens"],
+                duration_ms=usage["duration_ms"],
+                cached_tokens=usage.get("cached_tokens"),
+                cost=usage.get("cost"),
             )
         if isinstance(chunk_result, list):
             chunk_result = {"events": chunk_result}

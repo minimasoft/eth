@@ -910,6 +910,11 @@ async def delete_document(document_id: str) -> DocumentDeleted:
                 document_id,
             )
 
+            await conn.execute(
+                "DELETE FROM llm_call_log WHERE document = $1",
+                document_id,
+            )
+
             # --- Step 7: Delete event-type canonical entities for this doc ---
             await conn.execute(
                 "DELETE FROM canonical_entity WHERE entity_type = 'event' "
@@ -1084,6 +1089,11 @@ async def clear_document_events(document_id: str) -> EventsCleared:
 
             await conn.execute(
                 "DELETE FROM llm_usage WHERE document = $1",
+                document_id,
+            )
+
+            await conn.execute(
+                "DELETE FROM llm_call_log WHERE document = $1",
                 document_id,
             )
 
