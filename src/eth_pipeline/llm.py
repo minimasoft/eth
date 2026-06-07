@@ -429,6 +429,8 @@ class OpenRouterProvider:
         usage_raw: dict | None = data.get("usage")
         usage: dict | None = None
         if isinstance(usage_raw, dict):
+            choices = data.get("choices", [])
+            response_text = choices[0].get("message", {}).get("content", "") if choices else ""
             usage = {
                 "prompt_tokens": usage_raw.get("prompt_tokens", 0),
                 "completion_tokens": usage_raw.get("completion_tokens", 0),
@@ -439,6 +441,8 @@ class OpenRouterProvider:
                 "model": data.get("model", self._model),
                 "cost": usage_raw.get("cost"),
                 "duration_ms": duration_ms,
+                "prompt_text": payload["messages"][-1]["content"],
+                "response_text": response_text,
             }
             if usage["prompt_tokens"] > 0 and usage["completion_tokens"] > 0 and usage["total_tokens"] > 0:
                 logger.info(
@@ -543,6 +547,8 @@ class OpenRouterProvider:
         usage_raw: dict | None = data.get("usage")
         usage: dict | None = None
         if isinstance(usage_raw, dict):
+            choices = data.get("choices", [])
+            response_text = choices[0].get("message", {}).get("content", "") if choices else ""
             usage = {
                 "prompt_tokens": usage_raw.get("prompt_tokens", 0),
                 "completion_tokens": usage_raw.get("completion_tokens", 0),
@@ -553,6 +559,8 @@ class OpenRouterProvider:
                 "model": data.get("model", self._model),
                 "cost": usage_raw.get("cost"),
                 "duration_ms": duration_ms,
+                "prompt_text": payload["messages"][-1]["content"],
+                "response_text": response_text,
             }
             if usage["prompt_tokens"] > 0 and usage["completion_tokens"] > 0 and usage["total_tokens"] > 0:
                 logger.info(
