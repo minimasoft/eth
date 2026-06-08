@@ -265,7 +265,7 @@ Plans:
 - [x] **Phase 29: LLM Call Log Schema** — New llm_call_log table with indexes in SurrealDB (completed 2026-06-07)
 - [x] **Phase 30: LLM Call Pipeline Recording** — Record LLM calls in extraction and entity resolution activities (completed 2026-06-07)
 - [ ] **Phase 31: LLM Call API Endpoint** — GET /documents/{id}/llm-calls paginated endpoint
-- [ ] **Phase 32: LLM Call UI Viewer** — Per-document LLM call viewer in the Logs tab
+- [x] **Phase 32: LLM Call UI Viewer** — Per-document LLM call viewer in the Logs tab (completed 2026-06-08)
 
 ## Phase Details
 
@@ -630,7 +630,8 @@ Plans:
 **Plans**: 1 plan
 
 Plans:
-- [ ] 32-01-PLAN.md — Insert LLM Calls sub-tab HTML/CSS/JS in single index.html file
+
+- [x] 32-01-PLAN.md — Insert LLM Calls sub-tab HTML/CSS/JS in single index.html file
 
 **UI hint**: yes
 
@@ -667,4 +668,4 @@ Plans:
 | 29. LLM Call Log Schema | v6.1 | 1/1 | Complete   | 2026-06-07 |
 | 30. LLM Call Pipeline Recording | v6.1 | 1/1 | Complete   | 2026-06-07 |
 | 31. LLM Call API Endpoint | v6.1 | 0/0 | Not started | — |
-| 32. LLM Call UI Viewer | v6.1 | 0/0 | Not started | — |
+| 32. LLM Call UI Viewer | v6.1 | 1/1 | Complete   | 2026-06-08 |

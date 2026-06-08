@@ -25,9 +25,9 @@ Requirements for v6.1: LLM Call Logging & Viewer.
 
 ### UI
 
-- [ ] **UI-01**: LLM Calls sub-tab in the per-document Logs view area — paginated list with columns: model, activity_type, prompt_tokens, completion_tokens, total_tokens, cost, duration, timestamp
-- [ ] **UI-02**: Expandable rows — click to show/hide full prompt_text and response_text (monospace, scrollable)
-- [ ] **UI-03**: Token/cost summary header at top of the LLM Calls tab — aggregated totals across all calls for the document
+- [x] **UI-01**: LLM Calls sub-tab in the per-document Logs view area — paginated list with columns: model, activity_type, prompt_tokens, completion_tokens, total_tokens, cost, duration, timestamp
+- [x] **UI-02**: Expandable rows — click to show/hide full prompt_text and response_text (monospace, scrollable)
+- [x] **UI-03**: Token/cost summary header at top of the LLM Calls tab — aggregated totals across all calls for the document
 
 ## v2 Requirements
 
@@ -62,11 +62,12 @@ Deferred to future release. Tracked but not in current roadmap.
 | PIPE-03 | Phase 30 | Pending |
 | API-01 | Phase 31 | Pending |
 | API-02 | Phase 31 | Pending |
-| UI-01 | Phase 32 | Pending |
-| UI-02 | Phase 32 | Pending |
-| UI-03 | Phase 32 | Pending |
+| UI-01 | Phase 32 | Complete |
+| UI-02 | Phase 32 | Complete |
+| UI-03 | Phase 32 | Complete |
 
 **Coverage:**
+
 - v6.1 requirements: 10 total
 - Mapped to phases: 10
 - Unmapped: 0 ✓
