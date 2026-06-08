@@ -12,6 +12,7 @@ from eth_pipeline.api.models import (
     EntityListResponse,
     MergeRequest,
     MergeResponse,
+    OrphanCleanupResponse,
     SplitPartition,
     SplitRequest,
     SplitResponse,
@@ -778,4 +779,73 @@ async def get_entity(entity_id: str) -> EntityDetailResponse:
         reference_count=ref_count,
         properties=entity_row.get("properties"),
         references=references,
+    )
+
+
+# =======================================================================
+# Recycle orphan entities (remove entities with 0 references)
+# =======================================================================
+
+
+@router.post(
+    "/entities/recycle-orphans",
+    response_model=OrphanCleanupResponse,
+)
+async def recycle_orphans() -> OrphanCleanupResponse:
+    """Find and delete all canonical entities with zero references across all
+    linking tables (reference, event_entity_link, event_participant,
+    event.location_place_id)."""
+    try:
+        async with get_db() as db:
+            orphan_rows = await db.fetch(
+                "SELECT ce.id, ce.name, ce.entity_type FROM canonical_entity ce "
+                "WHERE (SELECT COUNT(*) FROM reference WHERE canonical_entity = ce.id OR entity_id = ce.id) = 0 "
+                "AND (SELECT COUNT(*) FROM event_entity_link WHERE entity = ce.id) = 0 "
+                "AND (SELECT COUNT(*) FROM event_participant WHERE out_entity = ce.id) = 0 "
+                "AND (SELECT COUNT(*) FROM event WHERE location_place_id = ce.id) = 0 "
+                "AND ce.superseded_by IS NULL"
+            )
+    except Exception as exc:
+        logger.error("Failed to query orphan entities: %s", exc)
+        raise HTTPException(
+            status_code=502,
+            detail="Failed to query database.",
+        ) from exc
+
+    orphan_list = [
+        {
+            "entity_id": str(r["id"]),
+            "name": r.get("name") or "",
+            "entity_type": r.get("entity_type") or "",
+        }
+        for r in orphan_rows
+    ]
+
+    if not orphan_rows:
+        logger.info("Recycle-orphans: no orphan entities found")
+        return OrphanCleanupResponse(entities_removed=0, entities=[])
+
+    deleted = 0
+    try:
+        async with get_db() as db:
+            for r in orphan_rows:
+                await db.execute(
+                    "DELETE FROM canonical_entity WHERE id = $1",
+                    r["id"],
+                )
+                deleted += 1
+    except Exception as exc:
+        logger.error("Failed to delete orphan entities: %s", exc)
+        raise HTTPException(
+            status_code=502,
+            detail="Failed to delete orphan entities.",
+        ) from exc
+
+    logger.info(
+        "Recycle-orphans: removed %d orphan entities",
+        deleted,
+    )
+    return OrphanCleanupResponse(
+        entities_removed=deleted,
+        entities=orphan_list,
     )

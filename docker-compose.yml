@@ -157,6 +157,7 @@ services:
     networks:
     - eth-pipeline
   integration-tests:
+    profiles: ["test"]
     image: node:22-slim
     working_dir: /tests
     command:

@@ -207,6 +207,11 @@ class EntityDeleted(BaseModel):
     references_affected: int = 0
 
 
+class OrphanCleanupResponse(BaseModel):
+    entities_removed: int = 0
+    entities: list[dict] = []
+
+
 class EntityListItem(BaseModel):
     """A single entity entry in the paginated entity list."""
 
@@ -618,6 +623,7 @@ __all__ = [
     "DocumentStatus",
     "DocumentUploadCreated",
     "EntityDeleted",
+    "OrphanCleanupResponse",
     "EntityDetailReference",
     "EntityDetailResponse",
     "EntityListItem",
