@@ -627,7 +627,11 @@ Plans:
 4. Toggling between "Processing Logs" and "LLM Calls" sub-tabs changes the displayed content without page reload
 5. Legacy documents (no llm_call_log records) show an empty state with a clear message — no JavaScript errors or broken UI
 
-**Plans**: TBD
+**Plans**: 1 plan
+
+Plans:
+- [ ] 32-01-PLAN.md — Insert LLM Calls sub-tab HTML/CSS/JS in single index.html file
+
 **UI hint**: yes
 
 ## Progress
