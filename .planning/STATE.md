@@ -2,9 +2,9 @@
 gsd_state_version: 1.0
 milestone: v6.1
 milestone_name: — LLM Call Logging & Viewer
-status: verifying
-last_updated: "2026-06-08T03:19:01.411Z"
-last_activity: 2026-06-07 -- Phase 30 execution started
+status: Awaiting next milestone
+last_updated: "2026-06-08T05:33:32.616Z"
+last_activity: 2026-06-08 — Milestone v6.1 completed and archived
 progress:
   total_phases: 19
   completed_phases: 4
@@ -25,10 +25,10 @@ See: .planning/PROJECT.md (updated 2026-06-06)
 
 ## Current Position
 
-Phase: 30 (LLM Call Pipeline Recording) — EXECUTING
-Plan: 1 of 1
-Status: Phase complete — ready for verification
-Last activity: 2026-06-07 -- Phase 30 execution started
+Phase: Milestone v6.1 complete
+Plan: —
+Status: Awaiting next milestone
+Last activity: 2026-06-08 — Milestone v6.1 completed and archived
 
 ### v6.1 Phase Structure
 
@@ -131,6 +131,9 @@ Items acknowledged and carried forward from previous milestone close:
 | Feature | Participant-Based Event Listing | Deferred to future milestone | v6.0 planning |
 | Feature | Timeline Visualization (vis-timeline) | Deferred to future milestone | v6.0 planning |
 | Feature | Co-occurrence Network | Deferred to v6.2 | v6.0 planning |
+| quick_task | 260604-n9q-fix-document-delete-405-method-not-allow | Acknowledged at v6.1 close | 2026-06-08 |
+| quick_task | 260604-ugl-1-clean-up-db-2-apply-the-fixes-3-build- | Acknowledged at v6.1 close | 2026-06-08 |
+| quick_task | 260605-rm0-there-are-still-orphan-entities-after-de | Acknowledged at v6.1 close | 2026-06-08 |
 
 ## Session Continuity
 
@@ -146,3 +149,7 @@ Milestone archive created at `.planning/milestones/v6.0-*`:
 - `.planning/milestones/v6.0-MILESTONE-AUDIT.md` — Full milestone audit (23/23 requirements, 5/5 phases)
 - `.planning/milestones/v6.0-REQUIREMENTS.md` — Requirements snapshot
 - `.planning/milestones/v6.0-phases/` — Archived phase directories for phases 24-28
+
+## Operator Next Steps
+
+- Start the next milestone with /gsd-new-milestone

@@ -1,5 +1,17 @@
 # Milestones
 
+## v6.1 LLM Call Logging & Viewer (Shipped: 2026-06-08)
+
+**Phases completed:** 4 phases, 4 plans, 13 tasks
+
+**Key accomplishments:**
+
+- New llm_call_log PostgreSQL table with 12 nullable content columns, document FK with ON DELETE CASCADE, and two indexes for fast per-document paginated queries
+- Fire-and-forget llm_call_log recorder wired into extract_events, resolve_entities, and resolve_entities_with_search activities — full prompt/response text, tokens, cost, and duration captured for every LLM call
+- Added a paginated `GET /documents/{id}/llm-calls` endpoint returning LLM call log entries with full prompt/response text, token/cost/duration metrics, and timestamp-ascending ordering, following the existing `get_document_logs` pattern.
+
+---
+
 ## v6.0 Event-Centric Data Quality & UI (Shipped: 2026-06-06)
 
 **Phases completed:** 5 phases, 7 plans
