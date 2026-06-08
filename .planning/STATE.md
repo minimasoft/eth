@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v6.1
 milestone_name: — LLM Call Logging & Viewer
 status: Awaiting next milestone
-last_updated: "2026-06-08T21:44:03.633Z"
-last_activity: 2026-06-08 - Completed quick task 260608-q0p: Two mini UI fixes — remove Fragmentos column, expand column names, remove redundant LLM summary
+last_updated: "2026-06-08T22:55:27.303Z"
+last_activity: 2026-06-08 — Milestone v6.1 completed and archived
 progress:
-  total_phases: 19
-  completed_phases: 4
-  total_plans: 4
-  completed_plans: 4
-  percent: 21
+  total_phases: 17
+  completed_phases: 11
+  total_plans: 12
+  completed_plans: 12
+  percent: 65
 ---
 
 # Project State
@@ -28,16 +28,16 @@ See: .planning/PROJECT.md (updated 2026-06-06)
 Phase: Milestone v6.1 complete
 Plan: —
 Status: Awaiting next milestone
-Last activity: 2026-06-08 - Completed quick task 260608-q0p: Two mini UI fixes — remove Fragmentos column, expand column names, remove redundant LLM summary
+Last activity: 2026-06-08 — Milestone v6.1 completed and archived
 
 ### v6.1 Phase Structure
 
 | Phase | Goal | Requirements | Success Criteria | Status |
 |-------|------|--------------|------------------|--------|
-| 29. LLM Call Log Schema | New llm_call_log table with indexes | SCH-01, SCH-02 | 5 criteria | Planning |
-| 30. LLM Call Pipeline Recording | Record LLM calls in extraction + entity resolution | PIPE-01, PIPE-02, PIPE-03 | 5 criteria | Planning |
-| 31. LLM Call API Endpoint | GET /documents/{id}/llm-calls paginated endpoint | API-01, API-02 | 5 criteria | Planning |
-| 32. LLM Call UI Viewer | Per-document LLM call viewer in Logs tab | UI-01, UI-02, UI-03 | 5 criteria | Planning |
+| 29. LLM Call Log Schema | New llm_call_log table with indexes | SCH-01, SCH-02 | 5 criteria | Complete ✅ |
+| 30. LLM Call Pipeline Recording | Record LLM calls in extraction + entity resolution | PIPE-01, PIPE-02, PIPE-03 | 5 criteria | Complete ✅ |
+| 31. LLM Call API Endpoint | GET /documents/{id}/llm-calls paginated endpoint | API-01, API-02 | 5 criteria | Complete ✅ |
+| 32. LLM Call UI Viewer | Per-document LLM call viewer in Logs tab | UI-01, UI-02, UI-03 | 5 criteria | Complete ✅ |
 
 ### Milestone Execution Status
 
@@ -108,7 +108,7 @@ All 5 phases (24-28) delivered and verified:
 
 ### Blockers/Concerns
 
-None. Ready to begin Phase 24 planning.
+None. All milestones up to v6.1 complete.
 
 ### Quick Tasks Completed
 
@@ -141,9 +141,17 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-08T03:18:48.959Z
-Completed: v6.0 milestone shipped — all 5 phases (24-28) delivered and verified
-Next: Begin v6.1 planning — LLM Call Logging & Viewer roadmap created (Phases 29-32)
+Last session: 2026-06-08T19:55:00Z
+Completed: v6.1 milestone shipped — all 4 phases (29-32) delivered and verified
+Next: Start the next milestone — see ROADMAP.md for deferred features (Map View, Timeline, Co-occurrence Network, Participant-Based Listing)
+
+### v6.1 Archive
+
+Milestone archive created at `.planning/milestones/v6.1-*`:
+
+- `.planning/milestones/v6.1-ROADMAP.md` — ROADMAP snapshot at ship time
+- `.planning/milestones/v6.1-MILESTONE-AUDIT.md` — Full milestone audit (14/14 requirements, 4/4 phases)
+- `.planning/milestones/v6.1-REQUIREMENTS.md` — Requirements snapshot
 
 ### v6.0 Archive
 

@@ -247,10 +247,10 @@ Plans:
 
 ### v5.0 — LLM Cost & Usage Tracking
 
-- [ ] **Phase 19: Token Recording & Schema** — Dedicated `llm_usage` table, OpenRouter token extraction, replay-safe writes, nullify-then-recreate cycle
-- [ ] **Phase 20: API Aggregation Endpoints** — Per-document token totals, batched list queries, legacy document handling
-- [ ] **Phase 21: UI Token Display** — Token/cost columns in document list, per-LLM-call breakdown in logs tab
-- [ ] **Phase 22: No-Regression Verification** — E2E tests for token tracking, replay safety verification, zero regressions
+- [x] **Phase 19: Token Recording & Schema** — Dedicated `llm_usage` table, OpenRouter token extraction, replay-safe writes, nullify-then-recreate cycle (completed 2026-06-04)
+- [x] **Phase 20: API Aggregation Endpoints** — Per-document token totals, batched list queries, legacy document handling (completed 2026-06-04)
+- [x] **Phase 21: UI Token Display** — Token/cost columns in document list, per-LLM-call breakdown in logs tab (completed 2026-06-04)
+- [x] **Phase 22: No-Regression Verification** — E2E tests for token tracking, replay safety verification, zero regressions (completed 2026-06-04)
 
 ### v6.0 — Event-Centric Data Quality & UI
 
@@ -406,7 +406,11 @@ Plans:
 4. Token records are deleted when a document's events are cleared (nullify-then-recreate cycle includes `DELETE llm_usage WHERE document = $doc`) — reprocessing replaces old records without accumulation
 5. Token records use a dedicated write path (`record_llm_usage()` function) with warning-only failure on error — extraction continues if token recording fails
 
-**Plans**: TBD
+**Plans**: 1 plan
+
+Plans:
+
+- [x] 19-01-PLAN.md — llm_usage table DDL, OpenRouterProvider token extraction, replay-safe UPSERT writes, nullify-then-recreate cycle
 
 ### Phase 20: API Aggregation Endpoints
 
@@ -423,7 +427,11 @@ Plans:
 3. Pre-v5.0 documents (no `llm_usage` records) return `has_data: false` with zero/numeric values for all token fields — no 404 errors, no null leakage into API response numeric fields
 4. Cost field returns the API-provided value when available, null when absent — field type `float | None` in the response model
 
-**Plans**: TBD
+**Plans**: 1 plan
+
+Plans:
+
+- [x] 20-01-PLAN.md — Token aggregation API endpoints (GET /documents/{id}/tokens, batched totals in GET /documents)
 
 ### Phase 21: UI Token Display
 
@@ -440,7 +448,12 @@ Plans:
 3. Document detail / logs tab shows a per-LLM-call breakdown with timing, input/output/cached token counts, and cost, grouped by pipeline step (extraction chunks vs. entity resolution) — each step shows a subtotal
 4. All token numbers have tooltips explaining their meaning in Spanish — legacy documents (pre-v5.0) show "Sin datos de tokens (documento anterior a v5.0)" instead of NaN/null
 
-**Plans**: TBD
+**Plans**: 1 plan
+
+Plans:
+
+- [x] 21-01-PLAN.md — Token display UI: aggregated column in document list, per-LLM-call breakdown in logs tab, cost display, Spanish tooltips, legacy document handling
+
 **UI hint**: yes
 
 ### Phase 22: No-Regression Verification
@@ -457,7 +470,11 @@ Plans:
 2. E2E test verifies that after document processing, `llm_usage` contains >0 records with non-negative values for prompt_tokens, completion_tokens, total_tokens — structural assertions only (records exist, counts are non-negative), no hardcoded numerical token values
 3. E2E test verifies reprocessing a document (DELETE events + re-process) produces identical token counts — the old records are cleared (nullify-then-recreate) and the new records match the expected structure
 
-**Plans**: TBD
+**Plans**: 1 plan
+
+Plans:
+
+- [x] 22-01-PLAN.md — No-regression E2E tests for token tracking, replay safety verification, zero regressions across all prior integration test suites
 
 ### Phase 24: Schema & Data Model Foundation
 
@@ -472,9 +489,11 @@ Plans:
   4. Schema changes are purely additive — no OVERWRITE directives, no destructive migrations; all existing queries return identical results on pre-v6.0 documents
   5. GraphQL proxy exposes all new fields and tables via schema introspection after deployment
 
-**Plans**: TBD
+**Plans**: 1 plan
 
-### Phase 25: LLM Extraction & Pipeline
+Plans:
+
+- [x] 24-01-PLAN.md — v6.0 schema evolution DDL (time_window, location_point, location_place_id, event_participant, element_field, reference_index)
 
 **Goal**: LLM extracts structured event data (ISO 8601 dates, participant links, location links) with confidence markers and reference capping; pipeline stores results correctly with Temporal replay safety, cascade delete, and entity resolution integration
 **Depends on**: Phase 24 (needs schema fields and event_participant table to exist)
@@ -491,9 +510,11 @@ Plans:
   8. Cascade delete (`DELETE /documents/{id}`) includes `event_participant` edges — zero orphan records after document deletion
   9. Entity resolution (`resolve_entities_activity`) preserves `location_place_id` links for place entities and sets canonical entity IDs on participant references
 
-**Plans**: TBD
+**Plans**: 1 plan
 
-### Phase 26: API Endpoints
+Plans:
+
+- [x] 25-01-PLAN.md — Expanded LLM extraction with structured dates/participants/locations, pipeline activity updates, reference cap + dedup, Temporal replay safety, cascade delete
 
 **Goal**: Users can query structured event data and enhanced reference data via REST API endpoints with pagination, filtering, and correct merge/split behavior for new fields
 **Depends on**: Phase 25 (needs structured event data stored in DB before APIs can serve it)
@@ -531,8 +552,8 @@ Plans:
 
 Plans:
 
-- [ ] 27-01-PLAN.md — Backend API: expose page_offset_start, page_offset_end, context_excerpt in GET /references
-- [ ] 27-02-PLAN.md — Frontend UI: entity filter dropdown, Contexto/Página-Offset columns, cross-tab navigation
+- [x] 27-01-PLAN.md — Backend API: expose page_offset_start, page_offset_end, context_excerpt in GET /references
+- [x] 27-02-PLAN.md — Frontend UI: entity filter dropdown, Contexto/Página-Offset columns, cross-tab navigation
 
 **UI hint**: yes
 
@@ -591,7 +612,10 @@ Plans:
 4. `llm_call_log` records are deleted when a document's events are cleared (cascade includes the llm_call_log table) — reprocess cycle leaves zero orphan log entries
 5. Logging failure is non-fatal — if writing to `llm_call_log` fails, the pipeline continues without aborting extraction
 
-**Plans**: TBD
+**Plans**: 1 plan
+Plans:
+
+- [x] 30-01-PLAN.md — Record LLM calls in extract_events and resolve_entities activities via llm_call_log table writes with Temporal replay safety
 
 ### Phase 31: LLM Call API Endpoint
 
@@ -609,7 +633,10 @@ Plans:
 4. A document with no LLM call log entries returns `{ items: [], total: 0, page: 1, per_page: 20, pages: 1 }` — not a 404 error
 5. Pagination parameters (page, per_page) work correctly — `page=2&per_page=5` returns the second batch of 5 results
 
-**Plans**: TBD
+**Plans**: 1 plan
+Plans:
+
+- [x] 31-01-PLAN.md — GET /documents/{id}/llm-calls paginated endpoint with full prompt/response text and all metrics
 
 ### Phase 32: LLM Call UI Viewer
 
