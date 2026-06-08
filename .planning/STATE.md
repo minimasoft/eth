@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v6.1
 milestone_name: — LLM Call Logging & Viewer
 status: Awaiting next milestone
-last_updated: "2026-06-08T05:33:32.616Z"
-last_activity: 2026-06-08 - Completed quick task 260608-3xk: Cleaned 38 orphans, added transactional guard to _dedup_and_link, fixed delete_document collection
+last_updated: "2026-06-08T13:10:47.131Z"
+last_activity: 2026-06-08 - Completed quick task 260608-e4z: Add a check for llm call log in the tests — added missing chunk_index column to llm_call_log schema, ALTER TABLE migration, and test assertion
 progress:
   total_phases: 19
   completed_phases: 4
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-06-06)
 Phase: Milestone v6.1 complete
 Plan: —
 Status: Awaiting next milestone
-Last activity: 2026-06-08 - Completed quick task 260608-3xk: Cleaned 38 orphans, added transactional guard to _dedup_and_link, fixed delete_document collection
+Last activity: 2026-06-08 - Completed quick task 260608-e4z: Add a check for llm call log in the tests — added missing chunk_index column to llm_call_log schema, ALTER TABLE migration, and test assertion
 
 ### v6.1 Phase Structure
 
@@ -122,6 +122,7 @@ None. Ready to begin Phase 24 planning.
 | 260605-rm0 | Fix orphan entity bug in delete_document ordering, fix list_entities reference_count, enforce no-orphan axiom in e2e test | 2026-06-05 | 7c7bb13 | [260605-rm0-there-are-still-orphan-entities-after-de](./quick/260605-rm0-there-are-still-orphan-entities-after-de/) |
 | 260608-3xk | Cleaned 38 orphans, added transactional guard to _dedup_and_link (both resolve files) and split endpoint, fixed delete_document to collect entities from event_participant + location_place_id | 2026-06-08 | 7285f2b | [260608-3xk-review-entity-creation-and-disallow-the-](./quick/260608-3xk-review-entity-creation-and-disallow-the-/) |
 | 260608-3xk | Review entity creation and disallow references — cleanup 38 orphans, add transactional guards to _dedup_and_link + split, fix delete_document to collect from event_participant + location_place_id | 2026-06-08 | 7285f2b | [260608-3xk-review-entity-creation-and-disallow-the-](./quick/260608-3xk-review-entity-creation-and-disallow-the-/) |
+| 260608-e4z | Add a check for llm call log in the tests, I have tested manually and the endpoint always returns empty even when there were calls. | 2026-06-08 | PLACEHOLDER | [260608-e4z-add-a-check-for-llm-call-log-in-the-test](./quick/260608-e4z-add-a-check-for-llm-call-log-in-the-test/) |
 
 ## Deferred Items
 

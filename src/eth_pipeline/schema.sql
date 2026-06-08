@@ -164,9 +164,13 @@ CREATE TABLE IF NOT EXISTS llm_call_log (
     duration_ms INTEGER DEFAULT NULL,
     model TEXT DEFAULT NULL,
     activity_type TEXT DEFAULT NULL,
+    chunk_index INTEGER NOT NULL DEFAULT 0 CHECK (chunk_index >= 0),
     document TEXT NOT NULL REFERENCES document(id) ON DELETE CASCADE,
     timestamp TIMESTAMPTZ DEFAULT NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_llm_call_log_document ON llm_call_log(document);
 CREATE INDEX IF NOT EXISTS idx_llm_call_log_timestamp ON llm_call_log(timestamp);
+
+-- v6.1 Migration: add chunk_index column (missing from initial DDL — INSERT fails without it)
+ALTER TABLE llm_call_log ADD COLUMN IF NOT EXISTS chunk_index INTEGER NOT NULL DEFAULT 0 CHECK (chunk_index >= 0);

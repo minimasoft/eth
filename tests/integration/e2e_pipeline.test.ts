@@ -23,6 +23,7 @@ import {
   getProcessingLogs,
   listDocuments,
   clearEvents,
+  listLlmCallLogs,
 } from "./helpers.js";
 
 // ---------------------------------------------------------------------------
@@ -94,7 +95,7 @@ async function cleanupTestDocuments(): Promise<void> {
 // Test suite
 // ---------------------------------------------------------------------------
 
-describe("e2e — full pipeline (events, entities, references, delete, tokens)", () => {
+describe("e2e — full pipeline (events, entities, references, llm-call-log, tokens, delete)", () => {
   after(async () => {
     await cleanupTestDocuments();
   });
@@ -235,6 +236,39 @@ describe("e2e — full pipeline (events, entities, references, delete, tokens)",
       assert.ok(ourDoc.total_tokens > 0, `list document should have total_tokens > 0, got ${ourDoc.total_tokens}`);
       assert.ok(ourDoc.duration_ms > 0, `duration_ms should be > 0, got ${ourDoc.duration_ms}`);
       console.log(`✓ Document list shows: tokens=${ourDoc.total_tokens} cost=${ourDoc.total_cost} duration=${ourDoc.duration_ms}ms`);
+    });
+  });
+
+  // ===================================================================
+  // Test 3b: LLM call log — /documents/{id}/llm-calls returns data
+  // ===================================================================
+  it("3b. LLM call log — endpoint returns recorded calls", async () => {
+    await skipIfDegraded(`${API_BASE}/health`, async () => {
+      if (!documentWasProcessed) {
+        console.log("ℹ  Document was not processed — skipping llm-call-log verification");
+        return;
+      }
+
+      const docId = testDocIds[0];
+      if (!docId) {
+        console.log("ℹ  No document — skipping llm-call-log verification");
+        return;
+      }
+
+      const logs = await listLlmCallLogs(docId);
+      assertNonNull(logs, "LLM call log list should be available");
+      assert.ok(logs.total > 0, `Expected >0 LLM call log entries, got ${logs.total}`);
+      console.log(`✓ ${logs.total} LLM call log entries via API`);
+
+      // Spot-check: at least one entry has prompt and response text
+      const firstWithText = logs.items.find((l) => l.prompt_text && l.response_text);
+      if (firstWithText) {
+        console.log(`  Sample: ${firstWithText.activity_type} (${firstWithText.model}) — prompt=${firstWithText.prompt_tokens} completion=${firstWithText.completion_tokens}`);
+      }
+
+      // Verify expected activity types are present
+      const activityTypes = new Set(logs.items.map((l) => l.activity_type));
+      console.log(`  Activity types: ${[...activityTypes].join(", ")}`);
     });
   });
 

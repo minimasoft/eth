@@ -243,6 +243,30 @@ export interface ProcessingLogListResponse {
   pages: number;
 }
 
+export interface LlmCallLogListItem {
+  id: string;
+  document_id: string;
+  prompt_text: string | null;
+  response_text: string | null;
+  prompt_tokens: number | null;
+  completion_tokens: number | null;
+  total_tokens: number | null;
+  cached_tokens: number | null;
+  cost: number | null;
+  duration_ms: number | null;
+  model: string | null;
+  activity_type: string | null;
+  timestamp: string | null;
+}
+
+export interface LlmCallLogListResponse {
+  items: LlmCallLogListItem[];
+  total: number;
+  page: number;
+  per_page: number;
+  pages: number;
+}
+
 export interface ClearEventsResponse {
   document_id: string;
   status: string;
@@ -447,6 +471,19 @@ export async function getProcessingLogs(
   );
   if (error || status !== 200) return null;
   return JSON.parse(body!) as ProcessingLogListResponse;
+}
+
+/**
+ * Get LLM call logs for a document via REST API.
+ */
+export async function listLlmCallLogs(
+  documentId: string,
+): Promise<LlmCallLogListResponse | null> {
+  const [status, body, error] = await httpGet(
+    `${API_BASE}/documents/${documentId}/llm-calls?per_page=100`,
+  );
+  if (error || status !== 200) return null;
+  return JSON.parse(body!) as LlmCallLogListResponse;
 }
 
 /**
