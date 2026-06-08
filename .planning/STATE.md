@@ -122,7 +122,7 @@ None. Ready to begin Phase 24 planning.
 | 260605-rm0 | Fix orphan entity bug in delete_document ordering, fix list_entities reference_count, enforce no-orphan axiom in e2e test | 2026-06-05 | 7c7bb13 | [260605-rm0-there-are-still-orphan-entities-after-de](./quick/260605-rm0-there-are-still-orphan-entities-after-de/) |
 | 260608-3xk | Cleaned 38 orphans, added transactional guard to _dedup_and_link (both resolve files) and split endpoint, fixed delete_document to collect entities from event_participant + location_place_id | 2026-06-08 | 7285f2b | [260608-3xk-review-entity-creation-and-disallow-the-](./quick/260608-3xk-review-entity-creation-and-disallow-the-/) |
 | 260608-3xk | Review entity creation and disallow references — cleanup 38 orphans, add transactional guards to _dedup_and_link + split, fix delete_document to collect from event_participant + location_place_id | 2026-06-08 | 7285f2b | [260608-3xk-review-entity-creation-and-disallow-the-](./quick/260608-3xk-review-entity-creation-and-disallow-the-/) |
-| 260608-e4z | Add a check for llm call log in the tests, I have tested manually and the endpoint always returns empty even when there were calls. | 2026-06-08 | PLACEHOLDER | [260608-e4z-add-a-check-for-llm-call-log-in-the-test](./quick/260608-e4z-add-a-check-for-llm-call-log-in-the-test/) |
+| 260608-e4z | Add a check for llm call log in the tests, I have tested manually and the endpoint always returns empty even when there were calls. | 2026-06-08 | e625756 | [260608-e4z-add-a-check-for-llm-call-log-in-the-test](./quick/260608-e4z-add-a-check-for-llm-call-log-in-the-test/) |
 
 ## Deferred Items
 
