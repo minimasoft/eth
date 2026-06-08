@@ -992,6 +992,31 @@ async def delete_document(document_id: str) -> DocumentDeleted:
                 document_id,
             )
 
+            # --- Step 1c: Collect entities linked via event_participant ---
+            # Entities created in store_extraction_results_activity for participants
+            # may only be linked via event_participant (not via reference or
+            # event_entity_link). Collect them now before the edges are deleted.
+            ep_entity_rows = await conn.fetch(
+                "SELECT out_entity FROM event_participant "
+                "WHERE in_event IN (SELECT id FROM event WHERE document = $1)",
+                document_id,
+            )
+            ep_entity_ids = list({
+                str(r["out_entity"]) for r in ep_entity_rows
+                if r["out_entity"] is not None
+            })
+
+            # --- Step 1d: Collect entities linked via event.location_place_id ---
+            lp_entity_rows = await conn.fetch(
+                "SELECT location_place_id FROM event "
+                "WHERE document = $1 AND location_place_id IS NOT NULL",
+                document_id,
+            )
+            lp_entity_ids = list({
+                str(r["location_place_id"]) for r in lp_entity_rows
+                if r["location_place_id"] is not None
+            })
+
             # --- Step 2: Collect affected canonical_entities from references ---
             affected_ce_rows = await conn.fetch(
                 "SELECT canonical_entity FROM reference "
@@ -1080,6 +1105,8 @@ async def delete_document(document_id: str) -> DocumentDeleted:
             eel_ids = [
                 eid for eid in eel_entity_ids
                 if eid not in affected_ce_ids
+                and eid not in ep_entity_ids  # Step 8c handles these
+                and eid not in lp_entity_ids  # Step 8c handles these
             ]
             for ent_id in eel_ids:
                 ref_row = await conn.fetchrow(
@@ -1098,6 +1125,37 @@ async def delete_document(document_id: str) -> DocumentDeleted:
                 eel_remaining = eel_row["total"] if eel_row else 0
 
                 if ref_remaining == 0 and eel_remaining == 0:
+                    await conn.execute(
+                        "DELETE FROM canonical_entity WHERE id = $1",
+                        ent_id,
+                    )
+                    orphaned += 1
+
+            # --- Step 8c: Delete orphaned entities from event_participant + location_place_id ---
+            # These entities were only linked via event_participant or location_place_id
+            # (which were deleted in Steps 1 and 4). Check if any remain with zero refs
+            # and zero eel links after all other cleanup.
+            alt_entity_ids = [
+                eid for eid in (ep_entity_ids + lp_entity_ids)
+                if eid not in affected_ce_ids and eid not in eel_entity_ids
+            ]
+            for ent_id in alt_entity_ids:
+                count_row = await conn.fetchrow(
+                    "SELECT COUNT(*) AS total FROM reference "
+                    "WHERE canonical_entity = $1 "
+                    "OR entity_id = $1",
+                    ent_id,
+                )
+                remaining_refs = count_row["total"] if count_row else 0
+
+                eel_row = await conn.fetchrow(
+                    "SELECT COUNT(*) AS total FROM event_entity_link "
+                    "WHERE entity = $1",
+                    ent_id,
+                )
+                remaining_eel = eel_row["total"] if eel_row else 0
+
+                if remaining_refs == 0 and remaining_eel == 0:
                     await conn.execute(
                         "DELETE FROM canonical_entity WHERE id = $1",
                         ent_id,
