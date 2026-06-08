@@ -1,21 +1,29 @@
 ---
 status: complete
 completion_date: 2026-06-08
-commit: e625756
+commit: 3805f10
 ---
 
 ## Summary
 
-Added an LLM call log integration test and fixed the root cause of the empty endpoint.
+Fixed the llm-calls endpoint returning empty and added integration test coverage.
 
 ### Problem
 
-The `/documents/{id}/llm-calls` endpoint always returned 0 entries because the `llm_call_log` table was missing the `chunk_index` column. The `record_llm_call_log()` INSERT statement references `chunk_index` at position $4, but the DDL in `schema.sql` never included it. The INSERT silently failed (caught by `except Exception` in the fire-and-forget recorder) — no records were ever written.
+Two bugs caused every `llm_call_log` INSERT to fail silently:
+
+1. **Missing `chunk_index` column** in `llm_call_log` table DDL — the INSERT referenced it but the column didn't exist in schema.sql
+2. **Timestamp type mismatch** — `record_llm_call_log` called `.isoformat()` on the datetime, producing a string, but asyncpg requires a Python `datetime` object for `TIMESTAMPTZ` columns
+
+Both errors were caught by `except Exception` in the fire-and-forget recorder and logged at WARNING level — no records were ever written.
 
 ### Changes
 
-1. **schema.sql** — Added `chunk_index INTEGER NOT NULL DEFAULT 0 CHECK (chunk_index >= 0)` to the `llm_call_log` CREATE TABLE. Added an `ALTER TABLE ADD COLUMN IF NOT EXISTS` migration for existing databases.
+- `llm_call_recorder.py`: Pass `datetime.now(timezone.utc)` directly (without `.isoformat()`)
+- `schema.sql`: Added `chunk_index` to DDL + `ALTER TABLE ADD COLUMN IF NOT EXISTS` migration
+- `helpers.ts`: Added `LlmCallLogListItem`, `LlmCallLogListResponse` interfaces and `listLlmCallLogs()` helper
+- `e2e_pipeline.test.ts`: Added Test 3b asserting `total > 0` LLM call log entries
 
-2. **helpers.ts** — Added `LlmCallLogListItem`, `LlmCallLogListResponse` interfaces and `listLlmCallLogs()` helper function.
+### Verification
 
-3. **e2e_pipeline.test.ts** — Added Test 3b ("LLM call log — endpoint returns recorded calls") that asserts `total > 0` and logs activity types present.
+Created a test document after fix: llm-calls endpoint returned 2 entries (extract_events + resolve_entities_with_search) with full prompt/response text, tokens, cost, and duration.
