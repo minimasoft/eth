@@ -477,7 +477,6 @@
 
     .documents-table th.col-refs,
     .documents-table th.col-ents,
-    .documents-table th.col-chunks,
     .documents-table th.col-words,
     .documents-table th.col-tokens,
     .documents-table th.col-cost {
@@ -488,7 +487,6 @@
 
     .documents-table td.col-refs,
     .documents-table td.col-ents,
-    .documents-table td.col-chunks,
     .documents-table td.col-words,
     .documents-table td.col-tokens,
     .documents-table td.col-cost {
@@ -953,36 +951,6 @@
       color: #1e293b;
     }
 
-    /* LLM calls summary card (reuses #logs-token-summary pattern) */
-    #llm-calls-summary {
-      margin-bottom: 16px;
-      padding: 12px;
-      background: #f0fdf4;
-      border: 1px solid #bbf7d0;
-      border-radius: 8px;
-      font-size: 13px;
-    }
-
-    #llm-calls-summary .summary-title {
-      font-weight: 600;
-      color: #166534;
-      margin-bottom: 8px;
-    }
-
-    #llm-calls-summary .summary-metrics {
-      display: flex;
-      gap: 24px;
-      flex-wrap: wrap;
-    }
-
-    #llm-calls-summary .summary-label {
-      color: #64748b;
-    }
-
-    #llm-calls-summary .summary-value {
-      font-variant-numeric: tabular-nums;
-      font-weight: 600;
-    }
   </style>
 </head>
 <body>
@@ -1047,9 +1015,8 @@
                 <th class="col-filename">Archivo</th>
                 <th class="col-date">Fecha de carga</th>
                 <th class="col-status">Estado</th>
-                <th class="col-refs">Refs</th>
-                <th class="col-ents">Ents</th>
-                <th class="col-chunks">Fragmentos</th>
+                <th class="col-refs">Referencias</th>
+                <th class="col-ents">Entidades</th>
                 <th class="col-words">Palabras</th>
                 <th class="col-tokens" title="Tokens: entrada/salida/en caché">Tokens</th>
                 <th class="col-cost" title="Costo estimado en USD">Costo</th>
@@ -1278,17 +1245,6 @@
           </div>
         </div>
         <div id="logs-llm-calls-content" class="logs-subtab-content">
-          <div id="llm-calls-summary" style="display:none;margin-bottom:16px;padding:12px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;font-size:13px">
-            <div style="font-weight:600;color:#166534;margin-bottom:8px">Resumen de Llamadas LLM</div>
-            <div style="display:flex;gap:24px;flex-wrap:wrap">
-              <div><span style="color:#64748b">Llamadas:</span> <span id="llm-sum-calls" style="font-variant-numeric:tabular-nums;font-weight:600">0</span></div>
-              <div><span style="color:#64748b">Entrada:</span> <span id="llm-sum-input" style="font-variant-numeric:tabular-nums;font-weight:600">0</span></div>
-              <div><span style="color:#64748b">Salida:</span> <span id="llm-sum-output" style="font-variant-numeric:tabular-nums;font-weight:600">0</span></div>
-              <div><span style="color:#64748b">Caché:</span> <span id="llm-sum-cached" style="font-variant-numeric:tabular-nums;font-weight:600">0</span></div>
-              <div><span style="color:#64748b">Costo:</span> <span id="llm-sum-cost" style="font-variant-numeric:tabular-nums;font-weight:600">—</span></div>
-              <div><span style="color:#64748b">Duración:</span> <span id="llm-sum-duration" style="font-variant-numeric:tabular-nums;font-weight:600">0s</span></div>
-            </div>
-          </div>
           <div id="llm-calls-loading" class="documents-loading">Cargando llamadas LLM...</div>
           <div id="llm-calls-table-container" class="table-container" style="display:none">
             <table class="documents-table">
@@ -1654,7 +1610,6 @@
           '</td>' +
           '<td class="col-count">' + (item.reference_count ?? '-') + '</td>' +
           '<td class="col-count">' + (item.entity_count ?? '-') + '</td>' +
-          '<td class="col-count">' + (item.chunk_count ?? '-') + '</td>' +
           '<td class="col-count">' + (item.text_word_count ?? '-') + '</td>' +
           '<td class="col-tokens" title="' + formatTokenTitle(item) + '">' + formatTokens(item) + '</td>' +
           '<td class="col-cost"' + (item.total_cost != null ? '' : ' style="color:#94a3b8"') + '>' + formatCost(item) + '</td>' +
@@ -2405,7 +2360,6 @@
 
       if (subtab === 'llm-calls' && llmCallsDocumentId && !llmCallsDataCache[llmCallsDocumentId + '::' + llmCallsCurrentPage]) {
         fetchLlmCalls(llmCallsDocumentId, llmCallsCurrentPage);
-        fetchLlmCallsSummary(llmCallsDocumentId);
       }
     }
 
@@ -2662,7 +2616,6 @@
       if (loader) { clearTimeout(loader); document.getElementById('llm-calls-loading').style.display = 'none'; }
 
       var tbody = document.getElementById('llm-calls-tbody');
-      var summaryEl = document.getElementById('llm-calls-summary');
       var tableContainer = document.getElementById('llm-calls-table-container');
       var emptyEl = document.getElementById('llm-calls-empty');
       var paginationEl = document.getElementById('llm-calls-pagination');
@@ -2670,7 +2623,6 @@
       if (!data || !data.items || data.items.length === 0) {
         tableContainer.style.display = 'none';
         paginationEl.style.display = 'none';
-        summaryEl.style.display = 'none';
         emptyEl.style.display = 'block';
         emptyEl.innerHTML = '<h2>Sin registro de llamadas LLM</h2><p>Documento anterior a v6.1</p>';
         return;
@@ -2680,16 +2632,8 @@
       tableContainer.style.display = '';
       paginationEl.style.display = 'flex';
 
-      var totalCalls = 0, totalPrompt = 0, totalCompletion = 0, totalCached = 0, totalCost = 0, totalDuration = 0, hasCost = false, hasDuration = false;
-
       tbody.innerHTML = '';
       data.items.forEach(function(item) {
-        totalCalls++;
-        if (item.prompt_tokens != null) totalPrompt += Number(item.prompt_tokens);
-        if (item.completion_tokens != null) totalCompletion += Number(item.completion_tokens);
-        if (item.cached_tokens != null) totalCached += Number(item.cached_tokens);
-        if (item.cost != null) { totalCost += Number(item.cost); hasCost = true; }
-        if (item.duration_ms != null) { totalDuration += Number(item.duration_ms); hasDuration = true; }
         var tr = document.createElement('tr');
         tr.style.cursor = 'pointer';
         tr.innerHTML =
@@ -2728,15 +2672,6 @@
       document.getElementById('llm-calls-prev-btn').disabled = page <= 1;
       document.getElementById('llm-calls-next-btn').disabled = page >= pages;
 
-      updateLlmCallsSummary({
-        has_data: totalCalls > 0,
-        total_calls: totalCalls,
-        total_prompt_tokens: totalPrompt,
-        total_completion_tokens: totalCompletion,
-        total_cached_tokens: totalCached,
-        total_cost: hasCost ? totalCost : null,
-        total_duration_ms: hasDuration ? totalDuration : 0
-      });
     }
 
     function toggleLlmCallRow(row) {
@@ -2747,24 +2682,7 @@
       row.classList.toggle('expanded', !isOpen);
     }
 
-    async function fetchLlmCallsSummary(docId) {
-      llmCallsSummaryCache[docId] = null;
-    }
 
-    function updateLlmCallsSummary(data) {
-      var summaryEl = document.getElementById('llm-calls-summary');
-      if (!data || !data.has_data) {
-        summaryEl.style.display = 'none';
-        return;
-      }
-      document.getElementById('llm-sum-calls').textContent = (data.total_calls || 0).toLocaleString();
-      document.getElementById('llm-sum-input').textContent = (data.total_prompt_tokens || 0).toLocaleString();
-      document.getElementById('llm-sum-output').textContent = (data.total_completion_tokens || 0).toLocaleString();
-      document.getElementById('llm-sum-cached').textContent = (data.total_cached_tokens || 0).toLocaleString();
-      document.getElementById('llm-sum-cost').textContent = data.total_cost != null ? '$' + Number(data.total_cost).toFixed(4) : '—';
-      document.getElementById('llm-sum-duration').textContent = (data.total_duration_ms ? (data.total_duration_ms / 1000).toFixed(2) : '0') + 's';
-      summaryEl.style.display = '';
-    }
 
     // Logs details toggle (event delegation)
     logsTbody.addEventListener('click', function(e) {
