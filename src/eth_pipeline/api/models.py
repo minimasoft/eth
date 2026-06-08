@@ -456,6 +456,68 @@ class ProcessingLogListResponse(BaseModel):
     """Total number of pages available."""
 
 
+class LlmCallLogListItem(BaseModel):
+    """A single LLM call log entry in the paginated call log list."""
+
+    id: str
+    """Unique identifier of the LLM call log record."""
+
+    document_id: str
+    """ID of the document this LLM call belongs to."""
+
+    prompt_text: str | None = None
+    """Full LLM prompt text sent to the model."""
+
+    response_text: str | None = None
+    """Full LLM response text received from the model."""
+
+    prompt_tokens: int | None = None
+    """Number of prompt (input) tokens."""
+
+    completion_tokens: int | None = None
+    """Number of completion (output) tokens."""
+
+    total_tokens: int | None = None
+    """Total tokens (prompt + completion)."""
+
+    cached_tokens: int | None = None
+    """Tokens served from cache (when reported by provider)."""
+
+    cost: float | None = None
+    """Estimated monetary cost in USD (when reported by OpenRouter)."""
+
+    duration_ms: int | None = None
+    """Wall-clock HTTP request duration in milliseconds."""
+
+    model: str | None = None
+    """Model identifier as returned by OpenRouter."""
+
+    activity_type: str | None = None
+    """Activity type label (extract_events, resolve_entities, etc.)."""
+
+    timestamp: str | None = None
+    """ISO-8601 timestamp of when the LLM call was recorded."""
+
+
+class LlmCallLogListResponse(BaseModel):
+    """Paginated response body for GET /documents/{id}/llm-calls."""
+
+    items: list[LlmCallLogListItem]
+    """List of LLM call log entries on the current page."""
+
+    total: int
+    """Total number of LLM call log entries for this document."""
+
+    page: int
+    """Current page number (1-based)."""
+
+    per_page: int
+    """Number of items per page."""
+
+    pages: int
+    """Total number of pages available."""
+
+
 class MergeRequest(BaseModel):
     """Request body for ``POST /entities/merge``.
 
@@ -564,6 +626,8 @@ __all__ = [
     "EventListResponse",
     "EventsCleared",
 
+    "LlmCallLogListItem",
+    "LlmCallLogListResponse",
     "MergeRequest",
     "MergeResponse",
     "ProcessingLogListItem",

@@ -24,6 +24,8 @@ from eth_pipeline.api.models import (
     DocumentUploadCreated,
     EventsCleared,
     HealthResponse,
+    LlmCallLogListItem,
+    LlmCallLogListResponse,
     ProcessingLogListItem,
     ProcessingLogListResponse,
 )
@@ -541,6 +543,139 @@ async def get_document_logs(
     )
 
     return ProcessingLogListResponse(
+        items=items,
+        total=total,
+        page=page,
+        per_page=per_page,
+        pages=pages,
+    )
+
+
+# =======================================================================
+# Get document LLM call logs (paginated)
+# =======================================================================
+
+
+@router.get(
+    "/documents/{document_id}/llm-calls",
+    response_model=LlmCallLogListResponse,
+)
+async def get_document_llm_calls(
+    document_id: str,
+    page: int = Query(1, ge=1),
+    per_page: int = Query(20, ge=1, le=100),
+) -> LlmCallLogListResponse:
+    """Retrieve LLM call log entries for a document (paginated, oldest first)."""
+    offset = (page - 1) * per_page
+
+    # Verify document exists (D-06)
+    try:
+        async with get_db() as conn:
+            doc_row = await conn.fetchrow(
+                "SELECT id FROM document WHERE id = $1",
+                document_id,
+            )
+    except Exception as exc:
+        logger.error(
+            "Failed to query document %s: %s", document_id, exc
+        )
+        raise HTTPException(
+            status_code=502,
+            detail="Failed to query database.",
+        ) from exc
+
+    if doc_row is None:
+        logger.warning("Document %s not found for LLM call log query", document_id)
+        raise HTTPException(
+            status_code=404,
+            detail=f"Document {document_id} not found.",
+        )
+
+    # Count total entries (D-08: empty returns pages=1, not 404)
+    try:
+        async with get_db() as conn:
+            total_row = await conn.fetchrow(
+                "SELECT COUNT(*) AS total FROM llm_call_log "
+                "WHERE document = $1",
+                document_id,
+            )
+            total = total_row["total"] if total_row else 0
+    except Exception as exc:
+        logger.error(
+            "Failed to count LLM call log entries for document %s: %s",
+            document_id,
+            exc,
+        )
+        raise HTTPException(
+            status_code=502,
+            detail="Failed to query database.",
+        ) from exc
+
+    if total == 0:
+        pages = 1  # D-08: empty → pages=1, not 0
+    else:
+        pages = max(1, (total + per_page - 1) // per_page)
+
+    # Fetch page of results sorted by timestamp ASC (D-02)
+    try:
+        async with get_db() as conn:
+            rows = await conn.fetch(
+                "SELECT * FROM llm_call_log "
+                "WHERE document = $1 "
+                "ORDER BY timestamp ASC "
+                "LIMIT $2 OFFSET $3",
+                document_id,
+                per_page,
+                offset,
+            )
+    except Exception as exc:
+        logger.error(
+            "Failed to query LLM call log entries for document %s: %s",
+            document_id,
+            exc,
+        )
+        raise HTTPException(
+            status_code=502,
+            detail="Failed to query database.",
+        ) from exc
+
+    items: list[LlmCallLogListItem] = []
+    for record in rows:
+        # Convert timestamp to ISO-8601 string (same pattern as created_at_str)
+        timestamp_raw = record.get("timestamp")
+        timestamp_str: str | None = None
+        if timestamp_raw is not None:
+            timestamp_str = (
+                timestamp_raw.isoformat()
+                if hasattr(timestamp_raw, "isoformat")
+                else str(timestamp_raw)
+            )
+
+        items.append(LlmCallLogListItem(
+            id=record.get("id", ""),
+            document_id=document_id,
+            prompt_text=record.get("prompt_text"),      # D-01: include full text
+            response_text=record.get("response_text"),    # D-01: include full text
+            prompt_tokens=record.get("prompt_tokens"),
+            completion_tokens=record.get("completion_tokens"),
+            total_tokens=record.get("total_tokens"),
+            cached_tokens=record.get("cached_tokens"),
+            cost=record.get("cost"),
+            duration_ms=record.get("duration_ms"),
+            model=record.get("model"),
+            activity_type=record.get("activity_type"),
+            timestamp=timestamp_str,
+        ))
+
+    logger.info(
+        "Listed LLM call logs for document %s (page=%d) — %d items of %d total",
+        document_id,
+        page,
+        len(items),
+        total,
+    )
+
+    return LlmCallLogListResponse(
         items=items,
         total=total,
         page=page,
