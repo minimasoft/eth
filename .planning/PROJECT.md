@@ -29,15 +29,17 @@ Every extracted event must be traceable to its exact source text in the original
 
 **v4.0: Pipeline Quality & Entity Resolution — COMPLETE.** Reference offsets (character + page), structured event objects as canonical entities, per-document processing logs, search-first entity resolution (20-50% LLM call savings), real Spanish legal document test corpus, and comprehensive README/docs.
 
-## Current Milestone: v6.1 LLM Call Logging & Viewer
+**v5.0: LLM Cost & Usage Tracking — COMPLETE.** Every LLM call records token usage, cost, and timing in `llm_usage` table with Temporal replay safety. API aggregation endpoints, UI token display in document list and logs tab.
 
-**Goal:** Log every LLM call (prompt text, response text, tokens, cost, duration, model) per document in a new SurrealDB table, with a per-document viewer accessible from the existing Logs tab.
+**v5.1: Entity Resolution Prompt & Batching Fix — COMPLETE.** Verification-only milestone — confirmed 5/5 requirements satisfied, 37/37 tests pass.
 
-**Target features:**
-- New `llm_call_log` table with prompt_text, response_text, tokens, cost, duration_ms, model, and document reference
-- Record LLM calls during document processing (extraction + entity resolution activities)
-- Per-document LLM call viewer in the Logs tab (expandable prompt/response pairs, token/cost summary)
-- Backward-compatible — no regression on existing 37+ integration tests
+**v6.0: Event-Centric Data Quality & UI — COMPLETE.** Structured event data (time windows, geolocation, participant edges), enhanced API endpoints, References UI tab with cross-tab navigation.
+
+**v6.1: LLM Call Logging & Viewer — COMPLETE (2026-06-08).** Every LLM call during document processing is logged with full prompt/response text, token counts, cost, and duration. New `llm_call_log` table with per-document indexes. `GET /documents/{id}/llm-calls` paginated API endpoint. "LLM Calls" sub-tab in the Logs tab with expandable rows and aggregated summary. All 4 phases delivered.
+
+## Next Milestone
+
+The next milestone is not yet defined. Run `/gsd-new-milestone` to begin: questioning → research → requirements → roadmap.
 
 ## Requirements
 
@@ -54,11 +56,13 @@ Every extracted event must be traceable to its exact source text in the original
 - ✓ v5.1: Entity Resolution Prompt & Batching Fix — Verification-only, 5/5 requirements satisfied, 37/37 tests pass
 - ✓ **v6.0: Event-Centric Data Quality & UI** — Phase 28 complete 2026-06-06. Golden test fixture, structured event field verification (time_window, participant_count, location_place_name), cascade delete test, replay safety, zero regressions (9/9 tests pass). All 5 phases (24-28) complete.
 
+**v6.1: LLM Call Logging & Viewer** — Shipped 2026-06-08. New `llm_call_log` table captures prompt/response text, tokens, cost, duration per LLM call. Fire-and-forget recorder wired into extraction and entity resolution activities. `GET /documents/{id}/llm-calls` paginated API endpoint. "LLM Calls" sub-tab in Logs tab with expandable prompt/response rows and aggregated summary. All 4 phases (29-32) complete.
+
 ### Active
 
 <!-- Current scope. Building toward these. -->
 
-*None — v6.0 milestone fully delivered.*
+*None — v6.1 milestone fully delivered.*
 
 ### Out of Scope
 
@@ -71,9 +75,9 @@ Every extracted event must be traceable to its exact source text in the original
 
 ## Context
 
-Current pipeline extracts raw events with verbatim references. Phases 24-27 of v6.0 are complete: schema changes (time_window, location_point, event_participant junction, element_field, reference_index), expanded LLM extraction with structured dates/participants/location, enhanced API endpoints (GET /events, GET /references filters, merge/split), and the References UI tab with cross-tab navigation.
+v6.1 (LLM Call Logging & Viewer) shipped 2026-06-08. All 4 phases (29-32) delivered: `llm_call_log` schema with indexes, pipeline recording in extraction and entity resolution activities, `GET /documents/{id}/llm-calls` paginated API endpoint, and "LLM Calls" sub-tab in the Logs viewer with expandable rows and aggregated summary. Full audit trail now includes per-LLM-call logging alongside document processing logs.
 
-Phase 28 is the final verification phase: golden test fixture, integration tests for structured event fields, cascade delete verification, Temporal replay safety, and zero-regression check against all 37 existing tests.
+Next milestone TBD — pending new project direction. See `.planning/STATE.md` for deferred items and open artifacts.
 
 ## Architecture / Key Patterns
 
@@ -93,7 +97,7 @@ Phase 28 is the final verification phase: golden test fixture, integration tests
 
 ## Capability Contract
 
-See `.planning/REQUIREMENTS.md` for the explicit capability contract, requirement status, and coverage mapping.
+See archived requirements at `.planning/milestones/v6.1-REQUIREMENTS.md` for the v6.1 capability contract.
 
 ## Milestone Sequence
 
@@ -105,7 +109,7 @@ See `.planning/REQUIREMENTS.md` for the explicit capability contract, requiremen
 - [x] v5.0: LLM Cost & Usage Tracking — COMPLETE
 - [x] v5.1: Entity Resolution Prompt & Batching Fix — COMPLETE
 - [x] v6.0: Event-Centric Data Quality & UI — Phase 28 complete 2026-06-06. Golden test fixture, structured event fields, cascade delete, replay safety, 9/9 tests. 5 phases (24-28) delivered.
-- [ ] **v6.1: LLM Call Logging & Viewer** — Current milestone
+- [x] **v6.1: LLM Call Logging & Viewer** — Shipped 2026-06-08. 4 phases (29-32), 4 plans. `llm_call_log` table, pipeline recording, API endpoint, UI viewer.
 
 ## Evolution
 
@@ -125,4 +129,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---  
-*Last updated: 2026-06-06 — v6.1 milestone started*
+*Last updated: 2026-06-08 — v6.1 milestone shipped*
