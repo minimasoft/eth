@@ -520,6 +520,23 @@ async def split_entity(
 
             new_entity_id = str(row["id"])
 
+            # Guard: if no references to link, delete the just-created entity
+            # to prevent orphan accumulation.
+            if not merged_ref_ids:
+                await db.execute(
+                    "DELETE FROM canonical_entity WHERE id = $1",
+                    new_entity_id,
+                )
+                logger.error(
+                    "ENTITY ABORTED: split created entity %s (%s) but had "
+                    "zero reference IDs to link — rolled back",
+                    new_entity_id, new_name,
+                )
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Split created entity '{new_name}' but no references to link.",
+                )
+
             ref_placeholders = ", ".join(f"${i + 1}" for i in range(len(merged_ref_ids)))
             try:
                 await db.execute(

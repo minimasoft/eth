@@ -143,6 +143,7 @@ async def resolve_entities_activity(document_id: str) -> dict:
                             matched_ce_id = ent.get("id")
                             break
 
+                created_id = None
                 if matched_ce_id is None:
                     created_id = await _create_canonical_entity(
                         db_conn, entity_name, entity_type, {},
@@ -168,6 +169,30 @@ async def resolve_entities_activity(document_id: str) -> dict:
                                 "Failed to update reference %s: %s",
                                 rid, exc,
                             )
+
+                # Guard: if we created this entity but linked ZERO references,
+                # roll back to prevent orphan accumulation.
+                if created_id is not None and linked == 0:
+                    activity.logger.error(
+                        "ENTITY ABORTED: created canonical_entity %s (%s, %s) but "
+                        "linked 0/%d references — rolling back. Ref IDs: %s",
+                        created_id, entity_name, entity_type, len(ref_ids),
+                        ref_ids,
+                    )
+                    try:
+                        await db_conn.execute(
+                            "DELETE FROM canonical_entity WHERE id = $1",
+                            created_id,
+                        )
+                    except Exception as del_exc:
+                        activity.logger.error(
+                            "Failed to delete aborted entity %s: %s",
+                            created_id, del_exc,
+                        )
+                    nonlocal total_created
+                    total_created -= 1
+                    return 0
+
                 return linked
 
             for entity_type, refs in groups.items():
