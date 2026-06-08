@@ -955,7 +955,6 @@
 
     /* LLM calls summary card (reuses #logs-token-summary pattern) */
     #llm-calls-summary {
-      display: none;
       margin-bottom: 16px;
       padding: 12px;
       background: #f0fdf4;
@@ -2681,8 +2680,16 @@
       tableContainer.style.display = '';
       paginationEl.style.display = 'flex';
 
+      var totalCalls = 0, totalPrompt = 0, totalCompletion = 0, totalCached = 0, totalCost = 0, totalDuration = 0, hasCost = false, hasDuration = false;
+
       tbody.innerHTML = '';
       data.items.forEach(function(item) {
+        totalCalls++;
+        if (item.prompt_tokens != null) totalPrompt += Number(item.prompt_tokens);
+        if (item.completion_tokens != null) totalCompletion += Number(item.completion_tokens);
+        if (item.cached_tokens != null) totalCached += Number(item.cached_tokens);
+        if (item.cost != null) { totalCost += Number(item.cost); hasCost = true; }
+        if (item.duration_ms != null) { totalDuration += Number(item.duration_ms); hasDuration = true; }
         var tr = document.createElement('tr');
         tr.style.cursor = 'pointer';
         tr.innerHTML =
@@ -2720,6 +2727,16 @@
       document.getElementById('llm-calls-page-info').textContent = 'Página ' + page + ' de ' + pages;
       document.getElementById('llm-calls-prev-btn').disabled = page <= 1;
       document.getElementById('llm-calls-next-btn').disabled = page >= pages;
+
+      updateLlmCallsSummary({
+        has_data: totalCalls > 0,
+        total_calls: totalCalls,
+        total_prompt_tokens: totalPrompt,
+        total_completion_tokens: totalCompletion,
+        total_cached_tokens: totalCached,
+        total_cost: hasCost ? totalCost : null,
+        total_duration_ms: hasDuration ? totalDuration : 0
+      });
     }
 
     function toggleLlmCallRow(row) {
@@ -2731,24 +2748,7 @@
     }
 
     async function fetchLlmCallsSummary(docId) {
-      if (!docId) return;
-      if (llmCallsSummaryCache[docId]) {
-        updateLlmCallsSummary(llmCallsSummaryCache[docId]);
-        return;
-      }
-      try {
-        var res = await fetch('/documents/' + encodeURIComponent(docId) + '/llm-calls/summary');
-        if (!res.ok) {
-          document.getElementById('llm-calls-summary').style.display = 'none';
-          return;
-        }
-        var data = await res.json();
-        llmCallsSummaryCache[docId] = data;
-        updateLlmCallsSummary(data);
-      } catch (err) {
-        console.error('fetchLlmCallsSummary error:', err);
-        document.getElementById('llm-calls-summary').style.display = 'none';
-      }
+      llmCallsSummaryCache[docId] = null;
     }
 
     function updateLlmCallsSummary(data) {
