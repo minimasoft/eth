@@ -4,7 +4,7 @@ milestone: v6.1
 milestone_name: — LLM Call Logging & Viewer
 status: Awaiting next milestone
 last_updated: "2026-06-08T05:33:32.616Z"
-last_activity: 2026-06-08 — Milestone v6.1 completed and archived
+last_activity: 2026-06-08 - Completed quick task 260608-3xk: Cleaned 38 orphans, added transactional guard to _dedup_and_link, fixed delete_document collection
 progress:
   total_phases: 19
   completed_phases: 4
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-06-06)
 Phase: Milestone v6.1 complete
 Plan: —
 Status: Awaiting next milestone
-Last activity: 2026-06-08 — Milestone v6.1 completed and archived
+Last activity: 2026-06-08 - Completed quick task 260608-3xk: Cleaned 38 orphans, added transactional guard to _dedup_and_link, fixed delete_document collection
 
 ### v6.1 Phase Structure
 
@@ -120,6 +120,8 @@ None. Ready to begin Phase 24 planning.
 | 260604-taa | review docker compose up logs and fix it. Then wait for tests to run and report back if there's any other issue and what's the plan to fix it. | 2026-06-05 | 5bcf7aa | [260604-taa-review-docker-compose-up-logs-and-fix-it](./quick/260604-taa-review-docker-compose-up-logs-and-fix-it/) |
 | 260605-lmg | Split activities.py into individual files under activities/ directory | 2026-06-05 | 3a39920 | [260605-lmg-split-activities-py-2479-lines-into-indi](./quick/260605-lmg-split-activities-py-2479-lines-into-indi/) |
 | 260605-rm0 | Fix orphan entity bug in delete_document ordering, fix list_entities reference_count, enforce no-orphan axiom in e2e test | 2026-06-05 | 7c7bb13 | [260605-rm0-there-are-still-orphan-entities-after-de](./quick/260605-rm0-there-are-still-orphan-entities-after-de/) |
+| 260608-3xk | Cleaned 38 orphans, added transactional guard to _dedup_and_link (both resolve files) and split endpoint, fixed delete_document to collect entities from event_participant + location_place_id | 2026-06-08 | 7285f2b | [260608-3xk-review-entity-creation-and-disallow-the-](./quick/260608-3xk-review-entity-creation-and-disallow-the-/) |
+| 260608-3xk | Review entity creation and disallow references — cleanup 38 orphans, add transactional guards to _dedup_and_link + split, fix delete_document to collect from event_participant + location_place_id | 2026-06-08 | 7285f2b | [260608-3xk-review-entity-creation-and-disallow-the-](./quick/260608-3xk-review-entity-creation-and-disallow-the-/) |
 
 ## Deferred Items
 
