@@ -49,6 +49,52 @@
 
 ---
 
+## Milestone: v6.1 — LLM Call Logging & Viewer
+
+**Shipped:** 2026-06-08
+**Phases:** 4 | **Plans:** 4 | **Commits:** 11
+
+### What Was Built
+
+- `llm_call_log` table with 12 nullable content columns, document FK, two indexes
+- Fire-and-forget `record_llm_call_log()` wired into `extract_events`, `resolve_entities`, `resolve_entities_with_search` activities
+- `GET /documents/{id}/llm-calls` paginated endpoint following `get_document_logs` pattern
+- "LLM Calls" sub-tab in Logs tab with paginated table, expandable prompt/response rows (monospace), aggregated summary header
+- Client-side summary computation (no dedicated summary endpoint needed — avoids extra backend round-trip)
+
+### What Worked
+
+- **Smart discuss pattern:** The batch table proposal approach for grey areas was fast — user accepted all recommendations across both phases without per-question negotiation
+- **Codebase scout before discuss:** Loading codebase structure before proposing grey areas gave recommendations grounded in existing patterns (matching `get_document_logs` template, existing SPA pagination patterns)
+- **gsd-planner + gsd-executor subagents:** Planning and execution as isolated agents kept main context lean and allowed parallel work
+- **Code review caught real bug:** The CSS `display:none` on `#llm-calls-summary` would have shipped as a broken feature without the automated code review
+
+### What Was Inefficient
+
+- **Summary endpoint mismatch:** The planner assumed a `/documents/{id}/llm-calls/summary` endpoint would exist, but Phase 31 didn't create one. Required post-implementation fix to compute client-side
+- **Phase 29/30 lack formal verification:** These pre-existing phases had no VERIFICATION.md, causing audit gaps that blocked automated milestone close
+- **No integration tests for v6.1:** Unlike v6.0 (which had Phase 28 dedicated to tests), v6.1 has no E2E test verifying pipeline recording actually writes to `llm_call_log`
+
+### Patterns Established
+
+- **Sub-tab navigation inside SPA:** New pattern for nested tab content within existing tabs (Processing Logs / LLM Calls)
+- **Client-side summary computation:** Computing aggregates from fetched page data instead of requiring a dedicated aggregation endpoint — reduces API surface
+- **UI-SPEC for frontend phases:** Establishing design contracts (sub-tab layout, states, copywriting) before implementation improved consistency
+
+### Key Lessons
+
+1. When integrating frontend + backend phases in the same milestone, coordinate API contracts explicitly — the summary endpoint mismatch between Phase 31 and 32 caused rework
+2. Formal verification artifacts (VERIFICATION.md) in every phase prevent audit gates from blocking milestone close — worth the upfront cost
+3. The smart discuss pattern (batch tables, auto-accept) works well for straightforward API/UI phases where the codebase provides clear precedents
+4. Code review caught a real CSS bug that would have shipped as a broken feature — the automation paid for itself immediately
+
+### Cost Observations
+
+- Sessions: 1 autonomous session
+- Notable: Both remaining phases (31, 32) executed in a single autonomous chain. The main overhead was the discuss phase (presenting grey areas) — but the user accepted all recommendations, making it effectively a single-round confirmation.
+
+---
+
 ## Cross-Milestone Trends
 
 ### Process Evolution
@@ -57,6 +103,7 @@
 |-----------|----------|--------|------------|
 | v2.0 | — | 3 | First auto-mode milestone with Temporal workflow integration |
 | v3.0 | 1 | 4 | Full auto-mode chain — zero mid-milestone human intervention |
+| v6.1 | 1 | 4 | Smart discuss (batch table proposals) + gsd-planner/gsd-executor subagents for context isolation |
 
 ### Cumulative Quality
 
