@@ -209,7 +209,7 @@ class DocumentProcessingWorkflow:
             resolve_result = await workflow.execute_activity(
                 resolve_entities_with_search_activity,
                 args=[document_id],
-                start_to_close_timeout=timedelta(seconds=30),
+                start_to_close_timeout=timedelta(seconds=900),
             )
             if "error" in resolve_result:
                 raise RuntimeError(resolve_result["error"])

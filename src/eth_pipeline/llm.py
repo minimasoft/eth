@@ -376,7 +376,7 @@ class OpenRouterProvider:
                     url,
                     headers=headers,
                     json=payload,
-                    timeout=300.0,
+                    timeout=555.0,
                 )
                 if not response.is_success:
                     logger.warning(
@@ -401,7 +401,7 @@ class OpenRouterProvider:
                 msg = f"OpenRouter API returned HTTP {status}: {body}"
                 raise RuntimeError(msg) from exc
             except httpx.TimeoutException as exc:
-                msg = f"OpenRouter API timed out after 120s (model={self._model})"
+                msg = f"OpenRouter API timed out after 555s (model={self._model})"
                 logger.error("LLM API timeout [model=%s]", self._model)
                 raise TimeoutError(msg) from exc
             except json.JSONDecodeError as exc:
@@ -502,7 +502,7 @@ class OpenRouterProvider:
                     url,
                     headers=headers,
                     json=payload,
-                    timeout=300.0,
+                    timeout=555.0,
                 )
                 if not response.is_success:
                     logger.warning(
@@ -527,7 +527,7 @@ class OpenRouterProvider:
                 msg = f"OpenRouter API returned HTTP {status}: {body}"
                 raise RuntimeError(msg) from exc
             except httpx.TimeoutException as exc:
-                msg = f"OpenRouter API timed out during resolution after 120s (model={self._model})"
+                msg = f"OpenRouter API timed out during resolution after 555s (model={self._model})"
                 logger.error("LLM resolution timeout [model=%s]", self._model)
                 raise TimeoutError(msg) from exc
             except json.JSONDecodeError as exc:
@@ -535,6 +535,13 @@ class OpenRouterProvider:
                 msg = f"OpenRouter returned invalid JSON during resolution: {body}"
                 logger.error("LLM resolution invalid JSON [model=%s] [body=%s]", self._model, body)
                 raise RuntimeError(msg) from exc
+            except httpx.RequestError as exc:
+                msg = f"LLM resolution request failed [model={self._model}] [error={exc}]"
+                logger.error(msg)
+                raise RuntimeError(msg) from exc
+            except asyncio.CancelledError:
+                logger.warning("LLM resolution call cancelled [model=%s] [url=%s]", self._model, url)
+                raise
 
         duration_ms = int((time.monotonic() - start) * 1000)
 
