@@ -78,7 +78,7 @@ async def record_llm_call_log(
     """
     raw_id = f"{document_id}:{activity_type}:{chunk_index}"
     record_id = hashlib.sha256(raw_id.encode("utf-8")).hexdigest()
-    timestamp = datetime.now(timezone.utc).isoformat()
+    timestamp = datetime.now(timezone.utc)
 
     try:
         async with get_db(**db_params) as conn:

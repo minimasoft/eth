@@ -189,7 +189,6 @@ async def resolve_entities_activity(document_id: str) -> dict:
                             "Failed to delete aborted entity %s: %s",
                             created_id, del_exc,
                         )
-                    nonlocal total_created
                     total_created -= 1
                     return 0
 
