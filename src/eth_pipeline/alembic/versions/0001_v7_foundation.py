@@ -18,8 +18,11 @@ depends_on = None
 
 
 def upgrade():
+    conn = op.get_bind()
     try:
-        op.execute("CREATE EXTENSION IF NOT EXISTS postgis")
+        conn.execution_options(isolation_level='AUTOCOMMIT').execute(
+            sa.text("CREATE EXTENSION IF NOT EXISTS postgis")
+        )
     except Exception:
         logger.warning("PostGIS extension not available — will be created when postgis/postgis image is deployed (Plan 33-03)")
 
