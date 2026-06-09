@@ -29,7 +29,7 @@ def _resolve_dsn(alembic_url: str) -> str:
     }
     resolved = alembic_url
     for key, default in defaults.items():
-        resolved = resolved.replace(f"%({key})s", os.environ.get(key, default))
+        resolved = resolved.replace(f"${{{key}}}", os.environ.get(key, default))
     return resolved
 
 

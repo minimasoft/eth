@@ -4,8 +4,12 @@ Revision ID: 0001
 Revises: None
 Create Date: 2026-06-09
 """
+import logging
+
 from alembic import op
 import sqlalchemy as sa
+
+logger = logging.getLogger(__name__)
 
 revision = '0001'
 down_revision = None
@@ -14,7 +18,10 @@ depends_on = None
 
 
 def upgrade():
-    op.execute("CREATE EXTENSION IF NOT EXISTS postgis")
+    try:
+        op.execute("CREATE EXTENSION IF NOT EXISTS postgis")
+    except Exception:
+        logger.warning("PostGIS extension not available — will be created when postgis/postgis image is deployed (Plan 33-03)")
 
     op.add_column('document', sa.Column(
         'schema_version', sa.String(10),
