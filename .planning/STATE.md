@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v7.0
 milestone_name: milestone
 status: executing
-last_updated: "2026-06-09T19:56:09.193Z"
+last_updated: "2026-06-09T20:01:31.785Z"
 last_activity: 2026-06-09 -- Phase 36 execution started
 progress:
   total_phases: 6
   completed_phases: 3
   total_plans: 13
-  completed_plans: 10
+  completed_plans: 11
   percent: 50
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-06-08)
 ## Current Position
 
 Phase: 36 (event-api) — EXECUTING
-Plan: 2 of 4
+Plan: 3 of 4
 Status: Ready to execute
 Last activity: 2026-06-09 -- Phase 36 execution started
 
@@ -56,6 +56,7 @@ Progress: [░░░░░░░░░░] 0%
 | 37. Event UI | 0/0 | Not started | - |
 | 38. Cleanup | 0/0 | Not started | - |
 | Phase 36-event-api P01 | 1 min | 2 tasks | 1 files |
+| Phase 36-event-api P02 | 3 min | 2 tasks | 2 files |
 
 ### Prior Milestones
 
@@ -107,6 +108,12 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-09T19:56:09.186Z
+Last session: 2026-06-09T20:01:15.332Z
 This session: 2026-06-09 — v7.0 roadmap created with 6 phases (33-38)
 Next: Plan Phase 33 — Foundation
+
+## Decisions
+
+- [Phase 36-event-api]: Router registered AFTER events_router — FastAPI last-registered-wins shadows old /events path with v2 router — Plan specification: the new /events path must shadow the old one
+- [Phase 36-event-api]: Sort column whitelist (time_start, time_end, created_at, title) prevents SQL injection in ORDER BY — T-36-01 threat mitigation: user-supplied sort value defaults to time_start if absent from whitelist
+- [Phase 36-event-api]: Detail endpoint uses 4 separate asyncpg queries (event, locations, participants, references) — no N+1 loops — Follows entities.py detail endpoint pattern for clean query separation

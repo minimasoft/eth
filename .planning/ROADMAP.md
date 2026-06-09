@@ -120,7 +120,7 @@ v7.0 is a clean-break rewrite of the references/entities/events system. The old 
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 36-02-PLAN.md — events_v2.py route (API-01 list + API-02 detail) + router registration in api/__init__.py
+- [x] 36-02-PLAN.md — events_v2.py route (API-01 list + API-02 detail) + router registration in api/__init__.py
 - [ ] 36-03-PLAN.md — chunk text endpoint (API-03) in documents.py + v7 test fixtures in conftest.py
 
 **Wave 3** *(blocked on Wave 2 completion)*
@@ -164,6 +164,6 @@ v7.0 is a clean-break rewrite of the references/entities/events system. The old 
 | 33. Foundation | 3/3 | Complete   | 2026-06-09 |
 | 34. Smart Chunking | 3/3 | Not started | - |
 | 35. LLM Pipeline | 3/3 | Complete   | 2026-06-09 |
-| 36. Event API | 0/4 | Not started | - |
+| 36. Event API | 2/4 | In Progress|  |
 | 37. Event UI | 0/0 | Not started | - |
 | 38. Cleanup | 0/0 | Not started | - |
