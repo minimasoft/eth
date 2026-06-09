@@ -14,6 +14,7 @@ from eth_pipeline.db import get_db
 
 from eth_pipeline.api.models import (
     APIInfo,
+    ChunkTextResponse,
     DocumentCreated,
     DocumentDeleted,
     DocumentInput,
@@ -422,6 +423,55 @@ async def get_document(document_id: str) -> DocumentStatus:
         entity_count=ent_count,
         chunk_count=chunk_count,
         text_word_count=text_word_count,
+    )
+
+
+@router.get(
+    "/documents/{document_id}/chunks/{part_index}",
+    response_model=ChunkTextResponse,
+)
+async def get_chunk_text(
+    document_id: str,
+    part_index: int,
+) -> ChunkTextResponse:
+    """Get chunk text content with absolute and chunk-relative offset info."""
+    try:
+        async with get_db() as conn:
+            chunk_row = await conn.fetchrow(
+                "SELECT chunk_index, text, offset_start, offset_end "
+                "FROM document_chunk "
+                "WHERE document = $1 AND chunk_index = $2",
+                document_id,
+                part_index,
+            )
+    except Exception as exc:
+        logger.error("Failed to query chunk for document %s part %d: %s", document_id, part_index, exc)
+        raise HTTPException(
+            status_code=502,
+            detail="Failed to query database.",
+        ) from exc
+
+    if not chunk_row:
+        logger.warning("Chunk not found: document %s, part %d", document_id, part_index)
+        raise HTTPException(
+            status_code=404,
+            detail=f"Chunk not found: document {document_id}, part {part_index}",
+        )
+
+    chunk_text = chunk_row["text"] or ""
+    chunk_offset_start = 0
+    chunk_offset_end = len(chunk_text)
+
+    logger.info("Chunk text for %s part %d — %d chars", document_id, part_index, len(chunk_text))
+
+    return ChunkTextResponse(
+        document_id=document_id,
+        part_index=part_index,
+        text=chunk_text,
+        offset_start=chunk_row["offset_start"],
+        offset_end=chunk_row["offset_end"],
+        chunk_offset_start=chunk_offset_start,
+        chunk_offset_end=chunk_offset_end,
     )
 
 
