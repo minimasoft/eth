@@ -6,8 +6,8 @@ import uuid
 
 from temporalio import activity
 
-from eth_pipeline.activities._common import _db_params, _extract_query_results
-from eth_pipeline.chunker import DocumentChunker
+from eth_pipeline.activities._common import _db_params
+from eth_pipeline.chunker import DocumentChunker, SmartChunker
 from eth_pipeline.db import get_db
 from eth_pipeline.processing_log import ProcessingLogger
 
@@ -26,23 +26,27 @@ async def chunk_document_activity(document_id: str, extraction_result: dict) -> 
 
     try:
         async with get_db(**params) as conn:
-            rows = _extract_query_results(
-                await conn.fetch(
-                    "SELECT text_content FROM document WHERE id = $1",
-                    document_id,
-                )
+            row = await conn.fetchrow(
+                "SELECT text_content, schema_version FROM document WHERE id = $1",
+                document_id,
             )
-            if not rows:
+            if not row:
                 return {"error": "Document not found", "document_id": document_id}
 
-            text = rows[0].get("text_content", "")
+            text = row['text_content']
+            schema_version = row['schema_version']
             page_offsets = extraction_result.get("page_offsets", [0])
 
-            chunker = DocumentChunker()
-            chunk_result = chunker.chunk(text, page_offsets)
+            if schema_version == 'v7':
+                chunker = SmartChunker()
+                chunks = chunker.chunk(text, page_offsets)
+            else:
+                chunker = DocumentChunker()
+                chunk_result = chunker.chunk(text, page_offsets)
+                chunks = chunk_result.chunks
 
-            chunks: list[dict] = []
-            for c in chunk_result.chunks:
+            chunks_dicts: list[dict] = []
+            for c in chunks:
                 chunks.append({
                     "chunk_index": c.chunk_index,
                     "text": c.text,
@@ -57,7 +61,7 @@ async def chunk_document_activity(document_id: str, extraction_result: dict) -> 
                 document_id,
             )
 
-            for chunk in chunks:
+            for chunk in chunks_dicts:
                 chunk_id = uuid.uuid4().hex
                 await conn.execute(
                     "INSERT INTO document_chunk "
@@ -74,7 +78,7 @@ async def chunk_document_activity(document_id: str, extraction_result: dict) -> 
                     document_id,
                 )
 
-            if not chunks:
+            if not chunks_dicts:
                 activity.logger.warning(
                     "No chunks to store [document_id=%s]",
                     document_id,
@@ -93,15 +97,16 @@ async def chunk_document_activity(document_id: str, extraction_result: dict) -> 
                 "chunk_document_activity completed [document_id=%s] "
                 "[chunk_count=%d]",
                 document_id,
-                len(chunks),
+                len(chunks_dicts),
             )
             await _log.log(document_id, "chunk_document", "info",
-                           f"Chunking completed: {len(chunks)} chunks",
-                           {"chunk_count": len(chunks)})
+                           f"Chunking completed: {len(chunks_dicts)} chunks",
+                           {"chunk_count": len(chunks_dicts)})
 
             return {
                 "document_id": document_id,
-                "chunk_count": len(chunks),
+                "chunk_count": len(chunks_dicts),
+                "schema_version": schema_version,
             }
 
     except ConnectionError as exc:
