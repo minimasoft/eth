@@ -37,9 +37,18 @@ Every extracted event must be traceable to its exact source text in the original
 
 **v6.1: LLM Call Logging & Viewer — COMPLETE (2026-06-08).** Every LLM call during document processing is logged with full prompt/response text, token counts, cost, and duration. New `llm_call_log` table with per-document indexes. `GET /documents/{id}/llm-calls` paginated API endpoint. "LLM Calls" sub-tab in the Logs tab with expandable rows and aggregated summary. All 4 phases delivered.
 
-## Next Milestone
+## Current Milestone: v7.0 Event-Centric Rewrite
 
-The next milestone is not yet defined. Run `/gsd-new-milestone` to begin: questioning → research → requirements → roadmap.
+**Goal:** Strip and rebuild the references/entities/events system with a unified event object model — smarter chunking, embedded references, new PostgreSQL schema, and event list/detail UI with clickable references.
+
+**Target features:**
+- Remove existing references, events, entities system cleanly
+- Unified event object (location, participants, references embedded)
+- Smart document chunking (512KB target, balanced splits)
+- New PostgreSQL schema with N-N relations for events/locations/participants
+- Event list + detail UI with clickable reference navigation
+- LLM prompts with human rights context to avoid safety filters
+- No cross-document de-duplication (document-centric)
 
 ## Requirements
 
@@ -62,7 +71,13 @@ The next milestone is not yet defined. Run `/gsd-new-milestone` to begin: questi
 
 <!-- Current scope. Building toward these. -->
 
-*None — v6.1 milestone fully delivered.*
+- [ ] Remove existing references/events/entities system
+- [ ] Unified event object schema with embedded references
+- [ ] Smart document chunking (512KB target)
+- [ ] New PostgreSQL relational schema
+- [ ] Event list API and UI
+- [ ] Event detail API and UI with clickable references
+- [ ] LLM prompt tuning with human rights context
 
 ### Out of Scope
 
@@ -75,9 +90,7 @@ The next milestone is not yet defined. Run `/gsd-new-milestone` to begin: questi
 
 ## Context
 
-v6.1 (LLM Call Logging & Viewer) shipped 2026-06-08. All 4 phases (29-32) delivered: `llm_call_log` schema with indexes, pipeline recording in extraction and entity resolution activities, `GET /documents/{id}/llm-calls` paginated API endpoint, and "LLM Calls" sub-tab in the Logs viewer with expandable rows and aggregated summary. Full audit trail now includes per-LLM-call logging alongside document processing logs.
-
-Next milestone TBD — pending new project direction. See `.planning/STATE.md` for deferred items and open artifacts.
+v7.0 Event-Centric Rewrite started 2026-06-08. The current references/entities/events system has proven difficult for LLMs to work with and confusing in the UI. v7.0 strips the old system and rebuilds with a unified event object model where references are embedded directly, making extraction more natural for LLMs and navigation more intuitive for users. Smart document chunking (512KB target, balanced splits) replaces simple partitioning. LLM prompts include human rights context to avoid safety filter triggers. No cross-document de-duplication in this milestone — document-centric.
 
 ## Architecture / Key Patterns
 
@@ -110,6 +123,7 @@ See archived requirements at `.planning/milestones/v6.1-REQUIREMENTS.md` for the
 - [x] v5.1: Entity Resolution Prompt & Batching Fix — COMPLETE
 - [x] v6.0: Event-Centric Data Quality & UI — Phase 28 complete 2026-06-06. Golden test fixture, structured event fields, cascade delete, replay safety, 9/9 tests. 5 phases (24-28) delivered.
 - [x] **v6.1: LLM Call Logging & Viewer** — Shipped 2026-06-08. 4 phases (29-32), 4 plans. `llm_call_log` table, pipeline recording, API endpoint, UI viewer.
+- [ ] **v7.0: Event-Centric Rewrite** — In progress. Strip and rebuild references/entities/events system with unified event object model.
 
 ## Evolution
 
@@ -128,5 +142,5 @@ This document evolves at phase transitions and milestone boundaries.
 3. Audit Out of Scope — reasons still valid?
 4. Update Context with current state
 
----  
-*Last updated: 2026-06-08 — v6.1 milestone shipped*
+---
+*Last updated: 2026-06-08 — v7.0 milestone started*

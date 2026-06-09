@@ -1,16 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v6.1
-milestone_name: — LLM Call Logging & Viewer
-status: Awaiting next milestone
-last_updated: "2026-06-08T22:55:27.303Z"
-last_activity: 2026-06-08 — Milestone v6.1 completed and archived
+milestone: v7.0
+milestone_name: Event-Centric Rewrite
+status: planning
+last_updated: "2026-06-09T00:57:51.172Z"
+last_activity: 2026-06-09
 progress:
-  total_phases: 17
-  completed_phases: 11
-  total_plans: 12
-  completed_plans: 12
-  percent: 65
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -25,10 +25,10 @@ See: .planning/PROJECT.md (updated 2026-06-06)
 
 ## Current Position
 
-Phase: Milestone v6.1 complete
+Phase: Not started (defining requirements)
 Plan: —
-Status: Awaiting next milestone
-Last activity: 2026-06-08 — Milestone v6.1 completed and archived
+Status: Defining requirements
+Last activity: 2026-06-09 — Milestone v7.0 started
 
 ### v6.1 Phase Structure
 
