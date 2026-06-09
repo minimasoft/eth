@@ -55,7 +55,17 @@ v7.0 is a clean-break rewrite of the references/entities/events system. The old 
   3. Chunk size target is configurable via `CHUNK_SIZE_TARGET` environment variable (defaults to 524288)
   4. Each chunk records its part index and provenance — which document part it belongs to, with offset bounds
 
-**Plans**: TBD
+**Plans**: 3 plans
+
+**Wave 1**
+- [ ] 34-01-PLAN.md — NLTK dependency, CHUNK_SIZE_TARGET env var, Dockerfile model download
+
+**Wave 2** *(blocked on Wave 1 completion)*
+- [ ] 34-02-PLAN.md — SmartChunker implementation + schema_version routing in chunk_document_activity
+
+**Wave 3** *(blocked on Wave 2 completion)*
+- [ ] 34-03-PLAN.md — Unit tests: balanced distribution, sentence boundaries, Spanish abbreviations, provenance
+
 **Research flags**: Spanish-language sentence boundary detection in legal text needs validation on test corpus; `. ` separator heuristic may need tuning for Spanish legal abbreviations (art., Dr., Sra.)
 
 ### Phase 35: LLM Pipeline
@@ -123,7 +133,7 @@ v7.0 is a clean-break rewrite of the references/entities/events system. The old 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 33. Foundation | 3/3 | Complete   | 2026-06-09 |
-| 34. Smart Chunking | 0/0 | Not started | - |
+| 34. Smart Chunking | 3/3 | Not started | - |
 | 35. LLM Pipeline | 0/0 | Not started | - |
 | 36. Event API | 0/0 | Not started | - |
 | 37. Event UI | 0/0 | Not started | - |
