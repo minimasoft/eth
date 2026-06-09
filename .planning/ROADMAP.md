@@ -116,7 +116,7 @@ v7.0 is a clean-break rewrite of the references/entities/events system. The old 
 
 **Wave 1**
 
-- [ ] 36-01-PLAN.md — Pydantic v2 response models (7 classes) + __all__ exports
+- [x] 36-01-PLAN.md — Pydantic v2 response models (7 classes) + __all__ exports
 
 **Wave 2** *(blocked on Wave 1 completion)*
 

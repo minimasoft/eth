@@ -30,9 +30,9 @@
 
 ### Event API
 
-- [ ] **API-01**: GET /events paginated list endpoint (filterable by document, sortable by time, searchable by title)
-- [ ] **API-02**: GET /events/{id} full event detail endpoint with resolved references, participants, location
-- [ ] **API-03**: GET /documents/{id}/chunks/{part_index} endpoint for chunk text with offset info
+- [x] **API-01**: GET /events paginated list endpoint (filterable by document, sortable by time, searchable by title)
+- [x] **API-02**: GET /events/{id} full event detail endpoint with resolved references, participants, location
+- [x] **API-03**: GET /documents/{id}/chunks/{part_index} endpoint for chunk text with offset info
 
 ### Event UI
 
@@ -79,9 +79,9 @@
 | PIP-04 | Phase 35 | Pending |
 | PIP-05 | Phase 35 | Pending |
 | PIP-06 | Phase 35 | Pending |
-| API-01 | Phase 36 | Pending |
-| API-02 | Phase 36 | Pending |
-| API-03 | Phase 36 | Pending |
+| API-01 | Phase 36 | Complete |
+| API-02 | Phase 36 | Complete |
+| API-03 | Phase 36 | Complete |
 | UI-01 | Phase 37 | Pending |
 | UI-02 | Phase 37 | Pending |
 | UI-03 | Phase 37 | Pending |
@@ -91,6 +91,7 @@
 | CLN-02 | Phase 38 | Pending |
 
 **Coverage:**
+
 - v7.0 requirements: 25 total
 - Mapped to phases: 25
 - Unmapped: 0 ✓
