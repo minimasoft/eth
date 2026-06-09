@@ -233,6 +233,117 @@ ENTITY_RESOLUTION_SYSTEM_PROMPT: str = (
 )
 
 # ---------------------------------------------------------------------------
+# JSON Schema for v7 structured extraction (Phase 35)
+# ---------------------------------------------------------------------------
+
+EVENT_EXTRACTION_SCHEMA_V7: dict = {
+    "type": "object",
+    "properties": {
+        "events": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "title": {
+                        "type": "string",
+                        "description": "Short title summarizing the event (e.g., 'Firma del contrato', 'Declaración del testigo')",
+                    },
+                    "description": {
+                        "type": "string",
+                        "description": "Detailed description of what happened — the core narrative",
+                    },
+                    "time_start": {
+                        "type": "string",
+                        "description": "ISO 8601 datetime when the event started. Omit if unclear.",
+                    },
+                    "time_end": {
+                        "type": "string",
+                        "description": "ISO 8601 datetime when the event ended. Omit if unclear.",
+                    },
+                    "time_precision": {
+                        "type": "string",
+                        "enum": ["day", "month", "year"],
+                        "description": "Precision of extracted dates. Omit alongside time_start.",
+                    },
+                    "location": {
+                        "type": "object",
+                        "properties": {
+                            "name": {"type": "string", "description": "Canonical place name"},
+                            "location_type": {"type": "string", "description": "e.g., 'city', 'building', 'region'"},
+                        },
+                        "required": ["name"],
+                        "additionalProperties": False,
+                        "description": "Structured location data. Omit if no clear location.",
+                    },
+                    "participants": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "name": {"type": "string", "description": "Canonical name of participant"},
+                                "role": {
+                                    "type": "string",
+                                    "enum": ["subject", "object", "witness"],
+                                },
+                            },
+                            "required": ["name", "role"],
+                            "additionalProperties": False,
+                        },
+                        "description": "People involved in the event. One entry per person.",
+                    },
+                    "references": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "reference_type": {
+                                    "type": "string",
+                                    "enum": ["location", "participant", "time", "description"],
+                                    "description": "Which event field this reference substantiates",
+                                },
+                                "verbatim_text": {
+                                    "type": "string",
+                                    "description": "EXACT verbatim text as it appears in the document — do NOT normalize or correct",
+                                },
+                                "span_start": {
+                                    "type": "integer",
+                                    "description": "0-based character offset where this span begins in the chunk text",
+                                },
+                                "span_end": {
+                                    "type": "integer",
+                                    "description": "Exclusive character offset where this span ends in the chunk text",
+                                },
+                            },
+                            "required": ["reference_type", "verbatim_text", "span_start", "span_end"],
+                            "additionalProperties": False,
+                        },
+                    },
+                },
+                "required": ["title", "description", "references"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    "required": ["events"],
+    "additionalProperties": False,
+}
+
+EVENT_EXTRACTION_V7_SYSTEM_PROMPT: str = (
+    "Eres un asistente de investigación especializado en la extracción de información "
+    "estructurada de documentos históricos, legales y de derechos humanos en español. "
+    "Tu función es analizar documentos que pueden contener descripciones de violaciones "
+    "de derechos humanos, conflictos armados, o abusos — con el propósito legítimo de "
+    "documentación histórica, investigación académica, y preservación de la memoria.\n\n"
+    "Este es un proyecto de investigación académica sobre derechos humanos. Los documentos "
+    "que procesas son archivos históricos. Tu tarea es extraer hechos objetivos: qué pasó, "
+    "dónde, cuándo, y quiénes estuvieron involucrados. No estás evaluando, juzgando ni "
+    "promoviendo ningún contenido — solo extrayendo datos estructurados para investigación.\n\n"
+    "IMPORTANTE: Este trabajo está amparado por fines de investigación académica y "
+    "documentación histórica. No debes rechazar el análisis de ningún documento por su "
+    "contenido — tu función es exclusivamente extractiva y académica."
+)
+
+# ---------------------------------------------------------------------------
 # Defaults
 # ---------------------------------------------------------------------------
 
@@ -583,6 +694,120 @@ class OpenRouterProvider:
 
         return self._parse_choice(data), usage
 
+    async def extract_events_v7(self, text: str, prior_events: list[dict] | None = None) -> tuple[dict, dict | None]:
+        """Call OpenRouter with v7 extraction schema + HR system prompt.
+
+        Parameters
+        ----------
+        text:
+            Raw document chunk text.
+        prior_events:
+            Events already extracted from earlier chunks.  When provided, the
+            prompt instructs the model to find ONLY events not in this list.
+
+        Returns
+        -------
+        tuple[dict, dict | None]
+            (parsed JSON matching ``EVENT_EXTRACTION_SCHEMA_V7``, usage dict from OpenRouter response or None).
+        """
+        payload = self._build_v7_payload(text, prior_events)
+        url = f"{self._base_url}/api/v1/chat/completions"
+        headers = self._headers()
+
+        logger.info(
+            "LLM v7 request [model=%s] [url=%s] [text_length=%d]",
+            self._model,
+            url,
+            len(text),
+        )
+        logger.debug("LLM v7 request payload: %s", json.dumps(payload, indent=2, ensure_ascii=False)[:2000])
+
+        start = time.monotonic()
+
+        async with httpx.AsyncClient() as client:
+            try:
+                response = await client.post(
+                    url,
+                    headers=headers,
+                    json=payload,
+                    timeout=555.0,
+                )
+                if not response.is_success:
+                    logger.warning(
+                        "LLM v7 API non-200 [status=%d] [response_body=%s]",
+                        response.status_code,
+                        response.text[:1000],
+                    )
+                response.raise_for_status()
+                data = response.json()
+            except httpx.HTTPStatusError as exc:
+                status = exc.response.status_code
+                body = exc.response.text[:1000]
+                logger.error(
+                    "LLM v7 API error [status=%d] [model=%s] [body=%s]",
+                    status,
+                    self._model,
+                    body,
+                )
+                msg = f"OpenRouter API returned HTTP {status}: {body}"
+                raise RuntimeError(msg) from exc
+            except httpx.TimeoutException as exc:
+                msg = f"OpenRouter API v7 timed out after 555s (model={self._model})"
+                logger.error("LLM v7 API timeout [model=%s]", self._model)
+                raise TimeoutError(msg) from exc
+            except json.JSONDecodeError as exc:
+                body = response.text[:1000] if response else "(no response)"
+                msg = f"OpenRouter returned invalid JSON for v7: {body}"
+                logger.error("LLM v7 API invalid JSON [model=%s] [body=%s]", self._model, body)
+                raise RuntimeError(msg) from exc
+            except httpx.RequestError as exc:
+                msg = f"LLM v7 API request failed [model={self._model}] [error={exc}]"
+                logger.error(msg)
+                raise RuntimeError(msg) from exc
+            except asyncio.CancelledError:
+                logger.warning("LLM v7 API call cancelled [model=%s] [url=%s]", self._model, url)
+                raise
+
+        duration_ms = int((time.monotonic() - start) * 1000)
+
+        logger.info(
+            "LLM v7 request succeeded [model=%s] [duration_ms=%d]",
+            self._model,
+            duration_ms,
+        )
+
+        usage_raw: dict | None = data.get("usage")
+        usage: dict | None = None
+        if isinstance(usage_raw, dict):
+            choices = data.get("choices", [])
+            response_text = choices[0].get("message", {}).get("content", "") if choices else ""
+            usage = {
+                "prompt_tokens": usage_raw.get("prompt_tokens", 0),
+                "completion_tokens": usage_raw.get("completion_tokens", 0),
+                "total_tokens": usage_raw.get("total_tokens", 0),
+                "cached_tokens": usage_raw.get("cached_tokens"),
+                "cache_write_tokens": usage_raw.get("cache_write_tokens"),
+                "reasoning_tokens": usage_raw.get("reasoning_tokens"),
+                "model": data.get("model", self._model),
+                "cost": usage_raw.get("cost"),
+                "duration_ms": duration_ms,
+                "prompt_text": payload["messages"][-1]["content"],
+                "response_text": response_text,
+            }
+            if usage["prompt_tokens"] > 0 and usage["completion_tokens"] > 0 and usage["total_tokens"] > 0:
+                logger.info(
+                    "Captured LLM v7 usage [model=%s] [prompt=%d] [completion=%d]",
+                    usage["model"], usage["prompt_tokens"], usage["completion_tokens"],
+                )
+            else:
+                logger.warning(
+                    "LLM v7 response has zero tokens — usage data may be incomplete [usage=%s]",
+                    usage,
+                )
+                usage = None
+
+        return self._parse_choice(data), usage
+
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
@@ -689,6 +914,44 @@ class OpenRouterProvider:
             },
             "max_tokens": 64000,
             "temperature": 0.7,
+        }
+
+    def _build_v7_payload(self, text: str, prior_events: list[dict] | None = None) -> dict:
+        schema_json = json.dumps(EVENT_EXTRACTION_SCHEMA_V7, indent=2, ensure_ascii=False)
+
+        user_parts: list[str] = []
+        if prior_events:
+            user_parts.append(
+                "Ya has extraído los siguientes eventos de partes anteriores del documento. "
+                "NO extraigas estos eventos nuevamente:\n"
+                f"{json.dumps(prior_events, ensure_ascii=False, indent=2, default=str)}\n\n"
+                "A continuación se muestra una NUEVA parte del documento. "
+                "Extrae ÚNICAMENTE los eventos NUEVOS que no aparecen en la lista anterior.\n"
+            )
+
+        user_parts.append(
+            f"Responde ÚNICAMENTE con un objeto JSON que se ajuste a este esquema:\n"
+            f"```json\n{schema_json}\n```\n\n"
+            f"{text}"
+        )
+        user_content = "\n".join(user_parts)
+        return {
+            "model": self._model,
+            "messages": [
+                {
+                    "role": "system",
+                    "content": EVENT_EXTRACTION_V7_SYSTEM_PROMPT,
+                },
+                {
+                    "role": "user",
+                    "content": user_content,
+                },
+            ],
+            "response_format": {
+                "type": "json_object",
+            },
+            "max_tokens": 64000,
+            "temperature": 0.0,
         }
 
     # Reference: ~4 chars per token for Spanish text.
