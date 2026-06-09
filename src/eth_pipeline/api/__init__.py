@@ -11,6 +11,7 @@ from eth_pipeline.api.lifespan import lifespan
 # Re-export all models for backward compatibility
 from eth_pipeline.api.models import (  # noqa: F401 — intentional re-export
     APIInfo,
+    ChunkTextResponse,
     DocumentCreated,
     DocumentDeleted,
     DocumentInput,
@@ -22,6 +23,12 @@ from eth_pipeline.api.models import (  # noqa: F401 — intentional re-export
     EntityDetailResponse,
     EntityListItem,
     EntityListResponse,
+    EventListV2Response,
+    EventLocationDetail,
+    EventParticipantDetail,
+    EventRefDetail,
+    EventV2DetailResponse,
+    EventV2ListItem,
     EventsCleared,
     HealthResponse,
     MergeRequest,
@@ -71,8 +78,10 @@ from eth_pipeline.api.routes.documents import router as documents_router  # noqa
 from eth_pipeline.api.routes.entities import router as entities_router  # noqa: E402
 from eth_pipeline.api.routes.references import router as references_router  # noqa: E402
 from eth_pipeline.api.routes.events import router as events_router  # noqa: E402
+from eth_pipeline.api.routes.events_v2 import router as events_v2_router  # noqa: E402
 
 app.include_router(documents_router)
 app.include_router(entities_router)
 app.include_router(references_router)
 app.include_router(events_router)
+app.include_router(events_v2_router)
