@@ -1,10 +1,10 @@
 ---
-gsd_state_version: '1.0'
+gsd_state_version: 1.0
 milestone: v7.0
-milestone_name: Event-Centric Rewrite
-status: roadmap_ready
-last_updated: '2026-06-09T02:00:00.000Z'
-last_activity: 2026-06-09
+milestone_name: milestone
+status: planning
+last_updated: "2026-06-09T01:35:46.996Z"
+last_activity: 2026-06-09 — v7.0 roadmap defined with 6 phases (33-38)
 progress:
   total_phases: 6
   completed_phases: 0
