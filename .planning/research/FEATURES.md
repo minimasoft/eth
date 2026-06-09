@@ -1,426 +1,181 @@
-# Feature Landscape: Event-Centric Data Quality & Investigative UI
-
-**Domain:** Structured event data extraction from Spanish legal documents with timeline, map, and participant-based investigative browsing
-**Researched:** 2026-06-04
-**Confidence:** HIGH (schema/patterns verified against existing codebase + leaflet/vis-timeline domain docs)
-
-## Table Stakes
-
-Features users expect for an event investigation tool. Missing = product feels like a flat list, not an investigative analysis environment.
-
-### T1: Structured Event Data Model — Time Window + N References per Field
-
-**Why Expected:** The current schema (`espacio`, `tiempo`, `humanos`, `objetos` as flat strings) can't answer basic investigative questions: "What events occurred between March and June 1942?" or "Show me the document text that proves this location." Every event analysis tool needs structured time, linked entities, and traceable evidence.
-
-**Complexity:** HIGH (touches LLM prompts, schema, extraction pipeline, entity resolution, API, UI)
-
-**What changes:**
-
-| Current (v5.x) | v6.0 Target |
-|---|---|
-| `event.tiempo` = free-text string (e.g. "el 15 de marzo de 1942") | `event.time_start` = structured datetime (nullable ISO 8601), `event.time_end` = nullable ISO 8601, `event.tiempo_text` = original free-text |
-| `event.espacio` = free-text string | `event.location_entity` = `record<canonical_entity>` (links to place-type canonical entity). `event.espacio_text` = original free-text preserved |
-| `event.humanos` = free-text string | `event.participants` = array of `record<canonical_entity>` (links to person-type entities via junction table). `event.humanos_text` = original free-text preserved |
-| `event.objetos` = free-text string | `event.objects` = array of `record<canonical_entity>` (links to object-type entities via junction table). `event.objetos_text` = original free-text preserved |
-| References linked only to event (flat array) | References linked to specific event elements: each reference carries an `element_target` indicating which event field it substantiates (`que_paso`, `tiempo`, `espacio`, `humanos`, `objetos`) — already partially in schema via `reference_type`, needs strengthening with `element_field` + `element_value` to connect reference to the specific extracted value it verifies |
-| No minimum references | **N-references minimum:** `que_paso` requires at least 1 reference; `tiempo` requires at least 1 if non-null; `espacio` requires at least 1 if non-null; `humanos` requires at least 1 if non-null; `objetos` requires at least 1 if non-null |
-
-**Schema additions needed:**
-
-```surql
--- Event table: new structured fields
-DEFINE FIELD OVERWRITE tiempo ON TABLE event TYPE string | null
-    COMMENT 'Original free-form time text from extraction (human-readable). Structured time in time_start/time_end.';
-DEFINE FIELD time_start ON TABLE event TYPE datetime | null
-    COMMENT 'Earliest time boundary of the event (ISO 8601 datetime; null when time cannot be parsed)';
-DEFINE FIELD time_end ON TABLE event TYPE datetime | null
-    COMMENT 'Latest time boundary of the event (null for point-in-time events without duration)';
-
-DEFINE FIELD OVERWRITE espacio ON TABLE event TYPE string | null
-    COMMENT 'Original free-form location text from extraction. Canonical linking via event_entity_link.';
-DEFINE FIELD OVERWRITE humanos ON TABLE event TYPE string | null
-    COMMENT 'Original free-form participant text from extraction. Canonical linking via event_entity_link.';
-DEFINE FIELD OVERWRITE objetos ON TABLE event TYPE string | null
-    COMMENT 'Original free-form object text from extraction. Canonical linking via event_entity_link.';
-
--- Reference table: element-level targeting
-DEFINE FIELD element_field ON TABLE reference TYPE string | null
-    COMMENT 'Which event field this reference substantiates: que_paso, tiempo, espacio, humanos, objetos';
-DEFINE FIELD element_value ON TABLE reference TYPE string | null
-    COMMENT 'The extracted value this reference asserts (for audit: "reference says X, therefore field is X")';
-DEFINE FIELD time_parsed_start ON TABLE reference TYPE datetime | null
-    COMMENT 'When reference_type=tiempo, the machine-parsed datetime from verbatim_text (null when unparseable)';
-DEFINE FIELD time_parsed_end ON TABLE reference TYPE datetime | null
-    COMMENT 'When reference_type=tiempo, the machine-parsed end datetime (null for point-in-time)';
-
--- Junction table: event_participant (links event -> canonical_entity person)
-DEFINE TABLE event_participant SCHEMAFULL
-    COMMENT 'Junction linking an event to a person-type canonical entity (participant relationship)';
-DEFINE FIELD event ON TABLE event_participant TYPE record<event>;
-DEFINE FIELD entity ON TABLE event_participant TYPE record<canonical_entity>;
-DEFINE FIELD role ON TABLE event_participant TYPE string | null
-    COMMENT 'Role in event: subject, object, witness, organization, etc.';
-DEFINE FIELD created_at ON TABLE event_participant TYPE datetime DEFAULT time::now() READONLY;
-```
-
-**LLM prompt changes needed:**
-- Ask for structured time (`dd/mm/yyyy` or ISO 8601 format) in addition to free-form text
-- Require N references per non-null field (at minimum: 1 per field; ideally 1+ for each discrete entity mentioned in humanos/objetos)
-- Use `element_field` to tag each reference with which event field it substantiates
-- Return structured time as `time_start`/`time_end` strings in extraction JSON
-
-**Dependencies:** Schema evolution (DDL), LLM prompt rewrite, extraction pipeline update, entity resolution to link references to canonical entities
-
-**Confidence:** HIGH — the existing `event_entity_link` table and `reference_type` enum already provide the architectural foundation. The gap is data quality (structured time, element-level reference targeting, minimum references).
-
-### T2: References as First-Class UI Objects
-
-**Why Expected:** The existing system stores references with full provenance (verbatim text, character offsets, page numbers, canonical entity links, document links) but the UI only shows them indirectly through entity counts. A researcher investigating "what evidence supports this event?" needs to browse references directly.
-
-**Complexity:** MEDIUM (mostly new UI tab + API endpoint; data already exists)
-
-**What a reference tab must show:**
-
-| Data | Source Field | Why |
-|------|-------------|-----|
-| Verbatim text (highlighted excerpt) | `reference.verbatim_text` | Core evidence — the actual words from the document |
-| Surrounding context (~50 chars before/after) | Computed from `document.text_content` + `span_start`/`span_end` | Shows the reference in its document context |
-| Source document link (clickable) | `reference.event → event.document` | Navigate to parent document |
-| Page number (if PDF) | `reference.page_number` | Physical location in source |
-| Reference type badge | `reference.reference_type` | Color-coded: espacio=green, tiempo=blue, humanos=orange, objetos=purple |
-| Linked canonical entity (clickable) | `reference.canonical_entity` | Navigate to resolved entity |
-| Resolution confidence | `reference.resolution_confidence` | Score badge (0.0–1.0) |
-| Parent event link | `reference.event` | Navigate to parent event |
-| Element field tag (v6.0) | `reference.element_field` | Show whether this reference asserts the location, time, participants, or description |
-
-**Navigation flows from References tab:**
-- Click reference → jump to parent event detail
-- Click document → open document in Documents tab
-- Click canonical entity → open entity in Entities tab
-- Hover verbatim → show full context tooltip
-
-**API endpoint needed:** `GET /references?document_id=X&entity_id=Y&reference_type=Z&page=N&per_page=20` — paginated, filterable list of references.
-
-**Dependencies:** New REST API endpoint, new UI tab in vanilla JS SPA, cross-tab navigation wiring. Data ALREADY EXISTS in the `reference` table.
-
-**Confidence:** HIGH — existing reference table has all necessary fields. The UI tab is a new view over existing data plus one API endpoint.
-
-### T3: Timeline Visualization
-
-**Why Expected:** A document collection with hundreds of events spanning years is illegible as a flat list. A timeline lets the researcher see temporal patterns at a glance: clusters of activity, gaps, temporal relationships between events.
-
-**Complexity:** MEDIUM (CDN-loaded vis-timeline library, new API endpoint, new UI tab)
-
-**Recommended library: vis-timeline (vis.js)**
-- Mature, MIT-licensed, 4K+ GitHub stars
-- Loadable from CDN — no npm, no build step (consistent with project constraint)
-- Supports: item ranges (start+end dates), clustering for dense periods, zoom (pinch/scroll), click-for-detail, groups (by document or event type)
-- CSS-customizable items (colors, badges, tooltips)
-- Handles fuzzy dates gracefully (items without `end` date render as point-in-time boxes)
-
-**What the timeline must show:**
-
-| Feature | Implementation | Rationale |
-|---------|---------------|-----------|
-| Event items as clickable bars | Each event = one vis-timeline item with `start` = `event.time_start`, `end` = `event.time_end`, `content` = first 80 chars of `que_paso` | Scan events chronologically |
-| Date range filtering | `min`/`max` options passed to vis-timeline; filter controls above timeline (start date, end date) | Narrow investigation to specific time window |
-| Zoom levels | Built-in vis-timeline zoom via scroll wheel — auto-adjusts time scale from years → months → days | Navigate from decade overview to daily detail |
-| Color-coded by document/type | `className` per item based on source document or event type | Visual grouping |
-| Event detail on click | `timeline.on('click', ...)` → open event detail panel or modal showing full event data | Drill into specific event |
-| Cluster dense periods | vis-timeline `cluster: true` option — groups overlapping items, click to expand | Handle years with 100+ events |
-| Groups by document | vis-timeline groups feature — one row per source document, events stacked within | Compare documents temporally |
-
-**API endpoint needed:** `GET /events/timeline?document_id=X&time_start=YYYY-MM-DD&time_end=YYYY-MM-DD&per_page=1000` — returns events with time_start, time_end, first 80 chars of que_paso, document filename, and event ID. Large `per_page` because timeline needs all events in the visible range — no pagination, just time filtering.
-
-**Fallback for events without structured time:** Events where `time_start` is null (LLM couldn't parse a date) are excluded from the timeline. A banner shows: "N eventos sin fecha determinada (no se muestran)" with a count.
-
-**Dependencies:** T1 (structured time fields on events); T1 must complete first, or timeline shows only events that have `time_start` set.
-
-**Confidence:** HIGH — vis-timeline is mature, CDN-loadable, and has extensive documentation verified via official docs fetch. The only risk is that Spanish legal documents may have ambiguous/imprecise dates (e.g., "a mediados de marzo" → parsed to "1942-03-15" with low confidence). Mitigation: store `time_confidence` (0.0–1.0) on each time reference, show confidence indicator on timeline items.
-
-### T4: Map View for Geolocated Events
-
-**Why Expected:** Legal events occur in physical locations — courthouses, crime scenes, jurisdictions. A map view reveals spatial patterns: which areas have the most activity, where specific persons were active, etc.
-
-**Complexity:** MEDIUM-HIGH (requires geocoding places, CDN-loaded Leaflet, new API endpoint, new UI tab)
-
-**Recommended library: Leaflet.js + Leaflet.markercluster**
-- De facto standard for interactive web maps (43K+ GitHub stars)
-- CDN-loadable (unpkg) — no npm, no build step
-- Leaflet.markercluster plugin (4K+ stars): groups nearby markers into numbered clusters, click to expand, spiderfy on click (shows all overlapping markers with connecting lines)
-- Tile layer: OpenStreetMap (free, no API key) or any WMTS provider
-- Vanilla JS API (L.map(), L.marker(), L.popup())
-
-**What the map must show:**
-
-| Feature | Implementation | Rationale |
-|---------|---------------|-----------|
-| Event markers on map | Each event with a geocoded place → one `L.marker([lat, lng])` with popup showing event summary | Spatial browsing |
-| Marker clustering | `L.markerClusterGroup()` — near markers collapse into numbered circles; click to expand; spiderfy at max zoom | Handle dense areas (courthouses with 50+ events) |
-| Click-for-detail popup | `marker.bindPopup('<div>que_paso, fecha, lugar, participantes</div>')` with links to event | Quick event preview |
-| Filter by entity | API parameter `?entity_id=X` to show only events involving a specific person or place | Investigation workflow |
-| Color-coded by event type/document | Custom `L.divIcon` with colored CSS classes | Visual grouping |
-| Fit bounds on load | `map.fitBounds(L.latLngBounds(all_markers))` — center and zoom to show all events | Immediate spatial overview |
-
-**Geocoding strategy:**
-
-| Approach | When Used | Confidence |
-|----------|----------|------------|
-| Canonical entity `properties.coordinates` | If a place-type canonical entity has `{lat: 40.4168, lng: -3.7038}` in its properties | HIGH — human-curated |
-| Nominatim geocoding at entity creation | When a new place entity is created, batch-geocode the `name` via Nominatim API (rate-limited: 1 req/sec, free, OpenStreetMap) | MEDIUM — Nominatim returns results for known places |
-| Manual override via properties | User can edit canonical entity properties to set coordinates | HIGH — user-corrected |
-| Unknown/unlocated | Event omitted from map with count in banner: "N eventos sin ubicación" | N/A |
-
-**API endpoint needed:** `GET /events/map?document_id=X&entity_id=Y&time_start=...&time_end=...&per_page=2000` — returns events with geocoded coordinates (joined from place-type canonical entity `properties.coordinates`), event summary, and entity links.
-
-**Dependencies:** T1 (canonical entity links for places). Also needs: batch geocoding script for existing place entities (one-time migration). The `canonical_entity.properties` FLEXIBLE field already supports storing coordinates — no schema change needed for the data, only for writing coordinates to it.
-
-**Confidence:** HIGH — Leaflet is battle-tested. The geocoding is the riskiest part: Nominatim may not know rural/small Spanish locations. Mitigation: store geocoding source and confidence in `properties`, allow manual correction.
-
-### T5: Participant-Based Event Listing
-
-**Why Expected:** An investigator asks "what events involve Person X?" The current system can't answer this because `humanos` is a free-text string, not linked to canonical entities. Once T1 links participants to canonical entities, a participant view becomes a core investigative workflow.
-
-**Complexity:** MEDIUM (new API endpoint + new UI tab; depends on T1 for entity linking)
-
-**What the participant listing must show:**
-
-| Feature | Implementation |
-|---------|---------------|
-| Filter by person entity | Dropdown or search to select a person-type canonical entity → show all events where they appear |
-| Event list for selected person | Table of events sorted by time, showing: date, location, first 120 chars of description, source document |
-| Cross-reference with places | "Also present at: Place A (3 events), Place B (2 events)" — shows the places this person appears at |
-| Cross-reference with other people | "Also involved with: Person B (5 shared events), Person C (2 shared events)" — shows co-occurrence |
-| Document provenance | Each event row links to source document |
-| Export/print | Copy event list as CSV or Markdown (simple `textContent` export, no library needed) |
-
-**API endpoints needed:**
-- `GET /events?participant_id=X&per_page=50` — paginated events involving a person entity
-- `GET /entities/{id}/cooccurrences` — entities that appear together with the given entity in events (sorted by frequency)
-
-**Query pattern (SurrealDB):**
-```surql
-SELECT * FROM event_participant WHERE entity = $person_id 
-  FETCH event, event.document;
-```
-
-**Dependencies:** T1 (event_participant junction table populated during extraction and entity resolution)
-
-**Confidence:** HIGH — the junction pattern (`event_participant`) is identical to the existing `event_entity_link` pattern. The query is a simple join-fetch.
-
-## Differentiators
-
-Features that distinguish this tool from generic document search. Not required for functional completeness, but transform it from "document processor" to "investigative analysis platform."
-
-### D1: LLM-Extracted Structured Time with Confidence
-
-**Value Proposition:** Unlike tools that rely on regex date parsing (brittle with Spanish free-form dates like "el día de San Juan del año 1942" or "a principios de la primavera"), the LLM itself parses the date during extraction and provides a structured datetime PLUS a confidence score and the original text.
-
-**Complexity:** LOW (incremental change to existing LLM extraction prompt — add fields to the JSON Schema)
-
-**Implementation:** Add to the extraction schema:
-```json
-{
-  "tiempo": "a principios de marzo de 1942",
-  "tiempo_parsed": {
-    "start": "1942-03-01",
-    "end": "1942-03-10",
-    "precision": "month",
-    "confidence": 0.7
-  }
-}
-```
-
-The LLM outputs its best guess for structured time alongside verbatim text. The `precision` field indicates whether the LLM parsed to `day`, `month`, or `year` granularity. The `confidence` field tells the user and the timeline how reliable this date is.
-
-**Storage:** `event.time_start` (datetime), `event.time_end` (datetime), `event.time_precision` (string: "day"/"month"/"year"), `event.time_confidence` (float 0.0–1.0). The original `tiempo` text is preserved.
-
-**Confidence:** HIGH — uses existing LLM extraction infrastructure with a schema expansion. The LLM is already reading Spanish legal text; asking it to also output an ISO 8601 date is a natural extension.
-
-### D2: Audit Trail — Reference → Entity → Event → Document (Chain of Evidence)
-
-**Value Proposition:** Every piece of data is traceable. Click any entity → see all references that support that entity → click a reference → jump to the exact character offset in the source document. This "chain of evidence" navigation is what users expect from legal research tools (see Wikipedia article on citation analysis for legal documents). No other open-source Spanish legal document tool provides this.
-
-**Complexity:** MEDIUM (cross-tab navigation in vanilla JS SPA + enriched entity detail view)
-
-**Navigation chain:**
-```
-Entity (Entities tab) 
-  → click "Referencias" count 
-  → filtered References tab showing all references linked to this entity
-    → click reference verbatim text
-    → jump to parent document with the reference highlighted (scroll to page + offset)
-      OR jump to parent event to see full context
-```
-
-**Implementation:** 
-- Each entity row in Entities tab gains a clickable reference count
-- References tab supports entity filter (`?entity_id=X`)
-- Document view supports scroll-to-offset with text highlighting (simple `window.find()` or `scrollIntoView` on a highlighted span)
-- Breadcrumb navigation: "Documento X > Evento Y > Referencia Z"
-
-**Dependencies:** T2 (References tab), existing entity tab, existing document detail view
-
-**Confidence:** HIGH — existing data model already supports this navigation via foreign keys; only UI wiring needed.
-
-### D3: Co-occurrence Network in Participant View
-
-**Value Proposition:** Beyond listing events for a person, show WHO else appears with them, WHERE, and how often. This reveals relationships that aren't explicit in any single document but emerge across the corpus.
-
-**Complexity:** MEDIUM (analytics query + UI panel)
-
-**What it shows:**
-- "Persona X aparece con:" → ranked list of other persons, with event count
-- "Persona X aparece en:" → ranked list of places, with event count
-- "Persona X aparece en fechas:" → time range (earliest–latest event)
-
-**Query:**
-```surql
-SELECT entity.name, count() AS event_count 
-FROM event_participant 
-WHERE event IN (
-  SELECT VALUE event FROM event_participant WHERE entity = $person_id
-) AND entity != $person_id
-GROUP BY entity 
-ORDER BY event_count DESC 
-LIMIT 20;
-```
-
-**Dependencies:** T1 (event_participant table), T5 (participant view)
-
-**Confidence:** MEDIUM — query pattern is straightforward SurrealDB aggregation. Risk: performance with 10K+ events. Mitigation: LIMIT 20, index on event_participant columns.
-
-## Anti-Features
-
-Features to explicitly NOT build. Each has a surface-appealing rationale but creates disproportionate complexity or conflicts with project constraints.
-
-### A1: Full GIS / Geospatial Queries
-
-| Why Requested | Why Problematic | Alternative |
-|--------------|----------------|-------------|
-| "Show me events within 50km of point X" or "draw a polygon and find events inside" | Requires spatial indexes (SurrealDB supports `GEOMETRY` type but not yet well-documented for complex queries), adds tile server dependency, and dramatically increases complexity. The project is a single-user investigative tool, not a GIS platform. | Marker clustering on Leaflet provides spatial grouping at the UI level. The `canonical_entity.properties.coordinates` store lat/lng as JSON floats — simple, queryable for "same place" lookups. Use OpenStreetMap tiles (free, no key). |
-
-### A2: Calendar Recurrence / RRULE
-
-| Why Requested | Why Problematic | Alternative |
-|--------------|----------------|-------------|
-| "This event happens every Tuesday" or "this is an annual court session" → add recurrence rules | Spanish legal events are discrete (case hearings, rulings, filings) — not recurring events. Adding iCalendar/RRULE parsing would require: RRULE implementation, recurrence expansion for timeline view, handling edge cases (exceptions, end dates). Over-engineered for the domain. | Each event is a standalone record. If the LLM extracts a repeating event, it should create separate event records (one per occurrence) or note the pattern in `que_paso` text. The timeline can visually suggest patterns without recurrence logic. |
-
-### A3: Real-Time Collaboration
-
-| Why Requested | Why Problematic | Alternative |
-|--------------|----------------|-------------|
-| "Multiple investigators should co-browse events" | Requires WebSocket infrastructure, authentication (project has none), conflict resolution, presence indicators. This is a single-user research tool; the data is processed offline via Temporal workflows. | Already documented in Out of Scope in PROJECT.md. No change. |
-
-### A4: Complex Permissions / Multi-Tenant
-
-| Why Requested | Why Problematic | Alternative |
-|--------------|----------------|-------------|
-| "Document sets should be visible only to authorized users" | Requires auth system (none exists), role-based access, document-level ACLs. The project is a single-user tool. | Already documented in Out of Scope. |
-
-### A5: Timeline Animation / Playback
-
-| Why Requested | Why Problematic | Alternative |
-|--------------|----------------|-------------|
-| "Play back events chronologically like a video" | vis-timeline doesn't support animation/playback. Building custom animation requires: controlling the timeline's visible window programmatically at fixed intervals, managing animation state, pause/resume controls. Adds significant JS complexity for marginal investigative value (a static timeline with zoom is sufficient for pattern discovery). | Static vis-timeline with zoom and clustering. The user drags/scans the timeline at their own pace. |
-
-### A6: Map Heatmap / Choropleth Layers
-
-| Why Requested | Why Problematic | Alternative |
-|--------------|----------------|-------------|
-| "Show density heatmap of events" | Requires Leaflet.heat plugin (adds 15KB JS, needs density calculation) or custom canvas overlay. Each plugin adds CDN dependency and integration testing burden. | Marker clustering already shows density — clusters with larger numbers are visually distinct (larger circles, different colors). Sufficient for investigative browsing. |
-
-### A7: Client-Side Date Parser for Spanish Dates
-
-| Why Requested | Why Problematic | Alternative |
-|--------------|----------------|-------------|
-| "Parse dates in the frontend for speed" | Spanish date parsing is notoriously hard — "el día de San Juan de 1942" is not parseable by regex. Writing a JS date parser for Spanish legal text would be a separate project, and worse, it would diverge from the LLM's understanding (which can use context to disambiguate). | The LLM parses dates during extraction (D1). The frontend receives already-parsed `time_start`/`time_end` datetime values. Falls back to showing `tiempo` text when parsing failed. |
+# Feature Research
+
+**Domain:** Event-centric document extraction & visualization (legal/human rights)
+**Researched:** 2026-06-08
+**Confidence:** HIGH
+
+## Feature Landscape
+
+### Table Stakes (Users Expect These)
+
+Features users assume exist in an event extraction system. Missing these = product feels incomplete.
+
+| Feature | Why Expected | Complexity | Notes |
+|---------|--------------|------------|-------|
+| **Event list with document filtering** | Every document produces multiple events; researchers need to see "all events from this document" immediately. This is the primary navigation pattern in MUC-style IE systems. | LOW | Paginated list, filter by document_id. Pagination envelope already established in existing UI (v3.0 pattern). |
+| **Event detail view** | After selecting an event, users need to see all extracted fields (what happened, who, when, where) in one place. | LOW | Full field display of the unified event object. Reuses existing tab-based UI pattern. |
+| **Sort by time** | Events have inherent temporal ordering; viewing them chronologically is the default mental model. | LOW | Sort by extracted time_window. ISO 8601 timestamps sort natively as strings. |
+| **Search by title/description** | Users need to find specific events across documents without scrolling. | MEDIUM | Search over que-paso (what-happened) and event title fields. Existing GraphQL search pattern from M001 can be adapted. |
+| **Clickable references that show source text** | Core value proposition: every extraction must be traceable to exact source text. Without this, users can't verify LLM output. | MEDIUM | Reference stored with character offsets + page number. Need modal/panel that shows surrounding text with highlighted reference span. |
+| **Participants and locations displayed as linked objects** | Events are meaningless without knowing who was involved and where. Participants and locations are first-class entities, not just text fields. | HIGH | Requires new PostgreSQL N-N relations for event↔participant and event↔location. Separate participant/location tables with their own detail views. |
+| **Processing status per chunk** | Users need visibility into which chunks have been processed, which are pending, and which failed. | MEDIUM | Chunk-level status tracking in the pipeline. Extends existing document status pattern (uploaded → extracting → complete) to the chunk level. |
+| **Provenance trace from event back to source document** | Every extracted event must be traceable: event → chunk → page → source document. This is the core audit value of the system. | MEDIUM | Chain of references: event has source_chunk_id → chunk has page_ranges, document_id. All already tracking in existing pipeline; just needs UI exposure. |
+
+### Differentiators (Competitive Advantage)
+
+Features that set the product apart. Not required in basic IE systems, but create significant value for legal/human rights research.
+
+| Feature | Value Proposition | Complexity | Notes |
+|---------|-------------------|------------|-------|
+| **Smart document chunking (512KB target, balanced splits)** | Standard chunking splits at fixed token counts, breaking across semantic boundaries. Smart chunking respects section structure (headers, paragraphs) and produces balanced chunks near 512KB. Prevents "lost in the middle" for long legal documents. | HIGH | Content-aware chunking: use document structure (headings, paragraph breaks) as primary split points, fall back to recursive character splitting only when a single section exceeds 512KB. Overlap of ~200 characters between chunks preserves reference continuity. This is the Unstructured.io "by_title" strategy adapted for LLM extraction rather than RAG. |
+| **Text highlighting showing exact reference context** | When viewing an event, highlight the exact source text within the original document page. This is the core audit requirement — seeing *why* the LLM extracted a particular value. | MEDIUM | Use character offset + page number from reference metadata. Display source text snippet with highlighted span. Prefer server-side extraction of context window (prevents data duplication to client). |
+| **Modal-based event detail with reference navigation** | Clicking an event opens a modal overlay that shows all event fields AND the source reference inline. Click references within the event to jump to source text position. | MEDIUM | Modal pattern avoids page navigation and keeps the event list visible. Reference chips/badges within event fields that expand to show source. Implement as vanilla JS overlay component (matching v3.0 SPA pattern). |
+| **Geospatial location display** | Human rights violations have specific locations. Showing events on a map (even a simple one) reveals geographic patterns that a list alone hides. | MEDIUM | Requires lat/lng in location data. Display via Leaflet.js (lightweight, no build step, CDN-loaded). Map shows pins for event locations with click-to-detail. |
+| **LLM prompt with human rights context** | Safety filters on LLM APIs can block extraction of violent/abusive content common in human rights documentation. Explicit system prompts with "human rights documentation, legal analysis" framing reduce false positives significantly. | LOW | System prompt engineering only. Test with the Spanish legal document corpus to catch false positives. Should be applied to both extraction and entity resolution activities. |
+| **Reference integrity verification** | Every extracted reference should be verifiable against the source document. Detect when reference text doesn't exactly match the source (a sign of LLM hallucination). | HIGH | After extraction, verify each reference's verbatim text against the source text at its claimed offset. Flag mismatches as "reference integrity warnings" in the UI. Requires careful handling of whitespace and formatting differences. |
+| **Temporal precision indicators** | Legal events often have imprecise dates ("around March 2023", "between 2020-2022"). Showing confidence/precision of extracted time data (vs treating all timestamps as exact) is critical for legal analysis. | MEDIUM | TimeML-style time expression typing: exact date, approximate range, duration, recurring. Store precision level alongside time_window. Display differently in UI (exact: "March 15, 2023" vs approximate: "~March 2023"). |
+
+### Anti-Features (Commonly Requested, Often Problematic)
+
+Features that seem good but create problems for this document-centric, single-user research tool.
+
+| Feature | Why Requested | Why Problematic | Alternative |
+|---------|---------------|-----------------|-------------|
+| **Cross-document event de-duplication** | "I want to see all unique events across all documents" — seems natural for aggregation. | Fundamentally changes the system from document-centric (auditable) to knowledge-base (non-auditable). Which document gets credit for an event? What if two documents give conflicting accounts? Requires consensus resolution that's out of scope for v7.0. | Keep document-centric per explicit v7.0 scope boundary. Cross-document analysis can be a future milestone after event-centric foundations are solid. |
+| **Real-time streaming of extraction results** | "I want to see events appear as they're extracted" — reduces perceived latency. | Adds significant complexity to the SPA (WebSocket or polling), while pipeline already processes in seconds-to-minutes. The benefit doesn't justify the complexity for a single-user tool. | Show a spinner with status messages during processing. When complete, refresh the event list. |
+| **Automated timeline/chart generation** | "I want a visual timeline of all events automatically" — compelling demo feature. | Edge cases dominate: events with imprecise dates, multi-day events, recurring events, conflicting temporal information. A naive timeline is actively misleading. | Build the structured data first (v7.0), add timeline visualization as a future differentiator once temporal precision indicators are solid. |
+| **Editing extracted events in-place** | "The LLM got it wrong, let me fix it" — natural user desire. | In-place editing breaks the audit trail. If a user edits an event, is it still traceable? Does reprocessing overwrite edits? Creates tension between correction and provenance. | The existing merge/split entity correction pattern (M002) is the right approach — corrections are tracked as operations, not in-place mutations. Apply same pattern to events in a future milestone. |
+| **Full-text search across all events** | General search across all extracted content. | Overlaps with GraphQL search on que-paso, adds PostgreSQL full-text search indexing complexity, and crosses documents (implying cross-document scope). | Start with per-document event search and title text search. Full-text across documents requires different indexing strategy. |
 
 ## Feature Dependencies
 
 ```
-T1 (Structured Event Model + N References)
-  ├──required_by──> T2 (References Tab) — references need element_field from T1
-  ├──required_by──> T3 (Timeline View) — timeline needs time_start from T1
-  ├──required_by──> T4 (Map View) — map needs location canonical entity links from T1
-  ├──required_by──> T5 (Participant Listing) — needs event_participant junction from T1
-  └──required_by──> D3 (Co-occurrence Network) — needs event_participant from T1
+Smart Document Chunking
+    ├──requires──> Chunk-level status tracking
+    └──enables──> LLM extraction on balanced chunks
 
-T2 (References Tab)
-  └──required_by──> D2 (Audit Trail) — audit trail navigates through references
+Unified Event Object (PostgreSQL schema)
+    ├──requires──> Smart Document Chunking (chunks are extraction unit)
+    ├──requires──> New PostgreSQL schema migration (event table with embedded references, N-N relations)
+    └──requires──> LLM prompt update (emit unified event objects, not separate references/entities)
 
-D1 (LLM Structured Time)
-  └──enhances──> T3 (Timeline) — provides time_confidence + precision for display
+Event List UI
+    ├──requires──> Unified Event Object (data to display)
+    ├──requires──> Event list API endpoint (GET /documents/{id}/events?page=&sort=&search=)
+    └──enhances──> Existing v3.0 pagination pattern
 
-T3 (Timeline), T4 (Map), T5 (Participants)
-  └──all_independent──> Can be built in any order after T1
+Event Detail UI (modal)
+    ├──requires──> Unified Event Object (data to display)
+    ├──requires──> Event detail API endpoint (GET /events/{id})
+    ├──requires──> Text highlighting (reference offset + context extraction)
+    └──enhances──> Clickable reference navigation
+
+Participants & Locations as linked objects
+    ├──requires──> New PostgreSQL schema (participant + location tables, N-N junction tables)
+    ├──requires──> LLM prompt update (emit structured participants/locations)
+    └──enhances──> Event Detail UI (show linked participants/locations)
+
+Geospatial location data
+    ├──requires──> Participants & Locations (structured location objects)
+    └──enhances──> Event Detail UI (map component for location)
+
+LLM prompt with human rights context
+    ├──enhances──> Smart Document Chunking (works with any chunk strategy)
+    └──enhances──> Unified Event Object (extraction quality)
+
+Reference integrity verification
+    ├──requires──> Unified Event Object (references embedded with offsets)
+    └──requires──> Source text accessible (MinIO blob store)
 ```
 
 ### Dependency Notes
 
-- **T1 is the keystone.** Every other feature depends on the structured event model. T1 must be Phase 1 of v6.0. The schema changes, LLM prompt rewrite, and extraction pipeline update must ship before any UI feature.
-- **T3–T5 are independent.** Once T1 ships, the timeline, map, and participant views can be built in parallel or in any order.
-- **D1 enhances T3.** Structured time with confidence doesn't block the timeline — the timeline can work with simple `time_start`/`time_end`. D1 adds quality (confidence badges, precision indicators).
-- **D2 connects T2 to existing tabs.** The audit trail navigation wires the References tab into Documents and Entities tabs using existing data.
+- **Smart Document Chunking is the foundation:** Everything depends on chunks being the unit of extraction. Without smart chunking, LLM extraction quality degrades on long documents (lost-in-the-middle effect). The existing chunker splits by page; smart chunking must balance to 512KB while respecting section boundaries.
+- **PostgreSQL schema migration is the highest-risk item:** Moving from SurrealDB document model to PostgreSQL relational model for events requires clean migration with full data preservation. All downstream features depend on this schema being correct and stable.
+- **LLM prompt changes affect extraction quality:** The unified event object requires a different prompt schema than the current separate references/entities/events prompts. Prompt engineering iteration will be needed.
+- **Participants/Locations as linked objects is the most complex dependency chain:** Requires: schema → prompt → extraction → API → UI. Each link must be reliable for the chain to work.
 
-## MVP Recommendation
+## MVP Definition
 
-**v6.0 MVP (Launch With):**
+### Launch With (v7.0 - Current Milestone)
 
-1. **T1: Structured Event Data Model** — Schema changes, LLM prompt rewrite, extraction pipeline updated, existing events migrated (reprocess). This is the foundation.
-2. **T2: References UI Tab** — New API endpoint + new SPA tab. References are already in the database — this is a view.
-3. **T3: Timeline View** — Requires T1 time fields. Biggest investigative value-add (temporal pattern discovery).
-4. **D1: LLM Structured Time** — Included in the T1 prompt rewrite; marginal cost to add to extraction schema.
+Minimum viable event-centric rewrite — what's needed to validate the unified event model.
 
-**Defer to v6.1:**
+- [x] **Smart Document Chunking** — 512KB target, balanced splits respecting section boundaries. Foundation of all extraction quality improvements.
+- [ ] **Unified Event Object (PostgreSQL schema)** — Event table with embedded references, participant/location junction tables. Migration from existing SurrealDB event model.
+- [ ] **Event List API + UI** — Paginated, filterable by document, sortable by time, searchable by title. Reuse existing v3.0 pagination and tab patterns.
+- [ ] **Event Detail API + UI (modal)** — Full event fields with clickable references showing source context. Modal overlay pattern, no page navigation.
+- [ ] **Participants & Locations as linked objects** — Participant and location tables with N-N relations to events. Displayed in event detail.
+- [ ] **LLM prompt with human rights context** — System prompt framing to avoid safety filter false positives. Test with real Spanish legal document corpus.
+- [ ] **Clean removal of old SurrealDB references/entities/events system** — Drop old tables, update all code paths, ensure zero regression.
 
-- **T4: Map View** — Requires geocoding infrastructure (Nominatim integration, coordinates in canonical_entity properties). Valuable but lower priority than timeline for legal document investigation (temporal patterns matter more than spatial in court documents).
-- **T5: Participant Listing** — Requires T1's event_participant junction table. Valuable but depends on entity resolution quality.
-- **D2: Audit Trail** — Cross-tab navigation wiring; nice-to-have but not essential for investigation workflow.
-- **D3: Co-occurrence Network** — Analytics feature; valuable once corpus is large enough.
+### Add After v7.0 Validation
+
+Features to add once the unified event model is working and verified.
+
+- [ ] **Geospatial map view** — Leaflet.js map showing event locations with click-to-detail. Requires lat/lng data quality from LLM extraction.
+- [ ] **Reference integrity verification** — Auto-verify verbatim reference text against source document. Flag mismatches in UI.
+- [ ] **Temporal precision indicators** — TimeML-style typing of extracted times (exact/approximate/duration/recurring). Display confidence in event detail.
+
+### Future Consideration (Post-v7.0)
+
+Features to defer until event-centric foundations are solid.
+
+- [ ] **Cross-document event de-duplication** — Need to solve the audit/pedigree problem first. Requires deciding which document "owns" a deduplicated event. Out of scope per v7.0 boundary.
+- [ ] **Timeline visualization** — High edge-case surface (imprecise dates, conflicting accounts). Build after temporal precision indicators are solid.
+- [ ] **In-event editing with audit trail** — Corrections must preserve provenance. Apply M002 merge/split pattern to events.
+- [ ] **Authentication / Multi-user** — Not needed for single-user research tool. Defer indefinitely.
 
 ## Feature Prioritization Matrix
 
 | Feature | User Value | Implementation Cost | Priority |
 |---------|------------|---------------------|----------|
-| T1: Structured Event Model | HIGH — unlocks everything else | HIGH — touches all layers | P1 |
-| T2: References UI Tab | HIGH — data already exists, just needs view | MEDIUM — new API endpoint + UI tab | P1 |
-| T3: Timeline View | HIGH — temporal pattern discovery is core workflow | MEDIUM — vis-timeline is CDN, mostly plumbing | P1 |
-| D1: LLM Structured Time | MEDIUM — enhances timeline quality | LOW — incremental prompt change | P1 (bundled with T1) |
-| T4: Map View | MEDIUM — spatial patterns secondary to temporal | MEDIUM-HIGH — geocoding integration | P2 |
-| T5: Participant Listing | MEDIUM — person-centric investigation | MEDIUM — new API endpoint + UI tab | P2 |
-| D2: Audit Trail | MEDIUM — legal research value | MEDIUM — cross-tab navigation | P2 |
-| D3: Co-occurrence Network | LOW — analytics feature | MEDIUM — aggregation query + UI | P3 |
+| Smart Document Chunking | HIGH | HIGH | P1 |
+| Unified Event Object (PostgreSQL schema) | HIGH | HIGH | P1 |
+| Event List API + UI | HIGH | MEDIUM | P1 |
+| Event Detail UI with clickable references | HIGH | MEDIUM | P1 |
+| Participants & Locations as linked objects | HIGH | HIGH | P1 |
+| LLM prompt with human rights context | MEDIUM | LOW | P1 |
+| Clean removal of old SurrealDB system | MEDIUM | MEDIUM | P1 |
+| Reference integrity verification | HIGH | HIGH | P2 |
+| Geospatial location display | MEDIUM | MEDIUM | P2 |
+| Temporal precision indicators | MEDIUM | MEDIUM | P2 |
+| Timeline visualization | MEDIUM | HIGH | P3 |
+| Cross-document event de-duplication | HIGH | VERY HIGH | P3 |
+| In-event editing with audit trail | MEDIUM | HIGH | P3 |
 
 **Priority key:**
-- P1: Must have for v6.0 launch
-- P2: Should have for v6.0, defer to v6.1 if risk
-- P3: Nice to have, v6.x+
+- P1: Must have for v7.0
+- P2: Should have, add after v7.0 validation
+- P3: Nice to have, future milestone
 
 ## Competitor Feature Analysis
 
-| Feature | Aleph (OCCRP) | TimelineJS (Knight Lab) | Graph Commons | Our Approach |
-|---------|---------------|------------------------|---------------|-------------|
-| Structured event extraction from documents | Manual entity tagging | Not applicable (timeline tool) | Manual graph building | LLM auto-extraction with N references — unique differentiator |
-| References as UI objects | Partial (document mentions) | Not applicable | Not applicable | First-class references tab with full provenance — unique |
-| Timeline | No built-in | Yes (spreadsheet-based) | No | Embedded vis-timeline with clustering — comparable to TimelineJS |
-| Map | Partial (geocoded entities) | Optional via Google Sheets | No | Leaflet + marker clustering with geocoding — standard pattern |
-| Participant listing | Entity profiles with document links | No | Entity-centric graph | Junction-table-based participant view with co-occurrence — unique |
-| Spanish language support | Limited | Yes (configurable) | N/A | Native Spanish (prompts, UI) |
-| No build step / npm | N/A (React) | Yes (CDN) | N/A (React) | Vanilla JS + CDN libraries — lighter than all competitors |
+| Feature | Academic IE Systems (TimeML/FRED/EventCognition) | Commercial Legal Analytics (LexisNexis/Westlaw) | Our Approach |
+|---------|--------------------------------------------------|------------------------------------------------|--------------|
+| Event extraction approach | Rule-based or fine-tuned ML, limited to specific schemas | Proprietary NLP, closed systems, expensive | LLM-powered with structured JSON schema output, provider-agnostic |
+| Document chunking | Whole-document or sentence-level | Proprietary | Smart chunking (512KB balanced), section-boundary aware, with overlap |
+| Reference tracing | Academic (offset-based in corpus) | Limited or non-existent | First-class references with character offsets + page number, source text verification |
+| Event UI | Mostly academic datasets, no user-facing UIs | Form-based data entry, not automated extraction | Filterable list + modal detail with clickable source references |
+| Geospatial | Rare in IE systems | Some (LexisNexis Map) | Leaflet.js map for event locations |
+| Human rights context | Academic corpora (MUC terrorism, clinical) | US/western legal focus only | Explicit human rights framing in prompts for Spanish-language legal docs |
+| Auditability | Academic (corpus-level) | Limited | Full provenance: event → chunk → page → source document, LLM call logging |
+| LLM cost tracking | N/A | N/A | Per-LLM-call token/cost tracking (v5.0) |
+| Open source? | Some (FRED, GATE) | No | Yes (MIT) |
 
-**Key insight:** No existing open-source tool does LLM-powered structured event extraction from Spanish legal documents with audit-trail references. This is the core differentiator. The timeline/map/participant views are standard investigative tools that any analyst expects — our value is that the data is auto-extracted and traceable.
+**Key insight:** No existing tool combines LLM-powered extraction, smart chunking, reference tracing, geospatial display, and human-rights context in an open-source package. The gaps are in the UX for event-centric navigation (most academic tools don't have UIs) and in the specific domain framing for human rights.
 
 ## Sources
 
-- **vis-timeline docs** (official): https://visjs.github.io/vis-timeline/docs/timeline/ — HIGH confidence (verified full documentation fetch)
-- **Leaflet.js API reference** (official): https://leafletjs.com/reference.html — HIGH confidence (verified full API fetch, v1.9.4)
-- **Leaflet.markercluster README** (GitHub): https://github.com/Leaflet/Leaflet.markercluster — HIGH confidence (verified full README fetch, v1.4.1)
-- **Citation analysis for legal documents** (Wikipedia): https://en.wikipedia.org/wiki/Citation_analysis — HIGH confidence (verified full article fetch)
-- **Existing codebase**: `llm.py` (extraction schema + prompts), `schema.surql` (event/reference/canonical_entity tables), `static/index.html` (vanilla JS SPA pattern), `activities.py` (extraction pipeline) — HIGH confidence
-- **OpenStreetMap Nominatim**: https://nominatim.openstreetmap.org — MEDIUM confidence (geocoding service known from training data, not verified with live API call — free, rate-limited to 1 req/sec)
+- Wikipedia: Temporal Annotation / Event Extraction — Academic background on MUC conferences, TimeML standard, template-filling approach
+- Wikipedia: TimeML (ISO-TimeML) — EVENT, TIMEX3, TLINK tag specifications for temporal annotation markup
+- Unstructured.io: Chunking Documentation — Content-aware chunking strategies (by_title, basic), max_characters/new_after_n_chars patterns, overlap, element boundary preservation
+- Pinecone: Chunking Strategies for LLM Applications — Fixed-size, content-aware, semantic chunking methods; chunk size selection guidance; chunk expansion for context preservation
+- PROJECT.md (v7.0 Event-Centric Rewrite) — Current project state, scope boundaries, architectural constraints
+- Temporal: Workflow Documentation — Deterministic workflow/replay constraints relevant to pipeline design
+- MUC Conference Series (1987-1998) — DARPA-funded information extraction competitions, terrorism extraction domain template
 
 ---
 
-*Feature research for: v6.0 Event-Centric Data Quality & Investigative UI*
-*Researched: 2026-06-04*
+*Feature research for: Event-centric document extraction & visualization (legal/human rights)*
+*Researched: 2026-06-08*

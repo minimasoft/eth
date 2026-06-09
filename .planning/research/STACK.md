@@ -1,253 +1,191 @@
-# Stack Research: v6.0 Event Data Model & UI
+# Stack Research
 
-**Domain:** Event data model quality, timeline/map visualization, references UI — additions to existing Python/FastAPI/Temporal/SurrealDB pipeline
-**Researched:** 2026-06-04
+**Domain:** Event-centric document processing pipeline (PostgreSQL, smart chunking, event UI)
+**Researched:** 2026-06-08
 **Confidence:** HIGH
 
-## Executive Summary
+## Current Stack Context
 
-The v6.0 milestone adds timeline visualization, map view, references UI tab, and participant-based event listing to an existing vanilla JS SPA served by FastAPI. The stack additions are surgical: two CDN-loaded JavaScript libraries (Leaflet for maps, vis-timeline for timeline), two Python libraries for Spanish date parsing (dateparser + python-dateutil), and existing SurrealDB geospatial features that require zero new infrastructure. No build system, no npm, no new services — everything integrates into the existing `/ui` static directory served by FastAPI's `StaticFiles` mount.
+The project already migrated from SurrealDB to PostgreSQL in earlier milestones. The `pyproject.toml` and `docker-compose.yml` already reflect PostgreSQL (asyncpg, postgres:17-alpine), langchain-text-splitters, pypdfium2, etc. This research covers **only additions and changes needed for v7.0**.
 
-## Recommended Stack
+Currently installed versions (verified via uv pip show):
+- `asyncpg==0.31.0` (already >=0.30.0)
+- `langchain-text-splitters==1.1.2` (already >=0.3.0)
+- `pypdfium2==5.8.0` (already >=4.30.0)
+- `pypdf==6.12.2` (already >=5.1.0)
+- `minio==7.2.20` (already >=7.2.0)
+- `langchain-core==1.4.0` (dependency of langchain-text-splitters)
 
-### Core Technologies — Additions
+**Not installed (needs adding):**
+- `alembic` — migration management
+- `SQLAlchemy` — required by Alembic (do NOT use in application code)
+- PostgreSQL `postgis` extension — Docker image change
+
+## Recommended Stack Additions
+
+### Core Technologies (Additions Only)
 
 | Technology | Version | Purpose | Why Recommended |
 |------------|---------|---------|-----------------|
-| Leaflet.js | 1.9.4 | Interactive map visualization in the UI | Lightest (42KB gzipped), best-documented, zero-build-step CDN map library. Uses free OpenStreetMap tiles — no API key needed. Industry standard for no-framework map UIs. |
-| vis-timeline | 8.5.1 | Horizontal event timeline visualization | Standalone UMD build has zero dependencies when loaded via CDN. Supports ISO date ranges, click events, zoom, localization. Spanish locale bug fixed in v8.4.1. Actively maintained (latest release May 2026). |
-| dateparser | ~1.2.1 | Parse Spanish-language dates from legal text | Parses dates in 200+ languages natively, including Spanish: `"Martes 21 de Octubre de 2014"`, `"3 de marzo de 2020"`. `search_dates()` extracts dates from running text. Specify `languages=['es']` for performance. |
-| python-dateutil | ~2.9.0 | ISO parsing, date arithmetic | Reliable standard for `dateutil.parser.parse()`, `relativedelta` for computing time windows and date ranges. Complements dateparser for structured date operations. |
+| alembic | `>=1.18.0` (latest 1.18.4) | Schema migration management for PostgreSQL | Current schema is applied via raw SQL (scripts/init_schema.py) with no version tracking. Alembic provides upgrade/downgrade, autogenerate, and audit trail. The existing `schema.sql` becomes the initial migration, then v7.0 schema changes are additive migrations. |
+| SQLAlchemy | `>=2.0` (latest 2.0.x) | Alembic metadata source for autogenerate | Required dependency of Alembic. Used ONLY for Alembic's `target_metadata` and autogenerate comparison. Do NOT use in application code — all asyncpg queries stay raw for performance and existing codebase consistency. |
+| PostgreSQL postgis | postgres:17-alpine + postgis extension | Geospatial data storage (lat/lon for event locations) | The existing `location_point` JSONB field in the event table stores `{lat, lon, label}` but has no spatial query capability. PostGIS enables spatial queries (e.g., "events within 10km of a point") and validates coordinate data. Minimal overhead — just enable the extension. |
 
-### Existing Stack — Used As-Is (No Changes)
-
-| Technology | Role in v6.0 |
-|------------|-------------|
-| SurrealDB | Geospatial queries via `type::point()` and `geo::distance()` — already built-in, no extensions needed |
-| FastAPI | Serves new API endpoints (timeline data, map data, participant-event links) and static files at `/ui` |
-| Temporal | Workflow processes documents — event extraction prompt changes only, no infrastructure changes |
-| Vanilla JS SPA | Extends existing `index.html` with new tabs and CDN-loaded libraries — no build step |
-| OpenRouter LLM | Extraction prompt improvements for structured event data (time window, participants, location) |
-
-### Supporting Libraries — New Python Dependencies
+### Supporting Libraries
 
 | Library | Version | Purpose | When to Use |
 |---------|---------|---------|-------------|
-| dateparser | ~1.2.1 | Parse human-readable Spanish dates from extracted `tiempo` text | During event processing: normalize LLM-extracted date strings into structured `datetime` objects for storage in the event `time_window` property |
-| python-dateutil | ~2.9.0 | Date arithmetic and ISO parsing | Compute event durations, sort events chronologically for timeline, handle edge cases dateparser misses |
+| alembic | `>=1.18.0` | Schema migrations with async run_async() | All schema changes. Add to pyproject.toml as a dependency. Initialize with `alembic init alembic`, configure with `run_async()` for asyncpg. The initial revision stamps the current schema.sql state. |
+| SQLAlchemy | `>=2.0.32` | Alembic metadata model | Only in `alembic/env.py` for `target_metadata`. Define a minimal `MetaData` object with the current tables so autogenerate can detect schema drift. Do NOT import SQLAlchemy into application code. |
 
-### Supporting Libraries — New Frontend Dependencies (CDN, No Build)
+### Development Tools (No Change)
 
-| Library | Version | Purpose | CDN URL |
-|---------|---------|---------|---------|
-| Leaflet.js | 1.9.4 | Map visualization tab | `https://unpkg.com/leaflet@1.9.4/dist/leaflet.css` + `.js` |
-| vis-timeline | 8.5.1 | Timeline visualization tab | `https://unpkg.com/vis-timeline@8.5.1/standalone/umd/vis-timeline-graph2d.min.js` + `/styles/vis-timeline-graph2d.min.css` |
+| Tool | Purpose | Notes |
+|------|---------|-------|
+| uv | Python package management | Already in use. Add alembic via `uv add alembic`. |
+| Docker Compose | Deployment orchestration | Already in use. No changes needed beyond postgis Docker image. |
+
+### Docker Image Changes
+
+The `docker-compose.yml` currently uses `postgres:17-alpine`. For PostGIS:
+
+**Option A (Recommended for development):** Add postgis to the Docker image with a Dockerfile extension:
+
+```dockerfile
+FROM postgres:17-alpine
+RUN apk add --no-cache postgis
+```
+
+Or reference `docker-compose.yml` change to use `postgres:17-alpine` pre-built with postgis. The simplest approach: use `postgis/postgis:17-3.5-alpine` image, which bundles PostgreSQL 17 + PostGIS 3.5 on Alpine.
+
+**Option B (Simpler):** Keep the current `postgres:17-alpine` image and install postgis via `apk add postgis` in the `schema-init` script before running DDL. This avoids changing the base image at the cost of slightly slower init.
+
+**Recommendation: Use `postgis/postgis:17-3.5-alpine`** — it's the official PostGIS Docker image, version-pinned, and maintained by the PostGIS team. Add to docker-compose.yml:
+
+```yaml
+postgres:
+  image: postgis/postgis:17-3.5-alpine
+```
+
+Then in `schema.sql` add: `CREATE EXTENSION IF NOT EXISTS postgis;`
 
 ## Installation
 
-### Python Dependencies (add to pyproject.toml)
-
 ```bash
-# pyproject.toml dependencies additions:
-#   "dateparser>=1.2.0",
-#   "python-dateutil>=2.9.0",
+# New dependencies for v7.0
+uv add alembic "sqlalchemy>=2.0"         # schema migration management
+
+# No further additions needed:
+# asyncpg, langchain-text-splitters, pypdfium2, pypdf, minio, httpx, temporalio already installed
 ```
 
-### Frontend CDN (add to index.html `<head>`)
+## Changed Versions (from existing pyproject.toml)
 
-```html
-<!-- Leaflet Map -->
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
-        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+The following versions are INSTALLED but older than what pyproject.toml specifies. Loose constraints allow this, but v7.0 should bump them:
 
-<!-- vis-timeline (standalone, zero dependencies) -->
-<script src="https://unpkg.com/vis-timeline@8.5.1/standalone/umd/vis-timeline-graph2d.min.js"></script>
-<link rel="stylesheet" href="https://unpkg.com/vis-timeline@8.5.1/styles/vis-timeline-graph2d.min.css" />
-```
-
-## SurrealDB Geospatial — Existing Capabilities (No Additions Needed)
-
-SurrealDB has native geospatial support built into the Rust core. The project already uses SurrealDB — no new extensions, plugins, or schema fields are needed beyond storing coordinates.
-
-### Geospatial Primitives Available
-
-| SurrealQL Feature | Usage in v6.0 |
-|-------------------|---------------|
-| `type::point([lng, lat])` | Convert lat/lon arrays into geometry points when storing event locations |
-| `(lng, lat)` tuple syntax | Shorthand for point creation in INSERT/UPDATE statements |
-| `geo::distance(a, b)` | Compute distance in meters between two geometry points — sort map results by proximity |
-| GeoJSON `{ type: "Point", coordinates: [...] }` | Alternative point representation (not needed — tuple syntax is simpler) |
-
-### Schema Pattern for Location Storage
-
-When an event's `espacio` reference resolves to a known location with coordinates, store the point in the canonical entity's `properties` object:
-
-```surql
--- Store location coordinates on a place entity
-UPDATE canonical_entity:abc123 SET properties = {
-    name: "Tribunal Superior de Madrid",
-    coordinates: type::point([40.4168, -3.7038])
-};
-
--- Find all event entities linked to places within 50km of Madrid
-SELECT *, geo::distance(
-    (SELECT properties.coordinates FROM canonical_entity WHERE id = $event->event_entity_link->entity).coordinates,
-    type::point([40.4168, -3.7038])
-) AS distance_km
-FROM canonical_entity
-WHERE entity_type = "event"
-  AND geo::distance(
-      type::point([40.4168, -3.7038]),
-      (SELECT properties.coordinates FROM ONLY event_entity_link WHERE event = $parent.id).entity.properties.coordinates
-  ) < 50000;
-```
-
-**Important:** SurrealDB's `geo::distance()` returns meters. The geospatial index uses R-tree internally when `DEFINE INDEX ... ON TABLE ... COLUMNS coordinates` is added, but for v6.0's expected data volume (hundreds to low thousands of events), sequential scan is acceptable. Indexing can be deferred to a future optimization phase.
-
-## Date Parsing Strategy — Python Backend
-
-### Why Two Libraries
-
-| Library | Strength | Weakness |
-|---------|----------|----------|
-| **dateparser** | Parses natural language: `"el 15 de marzo de 2024"`, `"Martes 21 de Octubre"`, `"hace 3 días"` | Slower, heavier dependency |
-| **dateutil.parser** | Fast ISO 8601 parsing, `relativedelta` for date math, standard in Python ecosystem | Cannot parse Spanish natural language |
-
-**Pattern:** Use dateparser for LLM-extracted free-form `tiempo` text; use dateutil for all internal date operations and ISO handling. Dateparser is called once per event during processing (not in hot paths), so its performance cost is negligible.
-
-### Usage in Temporal Activity
-
-```python
-import dateparser
-from dateutil.parser import parse as parse_iso
-from dateutil.relativedelta import relativedelta
-
-def normalize_event_time(tiempo_text: str | None) -> dict | None:
-    """Parse LLM-extracted time text into structured time window."""
-    if not tiempo_text:
-        return None
-
-    # Try Spanish natural language first
-    parsed = dateparser.parse(tiempo_text, languages=['es'])
-    if parsed:
-        return {
-            "timestamp": parsed.isoformat(),
-            "precision": "day",  # or month, year based on specificity
-            "original_text": tiempo_text,
-        }
-
-    # Fallback: try ISO parsing
-    try:
-        parsed = parse_iso(tiempo_text)
-        return {
-            "timestamp": parsed.isoformat(),
-            "precision": "exact",
-            "original_text": tiempo_text,
-        }
-    except Exception:
-        return {"original_text": tiempo_text, "precision": "unknown"}
-```
+| Package | pyproject.toml | Installed | Action |
+|---------|---------------|-----------|--------|
+| langchain-text-splitters | `>=0.3.0` | 1.1.2 | Bump minimum to `>=1.0.0` — breaks are additive (new features, same API) |
+| pypdfium2 | `>=4.30.0` | 5.8.0 | OK as-is (loose constraint works) |
+| pypdf | `>=5.1.0` | 6.12.2 | OK as-is |
+| asyncpg | `>=0.30.0` | 0.31.0 | OK as-is |
 
 ## Alternatives Considered
 
-| Domain | Recommended | Alternative | Why Not |
-|--------|-------------|-------------|---------|
-| Timeline UI | vis-timeline 8.5.1 (standalone UMD) | D3.js custom timeline | D3 requires ~500+ lines of custom code for a basic timeline with zoom/scroll; vis-timeline gives that out of the box. D3 is powerful but wrong tradeoff for this feature scope. |
-| Timeline UI | vis-timeline 8.5.1 (standalone UMD) | Pure CSS Grid timeline | Zero dependency but no zoom, no scroll, no click interactions — would need to build all interactivity from scratch. Good for static display only. |
-| Timeline UI | vis-timeline 8.5.1 (standalone UMD) | Timeline.js (Knight Lab) | Designed for storytelling/media timelines (Google Sheets as data source), not for data-driven event timelines. Wrong use case. |
-| Map UI | Leaflet 1.9.4 | OpenLayers | More feature-rich (vector tiles, WebGL) but 3x larger and requires more setup. Overkill for pin-on-map event markers. |
-| Map UI | Leaflet 1.9.4 | Mapbox GL JS | Requires API key and account, introduces external dependency. Violates "no external services" constraint. |
-| Map UI | Leaflet 1.9.4 | Google Maps JS API | Requires API key, billing account, and terms of service for data storage. Not suitable for a research tool. |
-| Map tiles | OpenStreetMap (default) | CARTO basemaps | CARTO has a nice "positron" style but adds another CDN dependency. OSM tiles are free, well-maintained, and familiar. |
-| Date parsing | dateparser + dateutil | dateparser alone | dateutil's `relativedelta` is needed for duration calculations. Adding it costs ~500KB in the Docker image. |
-| Date parsing | dateparser + dateutil | datefinder | datefinder extracts dates from text but doesn't parse Spanish. Less capable for our use case. |
-| Date parsing | dateparser + dateutil | pendulum | Pendulum is a full datetime replacement library. Overkill — we only need parsing, not a new datetime subsystem. |
-| Frontend dates | ISO strings only (no JS lib) | Temporal (JS) / date-fns / Luxon | All timeline and map data comes from the backend as ISO 8601 strings. vis-timeline accepts ISO strings natively. Leaflet uses Leaflet `L.latLng()`. No client-side date library needed. |
+| Recommended | Alternative | When to Use Alternative |
+|-------------|-------------|-------------------------|
+| Alembic + raw asyncpg | SQLAlchemy 2.0 async ORM for all DB access | If the team wants full ORM with async sessions and is willing to rewrite all existing asyncpg queries. Not recommended for v7.0 — the rewrite cost outweighs benefits, and the existing raw-SQL pattern is performant and battle-tested. |
+| langchain-text-splitters (existing) | `semchunk` library | If sentence-aware chunking is needed instead of recursive character splitting. `semchunk` uses semantic boundaries (sentences/paragraphs) rather than fixed-size windows. Not recommended for v7.0 — langchain's `RecursiveCharacterTextSplitter` is already in use, proven, and the 512KB target change is just a parameter update. |
+| pypdfium2 (existing) | `pdfplumber`, `pdfminer.six` | If higher-fidelity text extraction is needed. NOT recommended for v7.0 — pypdfium2 is already battle-tested in v2.0–v6.1 and produces reliable text with page offsets. |
+| PostGIS | JSONB only (current approach) | If geospatial queries are never needed. But the PROJECT.md explicitly lists geospatial queries as a core value, so PostGIS is warranted. |
 
 ## What NOT to Use
 
 | Avoid | Why | Use Instead |
 |-------|-----|-------------|
-| npm / node packages for frontend | Existing SPA has no build step. Adding one for two CDN-loadable libraries is unjustified complexity. | CDN `<script>` tags in `index.html` |
-| Mapbox or Google Maps | Requires API keys, external accounts, billing. Violates zero-external-dependency constraint. | Leaflet + OpenStreetMap tiles (free, no key) |
-| D3.js for timeline | ~500+ lines of custom code to match vis-timeline's 5-line initialization. Wrong tradeoff: D3 for custom chart types, not standard timelines. | vis-timeline standalone UMD |
-| pandas for date handling | Massive dependency (~50MB) for what dateparser + dateutil do in < 5MB combined. Pandas adds no value for date parsing. | dateparser + python-dateutil |
-| Moment.js / Luxon / date-fns on frontend | vis-timeline accepts ISO strings natively. Leaflet uses numeric lat/lon. No JS date manipulation needed. | Server-sent ISO 8601 strings |
-| New Docker services | Timeline, map, and references are all in-process features — no new infrastructure needed. | Extend existing FastAPI endpoints |
-| Build tools (webpack, vite, rollup) | Vanilla JS SPA architecture decision (PROJECT.md line 105). Breaking this for visualizations adds churn with no user-facing benefit. | Continue with CDN-loaded scripts |
+| SQLAlchemy in application code | The entire codebase uses raw asyncpg with parameterized queries (`$1`, `$2`). Mixing ORM and raw SQL in the same codebase creates confusion, slows development, and adds no benefit for this project's query patterns (mostly flat fetches with pagination). | Keep raw asyncpg for all application queries. Only use SQLAlchemy in alembic/env.py for schema metadata comparison. |
+| A full JS framework (React, Vue, Svelte) | The app is a single-user research tool served as a static SPA from FastAPI. Adding a build step, npm/node runtime dependency, and framework complexity is unjustified. The existing vanilla JS pattern (fetch API, tab navigation, template literals) is maintainable and proven across v3.0–v6.1. | Continue vanilla JS with the existing pattern. For reference navigation (clickable refs → event detail), add a new "Events" tab following the exact same pagination/state pattern as Documents and Entities tabs. |
+| psycopg2/psycopg3 | The codebase already uses asyncpg throughout. Adding psycopg for sync access would split the DB connection pool into two incompatible pools (sync + async). Alembic handles async natively via `run_async()`. | Keep asyncpg as the sole PostgreSQL driver. Configure Alembic migrations using the `run_async()` pattern documented in the Alembic cookbook ("Using Asyncio with Alembic"). |
+| `sentence-transformers` or embedding-based chunking | Over-engineered for this milestone. Smart chunking (512KB balanced splits) just means adjusting the chunk_size parameter and optionally adding overlap. Embedding-based chunking would add a Python ML dependency, model download (hundreds of MB), and latency — none justified for legal document extraction. | Use `RecursiveCharacterTextSplitter(chunk_size=524288, chunk_overlap=0)` — same library, larger chunk size. Already installed (langchain-text-splitters). |
 
-## Stack Patterns
+## Stack Patterns by Variant
 
-**If the event has coordinates (from lugar reference resolution):**
-- Store as SurrealDB geometry point in canonical entity `properties.coordinates`
-- Serve as `{ lat, lng }` in API responses
-- Leaflet renders as `L.marker([lat, lng])` with popup showing event details
+**If the chunker produces chunks that exceed the LLM context window:**
+- Keep the current sequential-chunk pattern (extract per chunk, feed prior events as context)
+- The existing `EXTRACTION_CHUNK_SIZE = 400_000` in `llm.py` controls how much text goes to the LLM per call — this is independent of `chunk_size` in `chunker.py`
+- The chunker's `DEFAULT_CHUNK_SIZE` goes from 128K to 524_288 (512KB). The extraction chunk size stays at 400K chars (~100K tokens)
+- These are two different sizes serving two different purposes: chunker splits document text for provenance tracking; LLM extraction splits document text for context window fitting
 
-**If the event has a parsed date (from tiempo reference resolution):**
-- Store as ISO 8601 string in event `properties.time_window.start` / `time_window.end`
-- Serve as `{ start: "2024-03-15T00:00:00Z", end: "2024-03-16T00:00:00Z" }`
-- vis-timeline renders as a range item with event title as content
+**If needing geospatial queries immediately:**
+- Add PostGIS extension to schema.sql: `CREATE EXTENSION IF NOT EXISTS postgis;`
+- Add a `location_geom GEOMETRY(Point, 4326)` column to the event table for spatial queries
+- Populate from the existing `location_point->>'lat'` and `location_point->>'lon'` JSONB fields
+- This enables `ST_DWithin(location_geom, ST_MakePoint(-99.13, 19.43), 10000)` queries
 
-**If the event lacks coordinates or dates:**
-- Map: skip the marker (show count of unmapped events)
-- Timeline: show as a point event (single date) or skip (show count of undated events)
-- Never fabricate data — always show "X events without dates/locations"
-
-## Integration Points with Existing Codebase
-
-### FastAPI (src/eth_pipeline/api/)
-
-New endpoints needed:
-- `GET /api/events/timeline` — returns events with time_window data for vis-timeline
-- `GET /api/events/map` — returns events with coordinates for Leaflet markers
-- `GET /api/references` — paginated reference list (already partially exists, may need enhancement)
-- `GET /api/events/by-participant/{entity_id}` — events involving a specific person/entity
-
-All follow the existing pagination envelope pattern: `{ items, total, page, per_page, pages }`.
-
-### Static UI (src/eth_pipeline/static/index.html)
-
-New tabs in nav:
-```html
-<button role="tab" data-tab="timeline">Línea de Tiempo</button>
-<button role="tab" data-tab="map">Mapa</button>
-<!-- references tab already exists -->
-```
-
-New tab content sections:
-- `#tab-timeline` — `<div id="timeline-container">` for vis-timeline
-- `#tab-map` — `<div id="map-container">` for Leaflet
-
-CDN scripts loaded in `<head>` (see Installation section above). All JS inline in `<script>` tags — no module imports, no build step.
-
-### SurrealDB Schema (src/eth_pipeline/schema.surql)
-
-Schema changes needed (additive only, no destructive migrations):
-- Event entity properties include structured `time_window` and `location` fields
-- Place-type canonical entities may include `coordinates` in properties
-- New indexes for geospatial queries (deferred, not required for v6.0)
+**If Alembic autogenerate proves too noisy (detects unrelated differences):**
+- Use `include_object` and `include_schema` filters in `env.py` to restrict autogenerate to the tables in `target_metadata`
+- Or skip autogenerate entirely and write migration scripts manually (verifiable, auditable, but more labor)
+- Recommend: start with manual migrations for v7.0 (schema is small, 5–6 tables). Add autogenerate later if schema complexity grows.
 
 ## Version Compatibility
 
-| Package | Compatible With | Notes |
-|---------|-----------------|-------|
-| leaflet@1.9.4 | All modern browsers (IE11 dropped after 1.7) | No conflicts with existing vanilla JS |
-| vis-timeline@8.5.1 | All modern browsers. Standalone build has UUID v14 internal dep (self-contained) | No global namespace pollution beyond `vis` object |
-| dateparser~=1.2.1 | Python >=3.7 (project requires >=3.11) | Pure Python, no C extensions |
-| python-dateutil~=2.9.0 | Python >=3.7 (project requires >=3.11) | Already commonly installed as transitive dep |
-| SurrealDB geospatial | SurrealDB >=1.0 (project uses SurrealDB 2.x) | Built into the Rust core — no version concerns |
+| Package A | Compatible With | Notes |
+|-----------|-----------------|-------|
+| alembic>=1.18.0 | SQLAlchemy>=2.0.0, asyncpg>=0.30.0 | Alembic 1.18.0+ has native `run_async()` that connects via asyncpg-compatible DSN. Tested with Python 3.11+. |
+| asyncpg>=0.30.0 | PostgreSQL 9.5–18 | asyncpg 0.31.0 supports PostgreSQL up to v18. The project uses 17-alpine. |
+| langchain-text-splitters>=1.0.0 | langchain-core>=1.0.0 | Version 1.x of text-splitters split from langchain-community. The `RecursiveCharacterTextSplitter` API is identical to 0.3.x. Installed version 1.1.2 works. |
+| postgis/postgis:17-3.5-alpine | PostgreSQL 17, PostGIS 3.5 | Official PostGIS Docker image. 3.5 is the latest PostGIS release as of early 2026. |
+
+## PostGIS Details
+
+PostGIS adds two things to the PostgreSQL stack:
+1. **Spatial data types:** `GEOMETRY`, `GEOGRAPHY`, `POINT`, `LINESTRING`, etc.
+2. **Spatial operators:** `ST_DWithin`, `ST_Distance`, `ST_Contains`, etc. — indexed via GIST indexes.
+
+For this project's use case (storing event lat/lon points, querying events near a location), PostGIS is overkill for simple storage but essential for spatial queries. The approach:
+- Add `CREATE EXTENSION IF NOT EXISTS postgis;` to schema.sql (idempotent — safe to run every init)
+- Add a `location_geom GEOMETRY(Point, 4326)` column to the event table
+- Create a GIST spatial index: `CREATE INDEX IF NOT EXISTS idx_event_location_geom ON event USING GIST (location_geom);`
+- The `location_point` JSONB field remains the human-readable representation; `location_geom` is the spatial counterpart
+- Temporal activity for migration: populate `location_geom` from existing `location_point` data when present
+
+No Python library is needed — asyncpg passes PostGIS types as text (hex-encoded WKB) or coordinates can be inserted/queried via the `ST_*` functions as SQL parameterized expressions.
+
+## LLM Schema for Unified Event Object (v7.0)
+
+The existing `EVENT_EXTRACTION_SCHEMA` in `llm.py` already uses `additionalProperties: false` for strict-mode compliance. For v7.0's unified event object with embedded references, the schema needs:
+
+1. **Remove the flat field structure** (espacio/tiempo/humanos/objetos as separate strings)
+2. **Replace with structured objects** directly embedding their references
+3. **Keep existing reference span tracking** (span_start, span_end, verbatim_text)
+
+Key LLM schema change: instead of separate `espacio`, `tiempo`, `humanos`, `objetos` fields with a separate `references` array, embed references directly on each structured field. The LLM already handles this well — the current schema proves it can produce accurate span offsets with `additionalProperties: false`.
+
+## Vanilla JS for Event List/Detail with Reference Navigation
+
+The existing UI pattern is well-established:
+- Tab-based navigation with `data-tab` attributes
+- `tabData: {}` state object per tab
+- `fetch()` with query params for API calls
+- Template literal rendering
+- Pagination with previous/next page controls
+
+For v7.0 event list/detail:
+1. **Events tab** follows the exact same pattern as the existing Documents tab — no new patterns needed
+2. **Event detail via sub-navigation** or expandable rows — both patterns exist in the codebase (Logs sub-tab with expandable rows, Documents list)
+3. **Clickable reference navigation** uses `<a>` elements with `data-reference-id` + event listener pattern, same as existing entity merge/split interactions
+
+No JS build tool, no npm package, no framework needed. The existing CSS already supports card layouts, badges, and clickable elements.
 
 ## Sources
 
-- **Leaflet.js:** Context7 `/websites/leafletjs`, official download page `https://leafletjs.com/download.html` — confirmed v1.9.4 (May 2023) is latest stable. v2.0.0-alpha.1 exists but not stable. Confidence: HIGH.
-- **vis-timeline:** Context7 `/visjs/vis-timeline`, GitHub releases `https://github.com/visjs/vis-timeline/releases` — confirmed v8.5.1 (May 2026) is latest. Spanish locale fix in v8.4.1. Standalone UMD build confirmed working via CDN. Confidence: HIGH.
-- **dateparser:** Context7 `/scrapinghub/dateparser` — confirmed Spanish date parsing (`"Martes 21 de Octubre de 2014"`), `search_dates()` with `languages=['es']`. Confidence: HIGH.
-- **python-dateutil:** Context7 `/dateutil/dateutil` — confirmed `parser.parse()` and `relativedelta` availability. Standard Python library, well-maintained. Confidence: HIGH.
-- **SurrealDB geospatial:** Context7 `/websites/surrealdb` — confirmed `type::point()`, `geo::distance()`, geometry types (Point, Line, Polygon, etc.). Built into SurrealDB core. Confidence: HIGH.
-- **Existing codebase:** `PROJECT.md`, `ROADMAP.md`, `schema.surql`, `index.html`, `pyproject.toml` — confirmed vanilla JS SPA pattern, CDN compatibility, existing pagination envelope. Confidence: HIGH.
+- PyPI alembic 1.18.4 — released 2026-02-10, latest stable
+- PyPI asyncpg 0.31.0 — released 2025-11-24, supports PostgreSQL up to v18
+- Alembic documentation — "Using Asyncio with Alembic" cookbook section (run_async pattern)
+- PostGIS Docker Hub — postgis/postgis:17-3.5-alpine is the official image
+- LangChain RecursiveCharacterTextSplitter docs — supports arbitrary chunk_sizes; the splitter finds paragraph/sentence boundaries within the size limit
+- Existing codebase analysis: chunker.py already uses RecursiveCharacterTextSplitter; llm.py already uses additionalProperties:false; UI already uses vanilla JS fetch/template pattern
 
 ---
-*Stack research for: v6.0 Event Data Model & UI additions*
-*Researched: 2026-06-04*
+*Stack research for: v7.0 Event-Centric Rewrite*
+*Researched: 2026-06-08*
