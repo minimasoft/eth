@@ -7,7 +7,7 @@ v7.0 is a clean-break rewrite of the references/entities/events system. The old 
 ## Phases
 
 - [x] **Phase 33: Foundation** — New PostgreSQL schema tables, Alembic migrations, PostGIS extension, schema_version tracking (completed 2026-06-09)
-- [ ] **Phase 34: Smart Chunking** — Balanced 512KB chunker with sentence-aware boundaries, configurable size, part-provenance tracking
+- [x] **Phase 34: Smart Chunking** — Balanced 512KB chunker with sentence-aware boundaries, configurable size, part-provenance tracking
 - [x] **Phase 35: LLM Pipeline** — Part-by-part extraction with compact prior-context, unified event schema, human rights prompts, reference resolution (completed 2026-06-09)
 - [ ] **Phase 36: Event API** — Event list/detail endpoints, chunk text endpoint
 - [ ] **Phase 37: Event UI** — Eventos tab with paginated list, detail modal, clickable reference navigation, document filter
