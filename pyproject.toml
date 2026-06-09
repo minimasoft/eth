@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "Espacio Tiempo Humanos document processing pipeline with Temporal and PostgreSQL"
 requires-python = ">=3.11"
 dependencies = [
+    "alembic>=1.18.4",
     "asyncpg>=0.30.0",
     "fastapi[standard]>=0.115.0",
     "httpx>=0.28.0",
@@ -12,6 +13,7 @@ dependencies = [
     "minio>=7.2.0",
     "pypdf>=5.1.0",
     "pypdfium2>=4.30.0",
+    "sqlalchemy[asyncio]>=2.0.50",
     "temporalio>=1.10.0",
     "uvicorn>=0.34.0",
 ]
