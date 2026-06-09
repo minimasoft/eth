@@ -82,8 +82,18 @@ v7.0 is a clean-break rewrite of the references/entities/events system. The old 
   5. LLM prompts include human rights research context — zero safety filter refusals on the test corpus; refusals log a warning and continue without failing the workflow
   6. Old `extract_events` and `resolve_entities` activities are fully replaced by new pipeline — no deprecated extraction code survives
 
-**Plans**: TBD
-**Research flags**: Prior-event summary format needs prompt engineering experimentation (titles only vs. LLM-generated summary). Human rights prompt wording must be tested against actual document corpus for zero-refusal verification.
+**Plans**: 3 plans
+
+**Wave 1**
+- [ ] 35-01-PLAN.md — v7 extraction schema, HR system prompt, OpenRouterProvider methods, extract_events_v7_activity
+
+**Wave 2** *(blocked on Wave 1 completion)*
+- [ ] 35-02-PLAN.md — store_events_v7_activity (per-chunk commit), resolve_references_v7_activity (offset computation)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+- [ ] 35-03-PLAN.md — DocumentProcessingV7Workflow, __init__.py re-exports, worker.py registration, integration tests
+
+**Research flags**: Prior-event summary format needs prompt engineering experimentation (titles only vs. LLM-generated summary). Human rights prompt wording must be tested against actual document corpus for zero-refusal verification (spike in Plan 35-01 Task 3).
 
 ### Phase 36: Event API
 
@@ -134,7 +144,7 @@ v7.0 is a clean-break rewrite of the references/entities/events system. The old 
 |-------|----------------|--------|-----------|
 | 33. Foundation | 3/3 | Complete   | 2026-06-09 |
 | 34. Smart Chunking | 3/3 | Not started | - |
-| 35. LLM Pipeline | 0/0 | Not started | - |
+| 35. LLM Pipeline | 3/3 | Not started | - |
 | 36. Event API | 0/0 | Not started | - |
 | 37. Event UI | 0/0 | Not started | - |
 | 38. Cleanup | 0/0 | Not started | - |
