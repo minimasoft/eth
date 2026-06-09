@@ -30,3 +30,9 @@ packages = ["src/eth_pipeline"]
 [[tool.uv.index]]
 name = "pypi"
 url = "https://pypi.org/simple"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.21",
+]
