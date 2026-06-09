@@ -6,7 +6,7 @@ v7.0 is a clean-break rewrite of the references/entities/events system. The old 
 
 ## Phases
 
-- [ ] **Phase 33: Foundation** — New PostgreSQL schema tables, Alembic migrations, PostGIS extension, schema_version tracking
+- [x] **Phase 33: Foundation** — New PostgreSQL schema tables, Alembic migrations, PostGIS extension, schema_version tracking (completed 2026-06-09)
 - [ ] **Phase 34: Smart Chunking** — Balanced 512KB chunker with sentence-aware boundaries, configurable size, part-provenance tracking
 - [ ] **Phase 35: LLM Pipeline** — Part-by-part extraction with compact prior-context, unified event schema, human rights prompts, reference resolution
 - [ ] **Phase 36: Event API** — Event list/detail endpoints, chunk text endpoint
@@ -31,15 +31,15 @@ v7.0 is a clean-break rewrite of the references/entities/events system. The old 
 **Plans**: 3 plansPlans:
 **Wave 1**
 
-- [ ] 33-01-PLAN.md — Dependencies + Alembic async init + config
+- [x] 33-01-PLAN.md — Dependencies + Alembic async init + config
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 33-02-PLAN.md — SQLAlchemy models + migration script + schema push (BLOCKING)
+- [x] 33-02-PLAN.md — SQLAlchemy models + migration script + schema push (BLOCKING)
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 33-03-PLAN.md — Docker PostGIS image + init_schema Alembic stamp + tests
+- [x] 33-03-PLAN.md — Docker PostGIS image + init_schema Alembic stamp + tests
 
 **Research flags**: Standard patterns — Alembic asyncpg setup, PostgreSQL DDL, feature flags are well-documented
 
@@ -122,7 +122,7 @@ v7.0 is a clean-break rewrite of the references/entities/events system. The old 
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 33. Foundation | 0/3 | Planning | - |
+| 33. Foundation | 3/3 | Complete   | 2026-06-09 |
 | 34. Smart Chunking | 0/0 | Not started | - |
 | 35. LLM Pipeline | 0/0 | Not started | - |
 | 36. Event API | 0/0 | Not started | - |
