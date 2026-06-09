@@ -29,13 +29,14 @@ V7_TABLES = [
 ]
 
 
-@pytest.mark.asyncio
 class TestMigrationLifecycle:
 
+    @pytest.mark.asyncio
     async def test_migration_current(self, db_connection: asyncpg.Connection) -> None:
         version = await db_connection.fetchval("SELECT version_num FROM alembic_version")
         assert version == "0001", f"Expected alembic_version=0001, got {version}"
 
+    @pytest.mark.asyncio
     async def test_fk_on_delete_cascade(self, db_connection: asyncpg.Connection) -> None:
         for table in CASCADE_TABLES:
             rows = await db_connection.fetch(
@@ -54,6 +55,7 @@ class TestMigrationLifecycle:
                     f"FK on '{table}' has delete_rule '{row['delete_rule']}', expected 'CASCADE'"
                 )
 
+    @pytest.mark.asyncio
     @pytest.mark.slow
     async def test_migration_downgrade_reupgrade(self, db_connection: asyncpg.Connection) -> None:
         if os.environ.get("RUN_SLOW_TESTS") != "1":
@@ -102,6 +104,7 @@ class TestMigrationLifecycle:
         version = await db_connection.fetchval("SELECT version_num FROM alembic_version")
         assert version == "0001", f"Expected alembic_version=0001 after re-upgrade, got {version}"
 
+    @pytest.mark.asyncio
     async def test_schema_version_default(self, db_connection: asyncpg.Connection) -> None:
         col_default = await db_connection.fetchval(
             "SELECT column_default FROM information_schema.columns "
