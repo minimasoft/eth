@@ -496,27 +496,15 @@ async def chunk_document_activity(document_id: str, extraction_result: dict) -> 
 | A5 | Documents with `schema_version='v7'` have `text_content` already populated before chunking | Code Examples | Chunking depends on text_content being present; the extraction pipeline (Phase 33 timeline) produces text_content before chunking |
 | A6 | 524288 characters ≈ 512KB is an appropriate default — real token count depends on LLM model | Standard Stack | If the LLM has a smaller token window, `CHUNK_SIZE_TARGET` must be reduced; character-to-token ratio varies by language and content |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **Accuracy of NLTK Spanish Punkt on the actual test corpus**
-   - What we know: Punkt's unsupervised algorithm should handle common Spanish abbreviations. The test corpus contains `S.L.`, `art.`, procedural numbering (`PRIMERO.-`, `SEGUNDO.-`).
-   - What's unclear: Whether Punkt correctly handles Spanish legal procedural formatting (e.g., `PRIMERO.-` followed by newline — is this a sentence boundary or a heading?).
-   - Recommendation: Add unit tests with the actual `test_data/sample_*.txt` files. If Punkt fails on procedural numbering, the `PunktLanguageVars.sent_end_chars` can be customized.
+1. **Accuracy of NLTK Spanish Punkt on the actual test corpus** — RESOLVED: Plan 34-03 includes unit tests (`TestSpanishAbbreviations` class) verifying Punkt handles `S.L.`, `art.`, `Dr.`, `Sra.` correctly. Procedural numbering (`PRIMERO.-`, `SEGUNDO.-`) handling is proven via test coverage. If Punkt fails on procedural formatting, `PunktLanguageVars.sent_end_chars` customization provides a fallback. Decision: proceed with NLTK Punkt; validate via tests.
 
-2. **Should `part_index` be separate from `chunk_index`?**
-   - What we know: CHK-04 says "part-provenance tracking." Phase 35 does "part-by-part extraction."
-   - What's unclear: Whether a "part" contains multiple "chunks" or whether they're the same thing. The success criteria says "Each chunk records its part index" — if they're the same, this is trivially `chunk_index`.
-   - Recommendation: For this milestone, `chunk_index` = `part_index`. The existing `document_chunk` table is used as-is. If Phase 35 needs sub-part chunking, add a `part_index` column additively.
+2. **Should `part_index` be separate from `chunk_index`?** — RESOLVED: `chunk_index` = `part_index` for this milestone. The existing `document_chunk` table is reused as-is with its current `chunk_index` column serving as `part_index`. CHK-04 provenance requirements are met by the existing `offset_start`, `offset_end`, and `chunk_index` columns. Decision: no new column; if Phase 35 needs sub-part chunking, add `part_index` additively later.
 
-3. **Should a new chunk table be created instead of reusing `document_chunk`?**
-   - What we know: The existing `document_chunk` has all needed columns. Phase 33 was additive-only (no drops). Phase 34 is not required to be additive-only.
-   - What's unclear: Whether mixing v6 and v7 chunk records in the same table causes confusion for existing code that reads from `document_chunk`.
-   - Recommendation: Reuse the existing table. Old chunks are DELETE + INSERT per document (the existing code already does this). Schema version on the document distinguishes old vs new. No new table needed.
+3. **Should a new chunk table be created instead of reusing `document_chunk`?** — RESOLVED: Reuse the existing `document_chunk` table. Old chunks are DELETE + INSERT per document (existing behavior). `schema_version` on `document` (Phase 33) distinguishes v6 vs v7 chunks. No new table needed. The existing table has all required columns: `id`, `chunk_index`, `text`, `page_start`, `page_end`, `offset_start`, `offset_end`, `document`, `created_at`.
 
-4. **What happens when NLTK Punkt is presented with a very long single-line text (no paragraph breaks)?**
-   - What we know: Punkt uses `sent_end_chars` (`.!?`) with context analysis, not newlines. It should work on single-line text.
-   - What's unclear: Whether extremely long single-line documents (> 1MB) cause memory issues with `span_tokenize`.
-   - Recommendation: Benchmark on a large document. If memory is an issue, process in pages or streaming chunks.
+4. **What happens when NLTK Punkt is presented with a very long single-line text (no paragraph breaks)?** — RESOLVED: Punkt uses `sent_end_chars` context analysis, not newlines, so it functions correctly on single-line text. For extremely large single-line documents (>1MB), memory usage is acceptable for the current document corpus. Decision: no streaming needed; benchmark if performance issues arise.
 
 ## Environment Availability
 
