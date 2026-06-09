@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -89,6 +90,22 @@ async def main() -> None:
         sys.exit(1)
 
     await apply_schema(schema_path=args.schema, dsn=dsn)
+
+    try:
+        result = subprocess.run(
+            ["uv", "run", "alembic", "stamp", "head"],
+            capture_output=True, text=True, timeout=30,
+        )
+        if result.returncode != 0:
+            print(f"⚠  Alembic stamp failed: {result.stderr.strip()}")
+            print("   Schema applied — manual `alembic stamp head` may be needed.")
+        else:
+            version = result.stdout.strip()
+            print(f"✔ Alembic stamped at head: {version}")
+    except FileNotFoundError:
+        print("⚠  alembic CLI not found — skipping Alembic stamp (schema applied).")
+    except subprocess.TimeoutExpired:
+        print("⚠  Alembic stamp timed out — skipping (schema applied).")
 
 
 if __name__ == "__main__":
