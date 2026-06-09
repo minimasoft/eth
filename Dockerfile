@@ -14,4 +14,5 @@ WORKDIR /app
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1
+RUN uv run python -c "import nltk; nltk.download('punkt_tab', quiet=True)"
 CMD ["uv", "run", "python", "scripts/run_api.py"]
