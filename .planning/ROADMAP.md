@@ -20,12 +20,16 @@ v7.0 is a clean-break rewrite of the references/entities/events system. The old 
 **Depends on**: Nothing (first v7.0 phase)
 **Requirements**: FND-01, FND-02, FND-03, FND-04
 **Success Criteria** (what must be TRUE):
-  1. `event_v2`, `event_location`, `event_participant_v2`, `event_document`, `event_ref` tables exist alongside old tables (additive-only, no drops)
-  2. Alembic migration can upgrade from current state to v7.0 schema and downgrade cleanly
-  3. PostGIS extension is enabled (`SELECT PostGIS_Version()` returns a version string)
-  4. All new FK relations have `ON DELETE CASCADE` — deleting a document cascades to its v7.0 events, locations, participants, and references
-  5. `document` table has a `schema_version` column that tracks whether documents use old or new schema
-**Plans**: TBD
+   1. `event_v2`, `event_location`, `event_participant_v2`, `event_document`, `event_ref` tables exist alongside old tables (additive-only, no drops)
+   2. Alembic migration can upgrade from current state to v7.0 schema and downgrade cleanly
+   3. PostGIS extension is enabled (`SELECT PostGIS_Version()` returns a version string)
+   4. All new FK relations have `ON DELETE CASCADE` — deleting a document cascades to its v7.0 events, locations, participants, and references
+   5. `document` table has a `schema_version` column that tracks whether documents use old or new schema
+**Plans**: 3 plans
+Plans:
+- [ ] 33-01-PLAN.md — Dependencies + Alembic async init + config
+- [ ] 33-02-PLAN.md — SQLAlchemy models + migration script + schema push (BLOCKING)
+- [ ] 33-03-PLAN.md — Docker PostGIS image + init_schema Alembic stamp + tests
 **Research flags**: Standard patterns — Alembic asyncpg setup, PostgreSQL DDL, feature flags are well-documented
 
 ### Phase 34: Smart Chunking
@@ -92,7 +96,7 @@ v7.0 is a clean-break rewrite of the references/entities/events system. The old 
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 33. Foundation | 0/0 | Not started | - |
+| 33. Foundation | 0/3 | Planning | - |
 | 34. Smart Chunking | 0/0 | Not started | - |
 | 35. LLM Pipeline | 0/0 | Not started | - |
 | 36. Event API | 0/0 | Not started | - |
