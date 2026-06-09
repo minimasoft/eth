@@ -44,7 +44,7 @@ def upgrade():
         sa.Column('extraction_confidence', sa.Float(), default=1.0),
         sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.func.now()),
         sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.func.now()),
-        sa.ForeignKeyConstraint(['document_id'], ['document(id)'], ondelete='CASCADE'),
+        sa.ForeignKeyConstraint(['document_id'], ['document.id'], ondelete='CASCADE'),
     )
     op.create_index('idx_event_v2_document', 'event_v2', ['document_id'])
     op.create_index('idx_event_v2_time_start', 'event_v2', ['time_start'])
@@ -57,7 +57,7 @@ def upgrade():
         sa.Column('location_type', sa.String(), nullable=True),
         sa.Column('geom', sa.String(), nullable=True),
         sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.func.now()),
-        sa.ForeignKeyConstraint(['event_id'], ['event_v2(id)'], ondelete='CASCADE'),
+        sa.ForeignKeyConstraint(['event_id'], ['event_v2.id'], ondelete='CASCADE'),
     )
     op.create_index('idx_event_location_event', 'event_location', ['event_id'])
 
@@ -69,7 +69,7 @@ def upgrade():
         sa.Column('role', sa.String(), default=''),
         sa.Column('confidence', sa.Float(), nullable=True),
         sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.func.now()),
-        sa.ForeignKeyConstraint(['event_id'], ['event_v2(id)'], ondelete='CASCADE'),
+        sa.ForeignKeyConstraint(['event_id'], ['event_v2.id'], ondelete='CASCADE'),
     )
     op.create_index('idx_event_participant_v2_event', 'event_participant_v2', ['event_id'])
 
@@ -80,8 +80,8 @@ def upgrade():
         sa.Column('document_id', sa.String(), nullable=False),
         sa.Column('chunk_index', sa.Integer(), nullable=True),
         sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.func.now()),
-        sa.ForeignKeyConstraint(['event_id'], ['event_v2(id)'], ondelete='CASCADE'),
-        sa.ForeignKeyConstraint(['document_id'], ['document(id)'], ondelete='CASCADE'),
+        sa.ForeignKeyConstraint(['event_id'], ['event_v2.id'], ondelete='CASCADE'),
+        sa.ForeignKeyConstraint(['document_id'], ['document.id'], ondelete='CASCADE'),
     )
     op.create_index('idx_event_document_event', 'event_document', ['event_id'])
     op.create_index('idx_event_document_doc', 'event_document', ['document_id'])
@@ -96,7 +96,7 @@ def upgrade():
         sa.Column('span_end', sa.Integer(), nullable=False),
         sa.Column('chunk_index', sa.Integer(), nullable=True),
         sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.func.now()),
-        sa.ForeignKeyConstraint(['event_id'], ['event_v2(id)'], ondelete='CASCADE'),
+        sa.ForeignKeyConstraint(['event_id'], ['event_v2.id'], ondelete='CASCADE'),
     )
     op.create_index('idx_event_ref_event', 'event_ref', ['event_id'])
 
