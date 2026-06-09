@@ -8,7 +8,7 @@ v7.0 is a clean-break rewrite of the references/entities/events system. The old 
 
 - [x] **Phase 33: Foundation** — New PostgreSQL schema tables, Alembic migrations, PostGIS extension, schema_version tracking (completed 2026-06-09)
 - [ ] **Phase 34: Smart Chunking** — Balanced 512KB chunker with sentence-aware boundaries, configurable size, part-provenance tracking
-- [ ] **Phase 35: LLM Pipeline** — Part-by-part extraction with compact prior-context, unified event schema, human rights prompts, reference resolution
+- [x] **Phase 35: LLM Pipeline** — Part-by-part extraction with compact prior-context, unified event schema, human rights prompts, reference resolution (completed 2026-06-09)
 - [ ] **Phase 36: Event API** — Event list/detail endpoints, chunk text endpoint
 - [ ] **Phase 37: Event UI** — Eventos tab with paginated list, detail modal, clickable reference navigation, document filter
 - [ ] **Phase 38: Cleanup** — Drop old tables, remove old API routes, old activities, old UI code — no deprecated code survives
@@ -97,7 +97,7 @@ v7.0 is a clean-break rewrite of the references/entities/events system. The old 
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 35-03-PLAN.md — DocumentProcessingV7Workflow, __init__.py re-exports, worker.py registration, integration tests
+- [x] 35-03-PLAN.md — DocumentProcessingV7Workflow, __init__.py re-exports, worker.py registration, integration tests
 
 **Research flags**: Prior-event summary format needs prompt engineering experimentation (titles only vs. LLM-generated summary). Human rights prompt wording must be tested against actual document corpus for zero-refusal verification (spike in Plan 35-01 Task 3).
 
@@ -150,7 +150,7 @@ v7.0 is a clean-break rewrite of the references/entities/events system. The old 
 |-------|----------------|--------|-----------|
 | 33. Foundation | 3/3 | Complete   | 2026-06-09 |
 | 34. Smart Chunking | 3/3 | Not started | - |
-| 35. LLM Pipeline | 2/3 | In Progress|  |
+| 35. LLM Pipeline | 3/3 | Complete   | 2026-06-09 |
 | 36. Event API | 0/0 | Not started | - |
 | 37. Event UI | 0/0 | Not started | - |
 | 38. Cleanup | 0/0 | Not started | - |
