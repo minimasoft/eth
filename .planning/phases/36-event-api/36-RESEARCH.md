@@ -685,22 +685,13 @@ app.include_router(events_v2_router)
 | A5 | No new Python packages are needed — fastapi, pydantic, asyncpg are all already installed and sufficient for this phase. | Standard Stack | If any missing dependency is discovered at plan time, it's a `uv add` one-liner. |
 | A6 | The `event_v2`, `event_location`, `event_participant_v2`, `event_document`, and `event_ref` tables exist in the database from Phase 33. Phase 35 has populated them with data. | Architecture Patterns | If tables don't exist (Phase 33 not executed) or are empty (Phase 35 not run), the endpoints will return empty lists / 404s. This is acceptable — the API is a transparent read layer. |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **URL path strategy: `/events` vs `/events-v2` vs `/events/v2`?**
-   - What we know: The old `events.py` router handles `GET /events` with old table queries. The new endpoint needs a path. Options: (a) register new router after old, relying on FastAPI's last-registered-wins to shadow the old `/events`, (b) use `/events-v2` path, (c) use `/events` with a query param like `?schema=v7`.
-   - What's unclear: Whether the old `/events` endpoint must remain functional for v6 documents during the v7.0 milestone. If yes, they need different paths. If no (old events are superseded), shadowing is fine.
-   - Recommendation: Use `/events` for the new router, registered AFTER the old router in `api/__init__.py`. Old `/events` becomes inaccessible (shadowed). If v6 event access is needed, use a temporary `/events-v6` alias or accept that the old events endpoint is superseded. The planner should confirm this strategy.
+1. **URL path strategy: `/events` vs `/events-v2` vs `/events/v2`?** RESOLVED: Use `/events` with last-registered-wins shadow behavior (Plan 36-02 Task 2). New `events_v2.py` router registered AFTER old `events.py` router in `api/__init__.py`.
 
-2. **Should the event list filter by `document_id` or `document` in the query param?**
-   - What we know: The old endpoint uses `document` query param. The new table uses `document_id` column. Consistency with the old API vs. accuracy with the new schema.
-   - What's unclear: Whether the Phase 37 UI expects `document` or `document_id` as the query param name.
-   - Recommendation: Use `document` as the query param name (matching old API convention) but map it to `event_v2.document_id` in the SQL. This preserves backward compatibility for API consumers.
+2. **Should the event list filter by `document_id` or `document` in the query param?** RESOLVED: Use `document` query param (matching old API convention), mapped to `event_v2.document_id` column in SQL (Plan 36-02 Task 1).
 
-3. **geom column: EWKT string vs. structured GeoJSON?**
-   - What we know: Phase 33 stored `geom` as EWKT text (e.g., `SRID=4326;POINT(-99.133 19.432)`). The API returns it as a string in `EventLocationDetail`.
-   - What's unclear: Whether the Phase 37 UI needs structured lat/lon or can parse EWKT on the client side.
-   - Recommendation: Return `geom` as a raw string. If the UI needs structured coordinates, add a separate `/locations/{id}/geojson` endpoint later. Keep the event detail response simple.
+3. **geom column: EWKT string vs. structured GeoJSON?** RESOLVED: Return `geom` as raw EWKT string. Model field `geom: str | None = None` in `EventLocationDetail` (Plan 36-01 Task 1). Structured GeoJSON conversion deferred.
 
 ## Environment Availability
 
