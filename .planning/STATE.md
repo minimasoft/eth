@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v7.0
 milestone_name: milestone
 status: executing
-last_updated: "2026-06-09T08:43:48.579Z"
-last_activity: 2026-06-09 -- Phase 34 execution started
+last_updated: "2026-06-09T09:26:28.412Z"
+last_activity: 2026-06-09 -- Phase 35 execution started
 progress:
   total_phases: 6
-  completed_phases: 1
-  total_plans: 6
-  completed_plans: 3
-  percent: 17
+  completed_phases: 2
+  total_plans: 9
+  completed_plans: 7
+  percent: 33
 ---
 
 # Project State
@@ -21,14 +21,14 @@ See: .planning/PROJECT.md (updated 2026-06-08)
 
 **Core value:** Every extracted event must be traceable to its exact source text in the original document, and every resolved entity must show its evidential references.
 
-**Current focus:** Phase 34 — smart-chunking
+**Current focus:** Phase 35 — llm-pipeline
 
 ## Current Position
 
-Phase: 34 (smart-chunking) — EXECUTING
-Plan: 1 of 3
+Phase: 35 (llm-pipeline) — EXECUTING
+Plan: 2 of 3
 Status: Ready to execute
-Last activity: 2026-06-09 -- Phase 34 execution started
+Last activity: 2026-06-09 -- Phase 35 execution started
 
 Progress: [░░░░░░░░░░] 0%
 
