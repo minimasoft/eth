@@ -120,6 +120,7 @@ services:
       PGHOST: postgres
       PGPORT: "5432"
       PGDATABASE: eth
+      CHUNK_SIZE_TARGET: ${CHUNK_SIZE_TARGET:-524288}
     healthcheck:
       test:
       - CMD
@@ -148,6 +149,7 @@ services:
       PGHOST: postgres
       PGPORT: "5432"
       PGDATABASE: eth
+      CHUNK_SIZE_TARGET: ${CHUNK_SIZE_TARGET:-524288}
     depends_on:
       schema-init:
         condition: service_completed_successfully
