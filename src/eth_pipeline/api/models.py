@@ -417,6 +417,193 @@ class EventListResponse(BaseModel):
     """Total number of pages available."""
 
 
+class EventV2ListItem(BaseModel):
+    """A single v7 event entry in the paginated event list."""
+
+    event_id: str
+    """Unique identifier of the event."""
+
+    title: str
+    """Event title from the structured event object."""
+
+    description: str
+    """Event description / narrative text."""
+
+    time_start: str | None = None
+    """Earliest temporal bound as ISO-8601 datetime (may be null for open intervals)."""
+
+    time_end: str | None = None
+    """Latest temporal bound as ISO-8601 datetime (may be null for open intervals)."""
+
+    time_precision: str | None = None
+    """Precision label for the time window (hour, day, month, year)."""
+
+    location_name: str | None = None
+    """Primary location name from the first linked event_location row."""
+
+    participant_count: int = 0
+    """Number of participant rows linked to this event."""
+
+    reference_count: int = 0
+    """Number of reference rows linked to this event."""
+
+    document_id: str | None = None
+    """ID of the source document."""
+
+    document_filename: str | None = None
+    """Filename of the source document."""
+
+    extraction_confidence: float = 1.0
+    """LLM extraction confidence score."""
+
+    created_at: str | None = None
+    """ISO-8601 timestamp of event creation."""
+
+
+class EventListV2Response(BaseModel):
+    """Paginated response body for ``GET /api/v2/events``."""
+
+    items: list[EventV2ListItem]
+    """List of v7 event entries on the current page."""
+
+    total: int
+    """Total number of events matching the query."""
+
+    page: int
+    """Current page number (1-based)."""
+
+    per_page: int
+    """Number of items per page."""
+
+    pages: int
+    """Total number of pages available."""
+
+
+class EventLocationDetail(BaseModel):
+    """A location entry within an event detail response."""
+
+    location_id: str
+    """Unique identifier of the event_location row."""
+
+    name: str
+    """Location name."""
+
+    location_type: str | None = None
+    """Type of location (place, region, etc.)."""
+
+    geom: str | None = None
+    """EWKT geometry string for PostGIS display."""
+
+
+class EventParticipantDetail(BaseModel):
+    """A participant entry within an event detail response."""
+
+    participant_id: str
+    """Unique identifier of the event_participant_v2 row."""
+
+    name: str
+    """Participant name."""
+
+    role: str = ""
+    """Participant role (default empty string)."""
+
+    confidence: float | None = None
+    """LLM extraction confidence for this participant."""
+
+
+class EventRefDetail(BaseModel):
+    """A reference entry within an event detail response."""
+
+    reference_id: str
+    """Unique identifier of the event_ref row."""
+
+    reference_type: str
+    """Category of the reference (e.g., location, participant)."""
+
+    verbatim_text: str
+    """Verbatim text span from the source document."""
+
+    span_start: int | None = None
+    """Character offset (0-based) where the verbatim span begins."""
+
+    span_end: int | None = None
+    """Character offset (exclusive) where the verbatim span ends."""
+
+    chunk_index: int | None = None
+    """Index of the chunk this reference belongs to."""
+
+
+class EventV2DetailResponse(BaseModel):
+    """Response body for ``GET /api/v2/events/{event_id}``."""
+
+    event_id: str
+    """Unique identifier of the event."""
+
+    title: str
+    """Event title from the structured event object."""
+
+    description: str
+    """Event description / narrative text."""
+
+    time_start: str | None = None
+    """Earliest temporal bound as ISO-8601 datetime."""
+
+    time_end: str | None = None
+    """Latest temporal bound as ISO-8601 datetime."""
+
+    time_precision: str | None = None
+    """Precision label for the time window."""
+
+    extraction_confidence: float = 1.0
+    """LLM extraction confidence score."""
+
+    document_id: str | None = None
+    """ID of the source document."""
+
+    document_filename: str | None = None
+    """Filename of the source document."""
+
+    locations: list[EventLocationDetail]
+    """Linked location entries for this event."""
+
+    participants: list[EventParticipantDetail]
+    """Linked participant entries for this event."""
+
+    references: list[EventRefDetail]
+    """Linked reference entries for this event."""
+
+    created_at: str | None = None
+    """ISO-8601 timestamp of event creation."""
+
+    updated_at: str | None = None
+    """ISO-8601 timestamp of last event update."""
+
+
+class ChunkTextResponse(BaseModel):
+    """Response body for ``GET /api/v2/chunks/{document_id}/{part_index}``."""
+
+    document_id: str
+    """ID of the source document."""
+
+    part_index: int
+    """Zero-based chunk part index."""
+
+    text: str
+    """Full text content of the chunk."""
+
+    offset_start: int
+    """Character offset (0-based) where the chunk starts in the full document text."""
+
+    offset_end: int
+    """Character offset (exclusive) where the chunk ends in the full document text."""
+
+    chunk_offset_start: int
+    """Character offset within the chunk's text (for reference highlighting)."""
+
+    chunk_offset_end: int
+    """Character offset within the chunk's text (for reference highlighting)."""
+
+
 class ProcessingLogListItem(BaseModel):
     """A single log entry in the paginated log list."""
 
