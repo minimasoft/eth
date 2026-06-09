@@ -93,7 +93,7 @@ v7.0 is a clean-break rewrite of the references/entities/events system. The old 
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 35-02-PLAN.md — store_events_v7_activity (per-chunk commit), resolve_references_v7_activity (offset computation)
+- [x] 35-02-PLAN.md — store_events_v7_activity (per-chunk commit), resolve_references_v7_activity (offset computation)
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
@@ -150,7 +150,7 @@ v7.0 is a clean-break rewrite of the references/entities/events system. The old 
 |-------|----------------|--------|-----------|
 | 33. Foundation | 3/3 | Complete   | 2026-06-09 |
 | 34. Smart Chunking | 3/3 | Not started | - |
-| 35. LLM Pipeline | 1/3 | In Progress|  |
+| 35. LLM Pipeline | 2/3 | In Progress|  |
 | 36. Event API | 0/0 | Not started | - |
 | 37. Event UI | 0/0 | Not started | - |
 | 38. Cleanup | 0/0 | Not started | - |
