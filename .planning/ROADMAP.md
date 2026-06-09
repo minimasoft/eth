@@ -121,7 +121,7 @@ v7.0 is a clean-break rewrite of the references/entities/events system. The old 
 **Wave 2** *(blocked on Wave 1 completion)*
 
 - [x] 36-02-PLAN.md — events_v2.py route (API-01 list + API-02 detail) + router registration in api/__init__.py
-- [ ] 36-03-PLAN.md — chunk text endpoint (API-03) in documents.py + v7 test fixtures in conftest.py
+- [x] 36-03-PLAN.md — chunk text endpoint (API-03) in documents.py + v7 test fixtures in conftest.py
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
