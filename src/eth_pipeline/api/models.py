@@ -817,6 +817,13 @@ __all__ = [
     "EntityListResponse",
     "EventListItem",
     "EventListResponse",
+    "ChunkTextResponse",
+    "EventLocationDetail",
+    "EventListV2Response",
+    "EventParticipantDetail",
+    "EventRefDetail",
+    "EventV2DetailResponse",
+    "EventV2ListItem",
     "EventsCleared",
 
     "LlmCallLogListItem",
