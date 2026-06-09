@@ -11,6 +11,7 @@ dependencies = [
     "jsonschema>=4.26.0",
     "langchain-text-splitters>=0.3.0",
     "minio>=7.2.0",
+    "nltk>=3.9.4",
     "pypdf>=5.1.0",
     "pypdfium2>=4.30.0",
     "sqlalchemy[asyncio]>=2.0.50",
