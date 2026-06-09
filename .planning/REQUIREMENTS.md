@@ -65,35 +65,35 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| FND-01 | — | Pending |
-| FND-02 | — | Pending |
-| FND-03 | — | Pending |
-| FND-04 | — | Pending |
-| CHK-01 | — | Pending |
-| CHK-02 | — | Pending |
-| CHK-03 | — | Pending |
-| CHK-04 | — | Pending |
-| PIP-01 | — | Pending |
-| PIP-02 | — | Pending |
-| PIP-03 | — | Pending |
-| PIP-04 | — | Pending |
-| PIP-05 | — | Pending |
-| PIP-06 | — | Pending |
-| API-01 | — | Pending |
-| API-02 | — | Pending |
-| API-03 | — | Pending |
-| UI-01 | — | Pending |
-| UI-02 | — | Pending |
-| UI-03 | — | Pending |
-| UI-04 | — | Pending |
-| UI-05 | — | Pending |
-| CLN-01 | — | Pending |
-| CLN-02 | — | Pending |
+| FND-01 | Phase 33 | Pending |
+| FND-02 | Phase 33 | Pending |
+| FND-03 | Phase 33 | Pending |
+| FND-04 | Phase 33 | Pending |
+| CHK-01 | Phase 34 | Pending |
+| CHK-02 | Phase 34 | Pending |
+| CHK-03 | Phase 34 | Pending |
+| CHK-04 | Phase 34 | Pending |
+| PIP-01 | Phase 35 | Pending |
+| PIP-02 | Phase 35 | Pending |
+| PIP-03 | Phase 35 | Pending |
+| PIP-04 | Phase 35 | Pending |
+| PIP-05 | Phase 35 | Pending |
+| PIP-06 | Phase 35 | Pending |
+| API-01 | Phase 36 | Pending |
+| API-02 | Phase 36 | Pending |
+| API-03 | Phase 36 | Pending |
+| UI-01 | Phase 37 | Pending |
+| UI-02 | Phase 37 | Pending |
+| UI-03 | Phase 37 | Pending |
+| UI-04 | Phase 37 | Pending |
+| UI-05 | Phase 37 | Pending |
+| CLN-01 | Phase 38 | Pending |
+| CLN-02 | Phase 38 | Pending |
 
 **Coverage:**
 - v7.0 requirements: 25 total
-- Mapped to phases: 0
-- Unmapped: 25 ⚠️
+- Mapped to phases: 25
+- Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-06-08*

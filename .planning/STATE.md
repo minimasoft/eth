@@ -1,12 +1,12 @@
 ---
-gsd_state_version: 1.0
+gsd_state_version: '1.0'
 milestone: v7.0
 milestone_name: Event-Centric Rewrite
-status: planning
-last_updated: "2026-06-09T00:57:51.172Z"
+status: roadmap_ready
+last_updated: '2026-06-09T02:00:00.000Z'
 last_activity: 2026-06-09
 progress:
-  total_phases: 0
+  total_phases: 6
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -17,70 +17,51 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-06-06)
+See: .planning/PROJECT.md (updated 2026-06-08)
 
 **Core value:** Every extracted event must be traceable to its exact source text in the original document, and every resolved entity must show its evidential references.
 
-**Current focus:** Phase 30 — LLM Call Pipeline Recording
+**Current focus:** Phase 33 — Foundation (schema, alembic, postgis)
 
 ## Current Position
 
-Phase: Not started (defining requirements)
-Plan: —
-Status: Defining requirements
-Last activity: 2026-06-09 — Milestone v7.0 started
+Phase: 33 of 38 (Foundation)
+Plan: — (not yet planned)
+Status: Roadmap created, ready to plan
+Last activity: 2026-06-09 — v7.0 roadmap defined with 6 phases (33-38)
 
-### v6.1 Phase Structure
+Progress: [░░░░░░░░░░] 0%
+
+### v7.0 Phase Structure
 
 | Phase | Goal | Requirements | Success Criteria | Status |
 |-------|------|--------------|------------------|--------|
-| 29. LLM Call Log Schema | New llm_call_log table with indexes | SCH-01, SCH-02 | 5 criteria | Complete ✅ |
-| 30. LLM Call Pipeline Recording | Record LLM calls in extraction + entity resolution | PIPE-01, PIPE-02, PIPE-03 | 5 criteria | Complete ✅ |
-| 31. LLM Call API Endpoint | GET /documents/{id}/llm-calls paginated endpoint | API-01, API-02 | 5 criteria | Complete ✅ |
-| 32. LLM Call UI Viewer | Per-document LLM call viewer in Logs tab | UI-01, UI-02, UI-03 | 5 criteria | Complete ✅ |
-
-### Milestone Execution Status
-
-v6.0 Event-Centric Data Quality & UI — **Complete** ✅ (Shipped 2026-06-06)
-
-All 5 phases (24-28) delivered and verified:
-
-| Phase | Plans | Status | Completed | Verification |
-|-------|-------|--------|-----------|-------------|
-| 24. Schema & Data Model Foundation | 1/1 | Complete | 2026-06-04 | ✅ Passed — 5/5 success criteria |
-| 25. LLM Extraction & Pipeline | 1/1 | Complete | 2026-06-06 | ✅ Passed — 9/9 success criteria |
-| 26. API Endpoints | 2/2 | Complete | 2026-06-06 | ✅ Passed — code review issues fixed |
-| 27. References UI | 2/2 | Complete | 2026-06-06 | ✅ Passed — 5 review warnings fixed |
-| 28. Integration Tests & Verification | 1/1 | Complete | 2026-06-06 | ✅ Passed — 7/7 truths, 9/9 tests pass |
-
-**Key accomplishments:**
-
-- Additive schema changes (time_window JSONB, event_participant junction, element_field, reference_index)
-- Expanded LLM extraction with structured dates, location, participants
-- Enhanced API endpoints (GET /events, GET /references filters, merge/split hardening)
-- References UI tab with entity grouping, filtering, cross-tab navigation
-- 9/9 integration tests passing (5 existing e2e + 4 new v6.0)
-- 23/23 v6.0 requirements satisfied — 100%
-
-**Tech debt carried forward:** 4 items documented in MILESTONE-AUDIT.md (stale "37 tests" figure, participant_failures counter, REQUIREMENTS.md checkboxes, span_start > span_end guard)
+| 33. Foundation | New PostgreSQL schema tables, Alembic migrations, PostGIS | FND-01..FND-04 | 5 criteria | Not started |
+| 34. Smart Chunking | Balanced 512KB sentence-aware chunker | CHK-01..CHK-04 | 4 criteria | Not started |
+| 35. LLM Pipeline | Part-by-part extraction, unified schema, human rights prompts | PIP-01..PIP-06 | 6 criteria | Not started |
+| 36. Event API | Event list/detail endpoints, chunk text endpoint | API-01..API-03 | 3 criteria | Not started |
+| 37. Event UI | Eventos tab, detail modal, clickable references | UI-01..UI-05 | 5 criteria | Not started |
+| 38. Cleanup | Drop old tables, remove deprecated code | CLN-01, CLN-02 | 4 criteria | Not started |
 
 ## Performance Metrics
 
-### v6.0 Event-Centric Data Quality & UI (Phase 28 Finale)
+### v7.0 (Starting)
 
 | Phase | Plans | Status | Completed |
 |-------|-------|--------|-----------|
-| 24. Schema & Data Model Foundation | 1/1 | Complete | 2026-06-04 |
-| 25. LLM Extraction & Pipeline | 1/1 | Complete | 2026-06-06 |
-| 26. API Endpoints | 2/2 | Complete | 2026-06-06 |
-| 27. References UI | 2/2 | Complete | 2026-06-06 |
-| 28. Integration Tests & Verification | 1/1 | Complete | 2026-06-06 |
-| Phase 32-llm-call-ui-viewer P01 | 15m | - tasks | - files |
+| 33. Foundation | 0/0 | Not started | - |
+| 34. Smart Chunking | 0/0 | Not started | - |
+| 35. LLM Pipeline | 0/0 | Not started | - |
+| 36. Event API | 0/0 | Not started | - |
+| 37. Event UI | 0/0 | Not started | - |
+| 38. Cleanup | 0/0 | Not started | - |
 
 ### Prior Milestones
 
 | Milestone | Phases | Status |
 |-----------|--------|--------|
+| v6.1 LLM Call Logging & Viewer | 29-32 | Complete ✅ |
+| v6.0 Event-Centric Data Quality & UI | 24-28 | Complete ✅ |
 | v5.1 Entity Resolution Prompt & Batching Fix | 23 | Complete ✅ |
 | v5.0 LLM Cost & Usage Tracking | 19-22 | Complete ✅ |
 | v4.0 Pipeline Quality & Entity Resolution | 13-18 | Complete ✅ |
@@ -90,40 +71,24 @@ All 5 phases (24-28) delivered and verified:
 
 ## Accumulated Context
 
-### v6.0 Decisions
+### v7.0 Decisions
 
-- D046: v6.0 phases start at Phase 24 (continuing from v5.1 Phase 23)
-- D047: v6.0 has 5 phases: Schema → Pipeline → API → UI → Tests (per research dependency chain)
-- D048: All schema changes are additive (nullable DEFAULT null) — no destructive migrations
-- D049: EXTR and PIPE requirements combined in Phase 25 (both modify extraction pipeline together)
-- D050: EXTR-01 (expanded EVENT_EXTRACTION_SCHEMA) grouped with Phase 25 Pipeline, not Phase 24 Schema — schema design and LLM prompt engineering are coupled
-- D051: Timeline, Map, and Participant views deferred to v6.1 per research recommendation — v6.0 delivers data foundation + References UI
-- D052: LLM prompt benchmark required before merge — <10% event count change gate (Pitfall 5 prevention)
-- D053: v6.0 schema fields preserved during PostgreSQL migration — time_window→JSONB, event_participant→FK table, all nullable — no data loss or semantic drift
+- **D054**: v7.0 phases start at Phase 33 (continuing from v6.1's last Phase 32)
+- **D055**: v7.0 has 6 phases: Foundation → Smart Chunking → LLM Pipeline → Event API → Event UI → Cleanup
+- **D056**: All schema changes are additive (CREATE TABLE IF NOT EXISTS) — old tables survive until Phase 38
+- **D057**: PIP-06 (replace old activities) is grouped in Phase 35 LLM Pipeline, not Phase 38 Cleanup — new pipeline must be fully operational before old code can be removed
+- **D058**: Phase 37 Event UI detected as UI phase — Eventos tab with modal, clickable references, filtering, sorting
+- **D059**: Cleanup is deliberately last — old tables + code serve as safety net through all preceding phases
 
-### v5.1 Decisions (reference)
+### Pending Todos
 
-- D041: Phase 23 requirements were already satisfied by existing codebase — no code changes needed
-- D042: v5.1 scope was verification-only — confirmed 5/5 requirements met, 37/37 tests pass
+None yet.
 
 ### Blockers/Concerns
 
-None. All milestones up to v6.1 complete.
-
-### Quick Tasks Completed
-
-| # | Description | Date | Commit | Directory |
-|---|-------------|------|--------|-----------|
-| 260605-l4s | Fix canonical_entity_id column name bug, add entity delete endpoint + UI button, cleanup 181 orphan entities | 2026-06-05 | e4e3737 | [260605-l4s-add-entity-delete-endpoint-ui-button-cle](./quick/260605-l4s-add-entity-delete-endpoint-ui-button-cle/) |
-| 260604-ugl | clean up DB, apply delete cascade fixes, rebuild, verify | 2026-06-05 | fc4f7e2 | [260604-ugl-1-clean-up-db-2-apply-the-fixes-3-build-](./quick/260604-ugl-1-clean-up-db-2-apply-the-fixes-3-build-/) |
-| 260604-u5y | review docker compose logs — why entities remain after document deletion | 2026-06-05 | — | [260604-u5y-review-logs-in-docker-compose-is-there-a](./quick/260604-u5y-review-logs-in-docker-compose-is-there-a/) |
-| 260604-taa | review docker compose up logs and fix it. Then wait for tests to run and report back if there's any other issue and what's the plan to fix it. | 2026-06-05 | 5bcf7aa | [260604-taa-review-docker-compose-up-logs-and-fix-it](./quick/260604-taa-review-docker-compose-up-logs-and-fix-it/) |
-| 260605-lmg | Split activities.py into individual files under activities/ directory | 2026-06-05 | 3a39920 | [260605-lmg-split-activities-py-2479-lines-into-indi](./quick/260605-lmg-split-activities-py-2479-lines-into-indi/) |
-| 260605-rm0 | Fix orphan entity bug in delete_document ordering, fix list_entities reference_count, enforce no-orphan axiom in e2e test | 2026-06-05 | 7c7bb13 | [260605-rm0-there-are-still-orphan-entities-after-de](./quick/260605-rm0-there-are-still-orphan-entities-after-de/) |
-| 260608-3xk | Cleaned 38 orphans, added transactional guard to _dedup_and_link (both resolve files) and split endpoint, fixed delete_document to collect entities from event_participant + location_place_id | 2026-06-08 | 7285f2b | [260608-3xk-review-entity-creation-and-disallow-the-](./quick/260608-3xk-review-entity-creation-and-disallow-the-/) |
-| 260608-3xk | Review entity creation and disallow references — cleanup 38 orphans, add transactional guards to _dedup_and_link + split, fix delete_document to collect from event_participant + location_place_id | 2026-06-08 | 7285f2b | [260608-3xk-review-entity-creation-and-disallow-the-](./quick/260608-3xk-review-entity-creation-and-disallow-the-/) |
-| 260608-e4z | Add a check for llm call log in the tests, I have tested manually and the endpoint always returns empty even when there were calls. | 2026-06-08 | e625756 | [260608-e4z-add-a-check-for-llm-call-log-in-the-test](./quick/260608-e4z-add-a-check-for-llm-call-log-in-the-test/) |
-| 260608-q0p | Two mini UI fixes — remove Fragmentos column, expand column names, remove redundant LLM summary | 2026-06-08 | a1923db | [260608-q0p-two-mini-ui-fixes-1-don-t-show-fragmento](./quick/260608-q0p-two-mini-ui-fixes-1-don-t-show-fragmento/) |
+- Phase 34 (Smart Chunking): Spanish-language sentence boundary detection may differ from English — needs validation on test corpus
+- Phase 35 (LLM Pipeline): Prior-event summary format needs prompt engineering experimentation; human rights prompt wording needs zero-refusal verification on actual documents
+- Phase 37 (Event UI): Text highlighting performance with large documents needs profiling before committing to character-by-character `<mark>` rendering
 
 ## Deferred Items
 
@@ -132,36 +97,15 @@ Items acknowledged and carried forward from previous milestone close:
 | Category | Item | Status | Deferred At |
 |----------|------|--------|-------------|
 | Feature | Map View (Leaflet.js CDN) | Deferred to future milestone | v6.0 planning |
+| Feature | Timeline Visualization | Deferred to future milestone | v6.0 planning |
+| Feature | Co-occurrence Network | Deferred to future milestone | v6.0 planning |
 | Feature | Participant-Based Event Listing | Deferred to future milestone | v6.0 planning |
-| Feature | Timeline Visualization (vis-timeline) | Deferred to future milestone | v6.0 planning |
-| Feature | Co-occurrence Network | Deferred to v6.2 | v6.0 planning |
-| quick_task | 260604-n9q-fix-document-delete-405-method-not-allow | Acknowledged at v6.1 close | 2026-06-08 |
-| quick_task | 260604-ugl-1-clean-up-db-2-apply-the-fixes-3-build- | Acknowledged at v6.1 close | 2026-06-08 |
-| quick_task | 260605-rm0-there-are-still-orphan-entities-after-de | Acknowledged at v6.1 close | 2026-06-08 |
+| quick_task | 260604-n9q | Acknowledged at v6.1 close | 2026-06-08 |
+| quick_task | 260604-ugl | Acknowledged at v6.1 close | 2026-06-08 |
+| quick_task | 260605-rm0 | Acknowledged at v6.1 close | 2026-06-08 |
 
 ## Session Continuity
 
-Last session: 2026-06-08T19:55:00Z
-Completed: v6.1 milestone shipped — all 4 phases (29-32) delivered and verified
-Next: Start the next milestone — see ROADMAP.md for deferred features (Map View, Timeline, Co-occurrence Network, Participant-Based Listing)
-
-### v6.1 Archive
-
-Milestone archive created at `.planning/milestones/v6.1-*`:
-
-- `.planning/milestones/v6.1-ROADMAP.md` — ROADMAP snapshot at ship time
-- `.planning/milestones/v6.1-MILESTONE-AUDIT.md` — Full milestone audit (14/14 requirements, 4/4 phases)
-- `.planning/milestones/v6.1-REQUIREMENTS.md` — Requirements snapshot
-
-### v6.0 Archive
-
-Milestone archive created at `.planning/milestones/v6.0-*`:
-
-- `.planning/milestones/v6.0-ROADMAP.md` — ROADMAP snapshot at ship time
-- `.planning/milestones/v6.0-MILESTONE-AUDIT.md` — Full milestone audit (23/23 requirements, 5/5 phases)
-- `.planning/milestones/v6.0-REQUIREMENTS.md` — Requirements snapshot
-- `.planning/milestones/v6.0-phases/` — Archived phase directories for phases 24-28
-
-## Operator Next Steps
-
-- Start the next milestone with /gsd-new-milestone
+Last session: 2026-06-08 — v6.1 milestone shipped (all 4 phases 29-32 complete)
+This session: 2026-06-09 — v7.0 roadmap created with 6 phases (33-38)
+Next: Plan Phase 33 — Foundation
