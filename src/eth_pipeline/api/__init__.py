@@ -75,13 +75,7 @@ else:
 # Each route module imports `app` from this package, which is now available.
 
 from eth_pipeline.api.routes.documents import router as documents_router  # noqa: E402
-from eth_pipeline.api.routes.entities import router as entities_router  # noqa: E402
-from eth_pipeline.api.routes.references import router as references_router  # noqa: E402
-from eth_pipeline.api.routes.events import router as events_router  # noqa: E402
 from eth_pipeline.api.routes.events_v2 import router as events_v2_router  # noqa: E402
 
 app.include_router(documents_router)
-app.include_router(entities_router)
-app.include_router(references_router)
-app.include_router(events_router)
 app.include_router(events_v2_router)
