@@ -2875,6 +2875,136 @@
       }
       _origSwitchTab(tabName);
     };
+    // ===== Eventos tab =====
+
+    const eventosSearch = document.getElementById('eventos-search');
+    const eventosSearchClear = document.getElementById('eventos-search-clear');
+    const eventosDocFilter = document.getElementById('eventos-doc-filter');
+    const eventosRefreshBtn = document.getElementById('eventos-refresh-btn');
+    const eventosTbody = document.getElementById('eventos-tbody');
+    const eventosTableContainer = document.getElementById('eventos-table-container');
+    const eventosLoading = document.getElementById('eventos-loading');
+    const eventosEmpty = document.getElementById('eventos-empty');
+    const eventosPagination = document.getElementById('eventos-pagination');
+    const eventosPrevBtn = document.getElementById('eventos-prev-btn');
+    const eventosNextBtn = document.getElementById('eventos-next-btn');
+    const eventosPageInfo = document.getElementById('eventos-page-info');
+    const eventosContainer = document.getElementById('eventos-container');
+
+    let eventosCurrentPage = 1;
+    let eventosSearchTerm = '';
+    let eventosDocumentFilter = '';
+    let eventosLoadingFlag = false;
+    let eventosData = null;
+
+    function showEventosLoading() {
+      eventosLoading.style.display = 'flex';
+      eventosTableContainer.style.display = 'none';
+      eventosEmpty.style.display = 'none';
+      eventosPagination.style.display = 'none';
+    }
+
+    function hideEventosLoading() {
+      eventosLoading.style.display = 'none';
+    }
+
+    function formatEventDate(isoStr) {
+      if (!isoStr) return '—';
+      try {
+        var d = new Date(isoStr);
+        if (isNaN(d.getTime())) return isoStr;
+        return d.toLocaleDateString('es-ES', {
+          year: 'numeric',
+          month: 'short',
+          day: 'numeric',
+        });
+      } catch (_e) {
+        return isoStr;
+      }
+    }
+
+    async function fetchEventos() {
+      if (eventosLoadingFlag) return;
+      eventosLoadingFlag = true;
+      var loader = deferredLoading('eventos', showEventosLoading, hideEventosLoading);
+
+      const params = new URLSearchParams();
+      params.set('page', String(eventosCurrentPage));
+      params.set('per_page', '20');
+      params.set('sort', 'time_start');
+      params.set('order', 'desc');
+      if (eventosSearchTerm) params.set('search', eventosSearchTerm);
+      if (eventosDocumentFilter) params.set('document', eventosDocumentFilter);
+
+      try {
+        const res = await fetch('/events?' + params.toString());
+        if (!res.ok) {
+          let detail = 'Error al cargar eventos';
+          try {
+            const errData = await res.json();
+            if (errData && errData.detail) detail = errData.detail;
+          } catch (_pe) { /* ignore parse error */ }
+          throw new Error(detail);
+        }
+        const data = await res.json();
+        renderEventos(data);
+        eventosData = data;
+      } catch (err) {
+        console.error('fetchEventos error:', err);
+        loader.done();
+        eventosTableContainer.style.display = 'none';
+        eventosPagination.style.display = 'none';
+        eventosEmpty.style.display = 'block';
+        eventosEmpty.querySelector('p').textContent = 'Error al cargar eventos: ' + err.message;
+        showBanner('Error al cargar eventos: ' + err.message, 'error', false);
+      } finally {
+        eventosLoadingFlag = false;
+      }
+    }
+
+    function renderEventos(data) {
+      var loader = deferredLoaders['eventos'];
+      if (loader) { clearTimeout(loader); hideEventosLoading(); }
+
+      if (!data || !data.items || data.items.length === 0) {
+        eventosTableContainer.style.display = 'none';
+        eventosPagination.style.display = 'none';
+        eventosEmpty.style.display = 'block';
+        eventosEmpty.querySelector('h2').textContent = 'No se encontraron eventos';
+        eventosEmpty.querySelector('p').textContent = eventosSearchTerm || eventosDocumentFilter
+          ? 'Ningún evento coincide con los criterios de búsqueda'
+          : 'Los eventos aparecerán aquí después de procesar los documentos';
+        return;
+      }
+
+      eventosEmpty.style.display = 'none';
+      eventosTableContainer.style.display = '';
+      eventosPagination.style.display = 'flex';
+
+      eventosTbody.innerHTML = '';
+      data.items.forEach(function(item) {
+        var tr = document.createElement('tr');
+        tr.style.cursor = 'pointer';
+        tr.addEventListener('click', function() {
+          showEventDetail(item.event_id);
+        });
+        tr.innerHTML =
+          '<td class="col-id">' + escapeHtml((item.event_id || '').slice(0, 8)) + '</td>' +
+          '<td class="col-time"><span class="event-time">' + escapeHtml(formatEventDate(item.time_start)) + '</span></td>' +
+          '<td>' + escapeHtml(item.title || '') + '</td>' +
+          '<td class="col-location">' + escapeHtml(item.location_name || '—') + '</td>' +
+          '<td class="col-participants">' + escapeHtml(String(item.participant_count || 0)) + '</td>' +
+          '<td class="col-refs">' + escapeHtml(String(item.reference_count || 0)) + '</td>';
+        eventosTbody.appendChild(tr);
+      });
+
+      var page = data.page || 1;
+      var pages = data.pages || 0;
+      eventosPageInfo.textContent = 'Página ' + page + ' de ' + pages;
+      eventosPrevBtn.disabled = page <= 1;
+      eventosNextBtn.disabled = page >= pages;
+    }
+
   </script>
 </body>
 </html>
