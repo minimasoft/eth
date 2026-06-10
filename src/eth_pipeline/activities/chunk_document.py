@@ -47,7 +47,7 @@ async def chunk_document_activity(document_id: str, extraction_result: dict) -> 
 
             chunks_dicts: list[dict] = []
             for c in chunks:
-                chunks.append({
+                chunks_dicts.append({
                     "chunk_index": c.chunk_index,
                     "text": c.text,
                     "page_start": c.page_start,
