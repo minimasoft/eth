@@ -19,10 +19,15 @@ V7_TABLES = [
 
 V6_TABLES = [
     "document",
-    "event",
-    "reference",
-    "canonical_entity",
     "document_chunk",
+]
+
+DROPPED_TABLES = [
+    "event_participant",
+    "event_entity_link",
+    "reference",
+    "event",
+    "canonical_entity",
 ]
 
 
@@ -61,11 +66,23 @@ class TestSchemaFoundation:
         assert exists is True, "schema_version column missing from document table"
 
     @pytest.mark.asyncio
-    async def test_old_tables_survive(self, db_connection: asyncpg.Connection) -> None:
+    async def test_old_tables_dropped(self, db_connection: asyncpg.Connection) -> None:
+        """After Phase 38 cleanup, all 5 old v6 tables must be gone."""
+        for table in DROPPED_TABLES:
+            exists = await db_connection.fetchval(
+                "SELECT EXISTS(SELECT 1 FROM information_schema.tables "
+                "WHERE table_name = $1 AND table_schema = 'public')",
+                table,
+            )
+            assert exists is False, f"Old v6 table '{table}' was NOT dropped — manual cleanup needed"
+
+    @pytest.mark.asyncio
+    async def test_shared_tables_survive(self, db_connection: asyncpg.Connection) -> None:
+        """document and document_chunk are shared between v6/v7 and must survive."""
         for table in V6_TABLES:
             exists = await db_connection.fetchval(
                 "SELECT EXISTS(SELECT 1 FROM information_schema.tables "
                 "WHERE table_name = $1 AND table_schema = 'public')",
                 table,
             )
-            assert exists is True, f"V6 table '{table}' was unexpectedly dropped"
+            assert exists is True, f"Shared table '{table}' was unexpectedly dropped"
