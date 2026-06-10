@@ -886,26 +886,18 @@ async def list_documents(
             created_at_str = None
 
         # Query visibility counts for this document
+        evt_count = 0
         ref_count = 0
         ent_count = 0
         chunk_count = 0
         twc = 0
         try:
             async with get_db() as conn:
-                ref_row = await conn.fetchrow(
-                    "SELECT COUNT(*) AS total FROM reference "
-                    "WHERE event IN (SELECT id FROM event WHERE document = $1)",
+                evt_row = await conn.fetchrow(
+                    "SELECT COUNT(*) AS total FROM event_v2 WHERE document_id = $1",
                     doc_id,
                 )
-                ref_count = ref_row["total"] if ref_row else 0
-
-                ent_row = await conn.fetchrow(
-                    "SELECT COUNT(*) AS total FROM reference "
-                    "WHERE event IN (SELECT id FROM event WHERE document = $1) "
-                    "AND canonical_entity IS NOT NULL",
-                    doc_id,
-                )
-                ent_count = ent_row["total"] if ent_row else 0
+                evt_count = evt_row["total"] if evt_row else 0
 
                 chunk_row = await conn.fetchrow(
                     "SELECT COUNT(*) AS total FROM document_chunk WHERE document = $1",
@@ -926,6 +918,7 @@ async def list_documents(
             filename=record.get("filename", ""),
             created_at=created_at_str,
             error_message=record.get("error_message"),
+            event_count=evt_count,
             reference_count=ref_count,
             entity_count=ent_count,
             chunk_count=chunk_count,

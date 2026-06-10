@@ -94,17 +94,20 @@ class DocumentListItem(BaseModel):
     error_message: str | None = None
     """Human-readable error description when status is ``failed``."""
 
-    reference_count: int = 0
-    """Total number of verbatim references linked to this document via events."""
-
-    entity_count: int = 0
-    """Total number of distinct canonical entities linked to this document's references."""
-
     chunk_count: int = 0
     """Number of text chunks created from this document."""
 
     text_word_count: int = 0
     """Word count of the document's extracted text content."""
+
+    event_count: int = 0
+    """Total number of v7 events linked to this document."""
+
+    reference_count: int = 0
+    """Total number of verbatim references linked to this document via events."""
+
+    entity_count: int = 0
+    """Total number of distinct canonical entities linked to this document's references."""
 
     prompt_tokens: int = 0
     """Total prompt (input) tokens across all LLM calls for this document."""

@@ -481,8 +481,7 @@
       width: 160px;
     }
 
-    .documents-table th.col-refs,
-    .documents-table th.col-ents,
+    .documents-table th.col-events,
     .documents-table th.col-words,
     .documents-table th.col-tokens,
     .documents-table th.col-cost {
@@ -491,8 +490,7 @@
         padding-right: 8px;
     }
 
-    .documents-table td.col-refs,
-    .documents-table td.col-ents,
+    .documents-table td.col-events,
     .documents-table td.col-words,
     .documents-table td.col-tokens,
     .documents-table td.col-cost {
@@ -1109,8 +1107,7 @@
                 <th class="col-filename">Archivo</th>
                 <th class="col-date">Fecha de carga</th>
                 <th class="col-status">Estado</th>
-                <th class="col-refs">Referencias</th>
-                <th class="col-ents">Entidades</th>
+                <th class="col-events">Eventos</th>
                 <th class="col-words">Palabras</th>
                 <th class="col-tokens" title="Tokens: entrada/salida/en caché">Tokens</th>
                 <th class="col-cost" title="Costo estimado en USD">Costo</th>
@@ -1707,8 +1704,7 @@
             ? '<br><span style="font-size:12px;color:#991b1b;max-width:200px;display:inline-block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + escapeHtml(item.error_message) + '">' + escapeHtml(item.error_message) + '</span>'
             : '') +
           '</td>' +
-          '<td class="col-count">' + (item.reference_count ?? '-') + '</td>' +
-          '<td class="col-count">' + (item.entity_count ?? '-') + '</td>' +
+          '<td class="col-count">' + (item.event_count ?? '-') + '</td>' +
           '<td class="col-count">' + (item.text_word_count ?? '-') + '</td>' +
           '<td class="col-tokens" title="' + formatTokenTitle(item) + '">' + formatTokens(item) + '</td>' +
           '<td class="col-cost"' + (item.total_cost != null ? '' : ' style="color:#94a3b8"') + '>' + formatCost(item) + '</td>' +
