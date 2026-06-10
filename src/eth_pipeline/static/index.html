@@ -964,6 +964,35 @@
 
     .event-time { color: #64748b; font-variant-numeric: tabular-nums; white-space: nowrap; }
 
+    .event-detail-header {
+      display: flex; align-items: center; gap: 12px; margin-bottom: 16px;
+    }
+    .event-detail-header h2 {
+      font-size: 24px; font-weight: 600; line-height: 1.3; color: #1e293b; margin: 0;
+    }
+    .event-detail-meta {
+      display: flex; gap: 24px; margin-bottom: 24px; padding: 16px;
+      background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; flex-wrap: wrap;
+    }
+    .event-detail-meta-item { display: flex; flex-direction: column; gap: 2px; }
+    .event-detail-meta-item .label {
+      font-size: 12px; color: #64748b; text-transform: uppercase;
+      letter-spacing: 0.5px; font-weight: 600;
+    }
+    .event-detail-meta-item .value {
+      font-size: 14px; font-weight: 500; color: #1e293b;
+    }
+    .event-detail-section h3 {
+      font-size: 16px; font-weight: 600; color: #1e293b; margin: 0 0 12px 0;
+    }
+    .event-detail-section { margin-bottom: 24px; }
+    .event-detail-description {
+      font-size: 16px; line-height: 1.5; white-space: pre-wrap; padding: 16px;
+      background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; color: #1e293b;
+    }
+    .event-ref-clickable { cursor: pointer; }
+    .event-ref-clickable:hover { background: #f8fafc; }
+
   </style>
 </head>
 <body>
@@ -1241,6 +1270,91 @@
           <button id="eventos-prev-btn" class="btn-outline" disabled>&larr; Anterior</button>
           <span id="eventos-page-info" class="page-info">Página 1 de 1</span>
           <button id="eventos-next-btn" class="btn-outline" disabled>Siguiente &rarr;</button>
+        </div>
+      </div>
+      <div id="event-detail-panel" style="display:none">
+        <div class="event-detail-header">
+          <button class="btn-outline" id="event-detail-back-btn" type="button">&larr; Volver</button>
+          <h2 id="event-detail-title"></h2>
+        </div>
+        <div class="event-detail-meta">
+          <div class="event-detail-meta-item">
+            <span class="label">Tiempo</span>
+            <span class="value" id="event-detail-time"></span>
+          </div>
+          <div class="event-detail-meta-item">
+            <span class="label">Documento</span>
+            <span class="value" id="event-detail-document"></span>
+          </div>
+          <div class="event-detail-meta-item">
+            <span class="label">Confianza</span>
+            <span class="value" id="event-detail-confidence"></span>
+          </div>
+          <div class="event-detail-meta-item">
+            <span class="label">ID</span>
+            <span class="value" id="event-detail-id" style="font-family:monospace;font-size:13px"></span>
+          </div>
+        </div>
+        <div class="event-detail-section">
+          <h3>Descripción</h3>
+          <div id="event-detail-description" class="event-detail-description"></div>
+        </div>
+        <div class="event-detail-section">
+          <h3>Participantes</h3>
+          <div id="event-detail-participants-empty" class="placeholder-card" style="display:none">
+            <p>Sin participantes registrados</p>
+          </div>
+          <div id="event-detail-participants-table-container" class="table-container">
+            <table class="documents-table">
+              <thead>
+                <tr>
+                  <th>Nombre</th>
+                  <th>Rol</th>
+                  <th>Confianza</th>
+                </tr>
+              </thead>
+              <tbody id="event-detail-participants-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="event-detail-section">
+          <h3>Lugares</h3>
+          <div id="event-detail-locations-empty" class="placeholder-card" style="display:none">
+            <p>Sin lugares registrados</p>
+          </div>
+          <div id="event-detail-locations-table-container" class="table-container">
+            <table class="documents-table">
+              <thead>
+                <tr>
+                  <th>Nombre</th>
+                  <th>Tipo</th>
+                </tr>
+              </thead>
+              <tbody id="event-detail-locations-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="event-detail-section">
+          <h3>Referencias</h3>
+          <div id="event-detail-refs-loading" class="documents-loading" style="display:none">
+            <div class="loading-spinner"></div>
+            Cargando referencias...
+          </div>
+          <div id="event-detail-refs-empty" class="placeholder-card" style="display:none">
+            <p>Sin referencias vinculadas</p>
+          </div>
+          <div id="event-detail-refs-table-container" class="table-container" style="display:none">
+            <table class="documents-table">
+              <thead>
+                <tr>
+                  <th>Texto Literal</th>
+                  <th>Tipo</th>
+                  <th>Chunk</th>
+                </tr>
+              </thead>
+              <tbody id="event-detail-refs-tbody"></tbody>
+            </table>
+          </div>
         </div>
       </div>
     </section>
@@ -3071,6 +3185,149 @@
       eventosCurrentPage = 1;
       fetchEventos();
     });
+
+    // ===== Event detail panel =====
+
+    let currentEventId = null;
+    let currentEventDetail = null;
+
+    const eventDetailPanel = document.getElementById('event-detail-panel');
+    const eventDetailBackBtn = document.getElementById('event-detail-back-btn');
+    const eventDetailTitle = document.getElementById('event-detail-title');
+    const eventDetailTime = document.getElementById('event-detail-time');
+    const eventDetailDocument = document.getElementById('event-detail-document');
+    const eventDetailConfidence = document.getElementById('event-detail-confidence');
+    const eventDetailId = document.getElementById('event-detail-id');
+    const eventDetailDescription = document.getElementById('event-detail-description');
+    const eventDetailParticipantsTbody = document.getElementById('event-detail-participants-tbody');
+    const eventDetailParticipantsEmpty = document.getElementById('event-detail-participants-empty');
+    const eventDetailLocationsTbody = document.getElementById('event-detail-locations-tbody');
+    const eventDetailLocationsEmpty = document.getElementById('event-detail-locations-empty');
+    const eventDetailRefsLoading = document.getElementById('event-detail-refs-loading');
+    const eventDetailRefsTbody = document.getElementById('event-detail-refs-tbody');
+    const eventDetailRefsEmpty = document.getElementById('event-detail-refs-empty');
+    const eventDetailRefsTableContainer = document.getElementById('event-detail-refs-table-container');
+
+    async function showEventDetail(eventId) {
+      currentEventId = eventId;
+      eventosContainer.style.display = 'none';
+      eventDetailPanel.style.display = 'block';
+
+      eventDetailRefsLoading.style.display = 'flex';
+      eventDetailRefsTableContainer.style.display = 'none';
+      eventDetailRefsEmpty.style.display = 'none';
+
+      try {
+        const res = await fetch('/events/' + encodeURIComponent(eventId));
+        if (!res.ok) {
+          let detail = 'Error al cargar evento';
+          try {
+            const errData = await res.json();
+            if (errData && errData.detail) detail = errData.detail;
+          } catch (_pe) {}
+          throw new Error(detail);
+        }
+        const data = await res.json();
+        renderEventDetail(data);
+        currentEventDetail = data;
+      } catch (err) {
+        console.error('showEventDetail error:', err);
+        eventDetailRefsLoading.style.display = 'none';
+        eventDetailRefsEmpty.style.display = 'block';
+        eventDetailRefsEmpty.querySelector('p').textContent = 'Error: ' + err.message;
+        showBanner('Error al cargar evento: ' + err.message, 'error', false);
+      }
+    }
+
+    function renderEventDetail(data) {
+      eventDetailTitle.textContent = data.title || '';
+
+      var timeStr = '';
+      if (data.time_start) timeStr += formatDate(data.time_start);
+      if (data.time_end) timeStr += ' – ' + formatDate(data.time_end);
+      if (data.time_precision) timeStr += ' (' + data.time_precision + ')';
+      eventDetailTime.textContent = timeStr || '—';
+
+      eventDetailDocument.textContent = data.document_filename || '—';
+      eventDetailConfidence.textContent = data.extraction_confidence != null
+        ? Math.round(data.extraction_confidence * 100) + '%'
+        : '—';
+      eventDetailId.textContent = data.event_id || '';
+
+      var descSection = eventDetailDescription.parentElement;
+      if (data.description) {
+        eventDetailDescription.textContent = data.description;
+        descSection.style.display = '';
+      } else {
+        descSection.style.display = 'none';
+      }
+
+      if (data.participants && data.participants.length > 0) {
+        eventDetailParticipantsEmpty.style.display = 'none';
+        document.getElementById('event-detail-participants-table-container').style.display = '';
+        eventDetailParticipantsTbody.innerHTML = '';
+        data.participants.forEach(function(p) {
+          var tr = document.createElement('tr');
+          tr.innerHTML =
+            '<td>' + escapeHtml(p.name || '') + '</td>' +
+            '<td>' + escapeHtml(p.role || '—') + '</td>' +
+            '<td>' + (p.confidence != null ? escapeHtml(String(Math.round(p.confidence * 100) + '%')) : '—') + '</td>';
+          eventDetailParticipantsTbody.appendChild(tr);
+        });
+      } else {
+        document.getElementById('event-detail-participants-table-container').style.display = 'none';
+        eventDetailParticipantsEmpty.style.display = 'block';
+      }
+
+      if (data.locations && data.locations.length > 0) {
+        eventDetailLocationsEmpty.style.display = 'none';
+        document.getElementById('event-detail-locations-table-container').style.display = '';
+        eventDetailLocationsTbody.innerHTML = '';
+        data.locations.forEach(function(l) {
+          var tr = document.createElement('tr');
+          tr.innerHTML =
+            '<td>' + escapeHtml(l.name || '') + '</td>' +
+            '<td>' + escapeHtml(l.location_type ? entityTypeLabel(l.location_type) : '—') + '</td>';
+          eventDetailLocationsTbody.appendChild(tr);
+        });
+      } else {
+        document.getElementById('event-detail-locations-table-container').style.display = 'none';
+        eventDetailLocationsEmpty.style.display = 'block';
+      }
+
+      eventDetailRefsLoading.style.display = 'none';
+      if (data.references && data.references.length > 0) {
+        eventDetailRefsTableContainer.style.display = '';
+        eventDetailRefsEmpty.style.display = 'none';
+        eventDetailRefsTbody.innerHTML = '';
+        data.references.forEach(function(ref, refIndex) {
+          var tr = document.createElement('tr');
+          tr.className = 'event-ref-clickable';
+          tr.style.cursor = 'pointer';
+          tr.innerHTML =
+            '<td>' + escapeHtml(truncateText(ref.verbatim_text || '', 120)) + '</td>' +
+            '<td>' + escapeHtml(ref.reference_type || '') + '</td>' +
+            '<td>' + escapeHtml('Parte ' + (ref.chunk_index || 0)) + '</td>';
+          tr.addEventListener('click', function() {
+            openDocViewer(ref.document_id || data.document_id, ref.chunk_index || 0, ref.verbatim_text || '', refIndex, data.references.length, data.references);
+          });
+          eventDetailRefsTbody.appendChild(tr);
+        });
+      } else {
+        eventDetailRefsTableContainer.style.display = 'none';
+        eventDetailRefsEmpty.style.display = 'block';
+      }
+    }
+
+    function hideEventDetail() {
+      currentEventId = null;
+      currentEventDetail = null;
+      eventDetailPanel.style.display = 'none';
+      eventosContainer.style.display = '';
+      fetchEventos();
+    }
+
+    eventDetailBackBtn.addEventListener('click', hideEventDetail);
 
   </script>
 </body>
