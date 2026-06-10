@@ -962,6 +962,8 @@
       color: #1e293b;
     }
 
+    .event-time { color: #64748b; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
   </style>
 </head>
 <body>
@@ -975,6 +977,7 @@
     <button role="tab" aria-selected="false" aria-controls="tab-entities" id="tab-btn-entities" data-tab="entities">Entidades</button>
     <button role="tab" aria-selected="false" aria-controls="tab-references" id="tab-btn-references" data-tab="references">Referencias</button>
     <button role="tab" aria-selected="false" aria-controls="tab-logs" id="tab-btn-logs" data-tab="logs">Registros</button>
+    <button role="tab" aria-selected="false" aria-controls="tab-eventos" id="tab-btn-eventos" data-tab="eventos">Eventos</button>
   </nav>
 
   <main>
@@ -1197,6 +1200,51 @@
       </div>
     </section>
 
+    <section id="tab-eventos" role="tabpanel" aria-labelledby="tab-btn-eventos" class="tab-content">
+      <div id="eventos-container">
+        <div class="documents-header">
+          <h2>Eventos</h2>
+        </div>
+        <div class="documents-toolbar">
+          <div class="search-wrapper">
+            <input type="text" id="eventos-search" class="search-input" placeholder="Buscar por título..." aria-label="Buscar eventos por título" />
+            <button id="eventos-search-clear" class="search-clear" aria-label="Limpiar búsqueda" style="display:none">&times;</button>
+          </div>
+          <select id="eventos-doc-filter" class="status-filter" aria-label="Filtrar por documento">
+            <option value="">Todos los documentos</option>
+          </select>
+          <button class="btn-icon btn-refresh" id="eventos-refresh-btn" aria-label="Actualizar eventos" title="Actualizar eventos">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+          </button>
+        </div>
+        <div id="eventos-loading" class="documents-loading">Cargando eventos...</div>
+        <div id="eventos-table-container" class="table-container" style="display:none">
+          <table class="documents-table">
+            <thead>
+              <tr>
+                <th class="col-id">ID</th>
+                <th class="col-time">Tiempo</th>
+                <th>Título</th>
+                <th class="col-location">Lugar</th>
+                <th class="col-participants">Particip.</th>
+                <th class="col-refs">Refs</th>
+              </tr>
+            </thead>
+            <tbody id="eventos-tbody"></tbody>
+          </table>
+        </div>
+        <div id="eventos-empty" class="placeholder-card" style="display:none">
+          <h2>No se encontraron eventos</h2>
+          <p>Los eventos aparecerán aquí después de procesar los documentos</p>
+        </div>
+        <div id="eventos-pagination" class="documents-pagination" style="display:none">
+          <button id="eventos-prev-btn" class="btn-outline" disabled>&larr; Anterior</button>
+          <span id="eventos-page-info" class="page-info">Página 1 de 1</span>
+          <button id="eventos-next-btn" class="btn-outline" disabled>Siguiente &rarr;</button>
+        </div>
+      </div>
+    </section>
+
     <section id="tab-logs" role="tabpanel" aria-labelledby="tab-btn-logs" class="tab-content">
       <div id="logs-container">
         <div class="documents-header">
@@ -1313,6 +1361,7 @@
       entities: document.getElementById('tab-entities'),
       references: document.getElementById('tab-references'),
       logs: document.getElementById('tab-logs'),
+      eventos: document.getElementById('tab-eventos'),
     };
 
     function switchTab(tabName) {
@@ -1354,6 +1403,7 @@
       if (tabName === 'entities') fetchEntities();
       if (tabName === 'references') fetchReferences();
       if (tabName === 'logs') resumeLogPolling();
+      if (tabName === 'eventos') fetchEventos();
     }
 
     tabs.forEach(tab => {
