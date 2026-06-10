@@ -497,19 +497,19 @@ data.items.forEach(function(item) {
 | A4 | The existing `formatDate()` function (line 1482) produces acceptable date output for event times; UI-SPEC specifies `toLocaleDateString('es-ES', {year:'numeric', month:'short', day:'numeric'})` without time | Code Examples | LOW — UI-SPEC explicitly overrides the existing formatDate which includes hours/minutes; a separate format function (or parameter) is needed |
 | A5 | Document ID formatting uses first 8 chars (same as documents tab's `.doc-id` column) | Code Examples | LOW — confirmed by existing pattern at line 1614 |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **Event time display format**
+1. **Event time display format** — RESOLVED: Follow UI-SPEC exactly — date only in the table column via `toLocaleDateString('es-ES', {year:'numeric', month:'short', day:'numeric'})`. The detail panel shows the full time window with precision label.
    - What we know: UI-SPEC specifies `toLocaleDateString('es-ES', {year:'numeric', month:'short', day:'numeric'})` — date only, no time.
    - What's unclear: Whether time should also be shown in the table column (e.g., "10 jun 2023, 14:30"). The API returns full `time_start` as ISO-8601.
    - Recommendation: Follow UI-SPEC exactly — date only in the table column. The detail panel shows the full time window with precision label.
 
-2. **Chunk total count for footer navigation**
+2. **Chunk total count for footer navigation** — RESOLVED: Use lazy approach (option c) — fetch next/prev chunk; if 404, disable the corresponding navigation button.
    - What we know: The API endpoint `GET /documents/{id}/chunks/{part_index}` returns a single chunk's text. It does not return the total number of chunks for the document.
    - What's unclear: How to determine "last chunk" to disable "Parte siguiente →" button and show "Parte N de M" indicator.
    - Recommendation: Either (a) add a `total_chunks` field to the `ChunkTextResponse` model (requiring a Phase 36 follow-up), or (b) fetch the document metadata separately to get chunk count, or (c) use a lazy approach — try to fetch the next chunk and disable the button if it returns 404. Option (c) is simplest and doesn't require backend changes.
 
-3. **Document filter options — which documents have events?**
+3. **Document filter options — which documents have events?** — RESOLVED: Show all documents in the filter. The API handles `document` param filtering; selecting a document with no events returns empty results. Matches "Todos los documentos" default.
    - What we know: The filter should show only documents that have events.
    - What's unclear: The most efficient way to get this list. The full document list endpoint returns all documents; filtering client-side requires checking each document.
    - Recommendation: Fetch the full document list (`GET /documents?per_page=100`) and filter to documents where `reference_count > 0` OR make a separate lightweight query. Simpler: just show all documents in the filter — the API already handles `document` param filtering. If a document has no events, selecting it returns empty results. This matches the "Todos los documentos" default behavior.
