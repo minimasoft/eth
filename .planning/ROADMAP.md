@@ -140,7 +140,20 @@ v7.0 is a clean-break rewrite of the references/entities/events system. The old 
   4. Event list is filterable by current document (dropdown filter similar to the Logs tab), with a clear button to show all events
   5. Event list defaults to sort by starting time descending and supports title search via a search input
 
-**Plans**: TBD
+**Plans**: 3 plans
+
+**Wave 1**
+
+- [ ] 37-01-PLAN.md — HTML scaffold + CSS + tab registration (UI-01)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 37-02-PLAN.md — Event list JS: fetch, render, search, filter, pagination (UI-01, UI-04, UI-05)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [ ] 37-03-PLAN.md — Event detail panel + document viewer modal (UI-02, UI-03)
+
 **UI hint**: yes
 
 ### Phase 38: Cleanup
@@ -165,5 +178,5 @@ v7.0 is a clean-break rewrite of the references/entities/events system. The old 
 | 34. Smart Chunking | 3/3 | Not started | - |
 | 35. LLM Pipeline | 3/3 | Complete   | 2026-06-09 |
 | 36. Event API | 4/4 | Complete   | 2026-06-09 |
-| 37. Event UI | 0/0 | Not started | - |
+| 37. Event UI | 0/3 | Not started | - |
 | 38. Cleanup | 0/0 | Not started | - |
