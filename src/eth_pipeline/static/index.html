@@ -1403,7 +1403,7 @@
       if (tabName === 'entities') fetchEntities();
       if (tabName === 'references') fetchReferences();
       if (tabName === 'logs') resumeLogPolling();
-      if (tabName === 'eventos') fetchEventos();
+      if (tabName === 'eventos') { populateEventosDocFilter(); fetchEventos(); }
     }
 
     tabs.forEach(tab => {
@@ -3004,6 +3004,73 @@
       eventosPrevBtn.disabled = page <= 1;
       eventosNextBtn.disabled = page >= pages;
     }
+
+    // Search with debounce
+    eventosSearch.addEventListener('input', function() {
+      if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
+      var val = eventosSearch.value;
+      eventosSearchClear.style.display = val ? '' : 'none';
+      searchDebounceTimer = setTimeout(function() {
+        eventosSearchTerm = val;
+        eventosCurrentPage = 1;
+        fetchEventos();
+      }, 300);
+    });
+
+    // Clear search
+    eventosSearchClear.addEventListener('click', function() {
+      eventosSearch.value = '';
+      eventosSearchClear.style.display = 'none';
+      eventosSearchTerm = '';
+      eventosCurrentPage = 1;
+      if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
+      fetchEventos();
+    });
+
+    async function populateEventosDocFilter() {
+      try {
+        var res = await fetch('/documents?per_page=100');
+        if (!res.ok) return;
+        var data = await res.json();
+        var select = eventosDocFilter;
+        var currentVal = select.value;
+        select.innerHTML = '<option value="">Todos los documentos</option>';
+        (data.items || []).forEach(function(doc) {
+          var opt = document.createElement('option');
+          opt.value = doc.document_id;
+          var shortId = (doc.document_id || '').slice(0, 8);
+          opt.textContent = shortId + ' — ' + (doc.filename || '(sin nombre)');
+          select.appendChild(opt);
+        });
+        select.value = currentVal;
+      } catch (_e) { /* silently fail */ }
+    }
+
+    // Document filter change
+    eventosDocFilter.addEventListener('change', function() {
+      eventosDocumentFilter = eventosDocFilter.value;
+      eventosCurrentPage = 1;
+      fetchEventos();
+    });
+
+    // Pagination
+    eventosPrevBtn.addEventListener('click', function() {
+      if (eventosPrevBtn.disabled) return;
+      eventosCurrentPage = Math.max(1, eventosCurrentPage - 1);
+      fetchEventos();
+    });
+
+    eventosNextBtn.addEventListener('click', function() {
+      if (eventosNextBtn.disabled) return;
+      eventosCurrentPage = eventosCurrentPage + 1;
+      fetchEventos();
+    });
+
+    // Refresh button
+    eventosRefreshBtn.addEventListener('click', function() {
+      eventosCurrentPage = 1;
+      fetchEventos();
+    });
 
   </script>
 </body>
