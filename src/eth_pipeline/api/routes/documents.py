@@ -23,7 +23,6 @@ from eth_pipeline.api.models import (
     DocumentStatus,
     DocumentTokenUsage,
     DocumentUploadCreated,
-    EventsCleared,
     HealthResponse,
     LlmCallLogListItem,
     LlmCallLogListResponse,
@@ -135,10 +134,10 @@ async def create_document(input: DocumentInput) -> DocumentCreated:
     temporal = getattr(app.state, "temporal", None)
     if temporal is not None:
         try:
-            from eth_pipeline.workflows import DocumentProcessingWorkflow
+            from eth_pipeline.workflows import DocumentProcessingV7Workflow
 
             await temporal.start_workflow(
-                DocumentProcessingWorkflow.run,
+                DocumentProcessingV7Workflow.run,
                 id=f"doc-{doc_id}",
                 task_queue="event-extraction",
                 args=[doc_id],
@@ -304,10 +303,10 @@ async def upload_document(file: UploadFile = File(...)) -> DocumentUploadCreated
     temporal = getattr(app.state, "temporal", None)
     if temporal is not None:
         try:
-            from eth_pipeline.workflows import DocumentProcessingWorkflow
+            from eth_pipeline.workflows import DocumentProcessingV7Workflow
 
             await temporal.start_workflow(
-                DocumentProcessingWorkflow.run,
+                DocumentProcessingV7Workflow.run,
                 id=f"doc-{doc_id}",
                 task_queue="event-extraction",
                 args=[doc_id],
@@ -990,231 +989,53 @@ async def delete_document(document_id: str) -> DocumentDeleted:
 
     try:
         async with get_db() as conn:
-            # --- Step 0: Collect event-type canonical entity IDs for this doc ---
-            event_ce_rows = await conn.fetch(
-                "SELECT id FROM canonical_entity "
-                "WHERE entity_type = 'event' AND properties->>'document_id' = $1",
-                document_id,
-            )
-
-            # --- Step 1: Delete event_participant edges (v6.0) ---
-            try:
-                await conn.execute(
-                    "DELETE FROM event_participant WHERE "
-                    "in_event IN (SELECT id FROM event WHERE document = $1)",
-                    document_id,
-                )
-            except Exception as exc:
-                logger.warning(
-                    "event_participant cleanup skipped (table may not exist yet): %s",
-                    exc,
-                )
-
-            # --- Step 1a: Collect non-event entities linked via event_entity_link ---
-            # Collect BEFORE Step 1b deletes the edges, so we know which entities
-            # to check for orphan status after references are deleted.
-            eel_entity_rows = await conn.fetch(
-                "SELECT entity FROM event_entity_link "
-                "WHERE event IN ("
-                "  SELECT id FROM canonical_entity "
-                "  WHERE entity_type = 'event' AND properties->>'document_id' = $1"
-                ")",
-                document_id,
-            )
-            eel_entity_ids = list({
-                str(r["entity"]) for r in eel_entity_rows
-                if r["entity"] is not None
-            })
-
-            # --- Step 1b: Delete event_entity_link edges ---
+            # Delete shared v7+ related records
             await conn.execute(
-                "DELETE FROM event_entity_link WHERE event IN ("
-                "SELECT id FROM canonical_entity "
-                "WHERE entity_type = 'event' AND properties->>'document_id' = $1"
-                ")",
+                "DELETE FROM document_chunk WHERE document = ",
                 document_id,
             )
-
-            # --- Step 1c: Collect entities linked via event_participant ---
-            # Entities created in store_extraction_results_activity for participants
-            # may only be linked via event_participant (not via reference or
-            # event_entity_link). Collect them now before the edges are deleted.
-            ep_entity_rows = await conn.fetch(
-                "SELECT out_entity FROM event_participant "
-                "WHERE in_event IN (SELECT id FROM event WHERE document = $1)",
-                document_id,
-            )
-            ep_entity_ids = list({
-                str(r["out_entity"]) for r in ep_entity_rows
-                if r["out_entity"] is not None
-            })
-
-            # --- Step 1d: Collect entities linked via event.location_place_id ---
-            lp_entity_rows = await conn.fetch(
-                "SELECT location_place_id FROM event "
-                "WHERE document = $1 AND location_place_id IS NOT NULL",
-                document_id,
-            )
-            lp_entity_ids = list({
-                str(r["location_place_id"]) for r in lp_entity_rows
-                if r["location_place_id"] is not None
-            })
-
-            # --- Step 2: Collect affected canonical_entities from references ---
-            affected_ce_rows = await conn.fetch(
-                "SELECT canonical_entity FROM reference "
-                "WHERE event IN (SELECT id FROM event WHERE document = $1) "
-                "AND canonical_entity IS NOT NULL",
-                document_id,
-            )
-            affected_eid_rows = await conn.fetch(
-                "SELECT entity_id FROM reference "
-                "WHERE event IN (SELECT id FROM event WHERE document = $1) "
-                "AND entity_id IS NOT NULL",
-                document_id,
-            )
-            affected_ce_ids = list(set(
-                str(r["canonical_entity"]) for r in affected_ce_rows
-                if r["canonical_entity"] is not None
-            ) | set(
-                str(r["entity_id"]) for r in affected_eid_rows
-                if r["entity_id"] is not None
-            ))
-
-            # --- Steps 3-6: Delete dependent records (CASCADE handles most) ---
-            # event_participant, event_entity_link, reference, event,
-            # document_chunk, document_event_log, llm_usage are all
-            # cascaded from event/document deletions, but we delete
-            # them explicitly for explicit ordering.
-
-            await conn.execute(
-                "DELETE FROM reference WHERE event IN "
-                "(SELECT id FROM event WHERE document = $1)",
-                document_id,
-            )
-
-            await conn.execute(
-                "DELETE FROM event WHERE document = $1",
-                document_id,
-            )
-
-            await conn.execute(
-                "DELETE FROM document_chunk WHERE document = $1",
-                document_id,
-            )
-
             await conn.execute(
                 "DELETE FROM document_event_log WHERE document = $1",
                 document_id,
             )
-
             await conn.execute(
-                "DELETE FROM llm_usage WHERE document = $1",
+                "DELETE FROM llm_usage WHERE document = ",
                 document_id,
             )
-
             await conn.execute(
-                "DELETE FROM llm_call_log WHERE document = $1",
+                "DELETE FROM llm_call_log WHERE document = ",
                 document_id,
             )
-
-            # --- Step 7: Delete event-type canonical entities for this doc ---
+            # Delete event_v2 records and their related tables
             await conn.execute(
-                "DELETE FROM canonical_entity WHERE entity_type = 'event' "
-                "AND properties->>'document_id' = $1",
+                "DELETE FROM event_ref WHERE event_id IN (SELECT id FROM event_v2 WHERE document_id = )",
                 document_id,
             )
-
-            # --- Step 8: Delete orphaned canonical entities (no refs remain) ---
-            orphaned = 0
-            for ent_id in affected_ce_ids:
-                count_row = await conn.fetchrow(
-                    "SELECT COUNT(*) AS total FROM reference "
-                    "WHERE canonical_entity = $1 "
-                    "OR entity_id = $1",
-                    ent_id,
-                )
-                remaining = count_row["total"] if count_row else 0
-
-                if remaining == 0:
-                    await conn.execute(
-                        "DELETE FROM canonical_entity WHERE id = $1",
-                        ent_id,
-                    )
-                    orphaned += 1
-
-            # --- Step 8b: Delete orphaned non-event entities from event_entity_link ---
-            # Use eel_entity_ids collected in Step 1a (before edges were deleted)
-            eel_ids = [
-                eid for eid in eel_entity_ids
-                if eid not in affected_ce_ids
-                and eid not in ep_entity_ids  # Step 8c handles these
-                and eid not in lp_entity_ids  # Step 8c handles these
-            ]
-            for ent_id in eel_ids:
-                ref_row = await conn.fetchrow(
-                    "SELECT COUNT(*) AS total FROM reference "
-                    "WHERE canonical_entity = $1 "
-                    "OR entity_id = $1",
-                    ent_id,
-                )
-                ref_remaining = ref_row["total"] if ref_row else 0
-
-                eel_row = await conn.fetchrow(
-                    "SELECT COUNT(*) AS total FROM event_entity_link "
-                    "WHERE entity = $1",
-                    ent_id,
-                )
-                eel_remaining = eel_row["total"] if eel_row else 0
-
-                if ref_remaining == 0 and eel_remaining == 0:
-                    await conn.execute(
-                        "DELETE FROM canonical_entity WHERE id = $1",
-                        ent_id,
-                    )
-                    orphaned += 1
-
-            # --- Step 8c: Delete orphaned entities from event_participant + location_place_id ---
-            # These entities were only linked via event_participant or location_place_id
-            # (which were deleted in Steps 1 and 4). Check if any remain with zero refs
-            # and zero eel links after all other cleanup.
-            alt_entity_ids = [
-                eid for eid in (ep_entity_ids + lp_entity_ids)
-                if eid not in affected_ce_ids and eid not in eel_entity_ids
-            ]
-            for ent_id in alt_entity_ids:
-                count_row = await conn.fetchrow(
-                    "SELECT COUNT(*) AS total FROM reference "
-                    "WHERE canonical_entity = $1 "
-                    "OR entity_id = $1",
-                    ent_id,
-                )
-                remaining_refs = count_row["total"] if count_row else 0
-
-                eel_row = await conn.fetchrow(
-                    "SELECT COUNT(*) AS total FROM event_entity_link "
-                    "WHERE entity = $1",
-                    ent_id,
-                )
-                remaining_eel = eel_row["total"] if eel_row else 0
-
-                if remaining_refs == 0 and remaining_eel == 0:
-                    await conn.execute(
-                        "DELETE FROM canonical_entity WHERE id = $1",
-                        ent_id,
-                    )
-                    orphaned += 1
-
-            # --- Step 9: Delete the document ---
+            await conn.execute(
+                "DELETE FROM event_participant_v2 WHERE event_id IN (SELECT id FROM event_v2 WHERE document_id = )",
+                document_id,
+            )
+            await conn.execute(
+                "DELETE FROM event_location WHERE event_id IN (SELECT id FROM event_v2 WHERE document_id = )",
+                document_id,
+            )
+            await conn.execute(
+                "DELETE FROM event_document WHERE document_id = ",
+                document_id,
+            )
+            await conn.execute(
+                "DELETE FROM event_v2 WHERE document_id = $1",
+                document_id,
+            )
+            # Delete the document itself
             await conn.execute(
                 "DELETE FROM document WHERE id = $1",
                 document_id,
             )
 
         logger.info(
-            "Deleted document %s (cascade complete, %d orphaned entities cleaned)",
+            "Deleted document %s (cascade complete)",
             document_id,
-            orphaned,
         )
 
         temporal = getattr(app.state, "temporal", None)
@@ -1248,118 +1069,5 @@ async def delete_document(document_id: str) -> DocumentDeleted:
     return DocumentDeleted(
         document_id=document_id,
         document_deleted=True,
-        orphaned_entities_cleaned=orphaned,
     )
 
-
-# =======================================================================
-# Clear document events endpoint
-# =======================================================================
-
-
-@router.delete(
-    "/documents/{document_id}/events",
-    response_model=EventsCleared,
-)
-async def clear_document_events(document_id: str) -> EventsCleared:
-    """Clear all extraction results for a document and reset its status."""
-    # Verify document exists
-    try:
-        async with get_db() as conn:
-            doc_row = await conn.fetchrow(
-                "SELECT id FROM document WHERE id = $1",
-                document_id,
-            )
-    except Exception as exc:
-        logger.error("Failed to query document %s: %s", document_id, exc)
-        raise HTTPException(
-            status_code=502,
-            detail="Failed to query database.",
-        ) from exc
-
-    if doc_row is None:
-        logger.warning("Document %s not found for event clear", document_id)
-        raise HTTPException(
-            status_code=404,
-            detail=f"Document {document_id} not found.",
-        )
-
-    try:
-        async with get_db() as conn:
-            # Delete event_participant edges for events of this doc (v6.0)
-            await conn.execute(
-                "DELETE FROM event_participant WHERE "
-                "in_event IN (SELECT id FROM event WHERE document = $1)",
-                document_id,
-            )
-
-            # Delete event_entity_link edges for event-type entities of this doc
-            await conn.execute(
-                "DELETE FROM event_entity_link WHERE event IN ("
-                "SELECT id FROM canonical_entity "
-                "WHERE entity_type = 'event' AND properties->>'document_id' = $1"
-                ")",
-                document_id,
-            )
-
-            await conn.execute(
-                "DELETE FROM document_chunk WHERE document = $1",
-                document_id,
-            )
-
-            await conn.execute(
-                "DELETE FROM reference WHERE event IN "
-                "(SELECT id FROM event WHERE document = $1)",
-                document_id,
-            )
-
-            await conn.execute(
-                "DELETE FROM event WHERE document = $1",
-                document_id,
-            )
-
-            await conn.execute(
-                "DELETE FROM document_event_log WHERE document = $1",
-                document_id,
-            )
-
-            await conn.execute(
-                "DELETE FROM llm_usage WHERE document = $1",
-                document_id,
-            )
-
-            await conn.execute(
-                "DELETE FROM llm_call_log WHERE document = $1",
-                document_id,
-            )
-
-            # Delete event-type canonical entities for this doc
-            await conn.execute(
-                "DELETE FROM canonical_entity WHERE entity_type = 'event' "
-                "AND properties->>'document_id' = $1",
-                document_id,
-            )
-
-            await conn.execute(
-                "UPDATE document SET status = 'pending', "
-                "text_content = '', error_message = NULL, "
-                "updated_at = NOW() WHERE id = $1",
-                document_id,
-            )
-
-        logger.info(
-            "Cleared events and reset status for document %s",
-            document_id,
-        )
-    except Exception as exc:
-        logger.error(
-            "Failed to clear events for document %s: %s",
-            document_id,
-            exc,
-        )
-        raise HTTPException(
-            status_code=502,
-            detail="Failed to clear extraction results.",
-        ) from exc
-
-    return EventsCleared(document_id=document_id, status="pending", events_cleared=True)

@@ -7,7 +7,7 @@ import uuid
 from temporalio import activity
 
 from eth_pipeline.activities._common import _db_params
-from eth_pipeline.chunker import DocumentChunker, SmartChunker
+from eth_pipeline.chunker import SmartChunker
 from eth_pipeline.db import get_db
 from eth_pipeline.processing_log import ProcessingLogger
 
@@ -40,10 +40,6 @@ async def chunk_document_activity(document_id: str, extraction_result: dict) -> 
             if schema_version == 'v7':
                 chunker = SmartChunker()
                 chunks = chunker.chunk(text, page_offsets)
-            else:
-                chunker = DocumentChunker()
-                chunk_result = chunker.chunk(text, page_offsets)
-                chunks = chunk_result.chunks
 
             chunks_dicts: list[dict] = []
             for c in chunks:

@@ -36,22 +36,16 @@ async def main() -> None:
         client=client,
         task_queue=TASK_QUEUE,
         workflows=[
-            workflows.DocumentProcessingWorkflow,
             workflows.DocumentProcessingV7Workflow,
         ],
         activities=[
             activities.chunk_document_activity,
-            activities.create_event_canonical_entities_activity,
-            activities.extract_events_activity,
             activities.extract_events_v7_activity,
             activities.extract_text_activity,
             activities.get_document_metadata_activity,
             activities.get_document_text_activity,
-            activities.resolve_entities_activity,
-            activities.resolve_entities_with_search_activity,
             activities.resolve_references_v7_activity,
             activities.store_events_v7_activity,
-            activities.store_extraction_results_activity,
             activities.update_document_status_activity,
         ],
     )
