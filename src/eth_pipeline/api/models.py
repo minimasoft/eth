@@ -166,9 +166,6 @@ class DocumentDeleted(BaseModel):
     document_deleted: bool = True
     """Whether the document record was deleted."""
 
-    orphaned_entities_cleaned: int = 0
-    """Number of canonical_entities that were orphaned and removed."""
-
 
 class DocumentTokenUsage(BaseModel):
     """Per-document token usage aggregation response."""
