@@ -445,27 +445,27 @@ app.include_router(events_v2_router)
 | A5 | Test `test_schema.py` currently lists old tables in expected table set | Validation Architecture | If the test was already updated in Phase 33-37 to exclude old tables, minimal changes needed. LOW risk — checked; test file references `canonical_entity` at line 24. |
 | A6 | `_create_canonical_entity` in `activities/_common.py` is only used by old activities | Architecture Patterns | If any v7 activity imports it, removal breaks v7 pipeline. Verified: only used by `resolve_entities.py`, `resolve_entities_with_search.py`, `store_extraction_results.py`, `create_event_canonical_entities.py` — all old. |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **`document_event_log` retention vs. removal**
    - What we know: The table is used by `ProcessingLogger` which is called by both old and new workflows. The success criteria lists it for removal.
    - What's unclear: Whether Phase 33-37 introduced a new logging mechanism rendering `document_event_log` truly unused.
    - Recommendation: Retain `document_event_log`. If it's genuinely unused, a separate audit phase can drop it later. Safer to keep than to break logging.
 
-2. **`chunk_document_activity` — keep or remove?**
+2. **`chunk_document_activity` — keep or remove? (RESOLVED)**
    - What we know: The old `DocumentProcessingWorkflow` calls `chunk_document_activity`; the new `DocumentProcessingV7Workflow` uses `get_document_chunks_activity` to READ existing chunks.
-   - What's unclear: Whether Phase 34's smart chunker replaces `chunk_document_activity` or augments it. If the smart chunker writes to `document_chunk` via a different mechanism, `chunk_document_activity` can be removed. If it was refactored to call the smart chunker internally, the activity stays.
-   - Recommendation: Check Phase 34 output. If a new chunking activity exists, remove `chunk_document_activity`. If `chunk_document_activity` was refactored, keep it.
+   - Resolution: KEEP `chunk_document_activity` — it is the chunking entry point that routes to `SmartChunker` for v7 documents. However, remove the `DocumentChunker` import and old-path branch (`else:` clause). After Plan 38-03, the activity only handles the `schema_version == 'v7'` path with `SmartChunker`. The `DocumentChunker` fallback is deleted because `DocumentProcessingWorkflow` (the only caller of the old path) is removed.
+   - Verified by: codebase audit — `chunk_document.py` reads `schema_version` and branches; v7 workflow calls `get_document_chunks_activity` (reader), not `chunk_document_activity` (writer).
 
-3. **`DocumentChunker` class in `chunker.py` — full removal or partial?**
-   - What we know: `chunker.py` defines `DocumentChunk` dataclass and `DocumentChunker` class. `DocumentChunk` may be used by the new smart chunker. `DocumentChunker` is the old chunking implementation.
-   - What's unclear: Whether the new smart chunker imports `DocumentChunk` or defines its own.
-   - Recommendation: Check Phase 34 output. Keep `DocumentChunk` dataclass, remove only `DocumentChunker` class.
+3. **`DocumentChunker` class in `chunker.py` — full removal or partial? (RESOLVED)**
+   - What we know: `chunker.py` defines `DocumentChunk` dataclass, `ChunkResult` dataclass, `DocumentChunker` class, `chunk_document` convenience function, `SmartChunk` dataclass, `distribute_balanced` function, and `SmartChunker` class.
+   - Resolution: REMOVE `DocumentChunker` class, `ChunkResult` dataclass, and `chunk_document` convenience function (all tied to the old chunking path). KEEP `DocumentChunk` dataclass (canonical data model, no dependency on old chunker), `SmartChunk` dataclass, `distribute_balanced` function, and `SmartChunker` class. After removal, `chunk_document_activity` only imports `SmartChunker` from `chunker.py`.
+   - Verified by: grep of `chunker.py` — `DocumentChunker` is only used by the old `chunk_document_activity` branch and the `chunk_document()` convenience function, both of which are removed.
 
-4. **`resolve_entities_with_search_activity` — remove in Phase 35 or Phase 38?**
+4. **`resolve_entities_with_search_activity` — remove in Phase 35 or Phase 38? (RESOLVED)**
    - What we know: D057 states PIP-06 (replace old activities) is in Phase 35, not Phase 38. But the activity might still be present in the codebase.
-   - What's unclear: The actual Phase 35 output — did it remove `resolve_entities_with_search_activity` or just add the new ones?
-   - Recommendation: Check current `activities/__init__.py` and `workflows.py` — if `resolve_entities_with_search_activity` is still imported, include it in Phase 38 cleanup.
+   - Resolution: REMOVE in Phase 38. Verified: `resolve_entities_with_search_activity` is still imported in `activities/__init__.py` (line 25-27) and `workflows.py` (line 37). The file `resolve_entities_with_search.py` still exists in the activities directory. Phase 35 added the v7 replacement activities but did not delete the old ones — that deletion is Phase 38's responsibility per D059.
+   - Verified by: codebase audit — `activities/__init__.py` lines 25-27, `workflows.py` line 37, `resolve_entities_with_search.py` exists on disk.
 
 5. **Which `event_location` table?**
    - What we know: The success criteria says "event_location (old)" but `schema.sql` has no old `event_location` table. The new `event_location` table was created in Phase 33 migration 0001 as part of the v7 schema.

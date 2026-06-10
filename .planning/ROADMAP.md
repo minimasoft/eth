@@ -168,7 +168,17 @@ v7.0 is a clean-break rewrite of the references/entities/events system. The old 
   3. Old activity functions (`extract_events`, `resolve_entities`, `store_extraction_results`, old chunker) are no longer importable in the codebase
   4. Old UI tabs ("Entidades", "Referencias") no longer appear in the navigation — only "Subir", "Documentos", "Registros", "Eventos", "LLM Calls" remain
 
-**Plans**: TBD
+**Plans**: 4 plans
+
+**Wave 1**
+
+- [ ] 38-01-PLAN.md — Alembic migration to drop 5 old tables + update test_schema.py
+- [ ] 38-02-PLAN.md — Delete old API route files, remove old Pydantic models, clean re-exports
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 38-03-PLAN.md — Delete old activities + orphan scripts, clean workflows.py + chunker.py + documents.py
+- [ ] 38-04-PLAN.md — Remove Entidades/Referencias UI tabs from index.html, delete entity/reference JS
 
 ## Progress
 
@@ -179,4 +189,4 @@ v7.0 is a clean-break rewrite of the references/entities/events system. The old 
 | 35. LLM Pipeline | 3/3 | Complete   | 2026-06-09 |
 | 36. Event API | 4/4 | Complete   | 2026-06-09 |
 | 37. Event UI | 0/3 | Not started | - |
-| 38. Cleanup | 0/0 | Not started | - |
+| 38. Cleanup | 0/4 | Not started | - |
