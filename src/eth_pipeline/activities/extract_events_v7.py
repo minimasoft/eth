@@ -25,6 +25,7 @@ async def extract_events_v7_activity(
     document_id: str,
     chunk_index: int,
     prior_events: list[dict] | None = None,
+    total_chunks: int = 0,
 ) -> dict:
     api_key = os.environ.get("OPENROUTER_API_KEY")
     _log = ProcessingLogger(_db_params())
@@ -49,25 +50,43 @@ async def extract_events_v7_activity(
             f"Chunk {chunk_index} not found for document {document_id}"
         )
     chunk_text: str = row[0]["text"]
+    chunk_progress = f"[chunk {chunk_index + 1}/{total_chunks}]" if total_chunks > 0 else f"[chunk {chunk_index}]"
 
     model = os.environ.get("OPENROUTER_MODEL", DEFAULT_MODEL)
     provider = OpenRouterProvider(api_key=api_key, model=model)
 
     activity.logger.info(
-        "extract_events_v7_activity called [document_id=%s] [chunk_index=%d] [text_length=%d] [model=%s]",
+        "extract_events_v7_activity called %s [document_id=%s] [chunk_index=%d] [text_length=%d] [model=%s]",
+        chunk_progress,
         document_id,
         chunk_index,
         len(chunk_text),
         model,
     )
     await _log.log(document_id, "extract_events_v7", "info",
-                   f"Starting v7 event extraction: chunk {chunk_index}, {len(chunk_text)} chars",
-                   {"chunk_index": chunk_index, "text_length": len(chunk_text), "model": model})
+                   f"Starting v7 event extraction {chunk_progress}, {len(chunk_text)} chars",
+                   {"chunk_index": chunk_index, "total_chunks": total_chunks, "text_length": len(chunk_text), "model": model})
+
+    activity.logger.info(
+        "Sending prompt to LLM for v7 extraction %s [document_id=%s]",
+        chunk_progress, document_id,
+    )
+    await _log.log(document_id, "extract_events_v7", "info",
+                   f"Sending prompt to LLM {chunk_progress}",
+                   {"chunk_index": chunk_index, "total_chunks": total_chunks})
 
     try:
         chunk_result, usage = await provider.extract_events_v7(
             chunk_text, prior_events=prior_events
         )
+
+        activity.logger.info(
+            "LLM response received for v7 extraction %s [document_id=%s]",
+            chunk_progress, document_id,
+        )
+        await _log.log(document_id, "extract_events_v7", "info",
+                       f"LLM response received {chunk_progress}",
+                       {"chunk_index": chunk_index, "total_chunks": total_chunks})
     except RuntimeError as exc:
         msg = str(exc)
         if any(kw in msg.lower() for kw in ("refusal", "empty content", "non-json")):
@@ -121,12 +140,13 @@ async def extract_events_v7_activity(
 
     result = {"events": chunk_result.get("events", [])}
     activity.logger.info(
-        "extract_events_v7_activity completed [document_id=%s] [chunk_index=%d] [events=%d]",
+        "extract_events_v7_activity completed %s [document_id=%s] [chunk_index=%d] [events=%d]",
+        chunk_progress,
         document_id,
         chunk_index,
         len(result["events"]),
     )
     await _log.log(document_id, "extract_events_v7", "info",
-                   f"V7 extraction completed: {len(result['events'])} events from chunk {chunk_index}",
-                   {"chunk_index": chunk_index, "events_extracted": len(result["events"])})
+                   f"V7 extraction completed {chunk_progress}: {len(result['events'])} events",
+                   {"chunk_index": chunk_index, "total_chunks": total_chunks, "events_extracted": len(result["events"])})
     return result

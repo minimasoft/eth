@@ -19,7 +19,7 @@ class TestExtractionV7:
         from eth_pipeline.activities.extract_events_v7 import extract_events_v7_activity
 
         with patch.dict(os.environ, {}, clear=True):
-            result = await extract_events_v7_activity("doc-001", 0, "some text")
+            result = await extract_events_v7_activity("doc-001", 0, None)
         assert result == {"error": "OPENROUTER_API_KEY not set", "events": []}
 
     @pytest.mark.asyncio
@@ -73,7 +73,7 @@ class TestExtractionV7:
             ):
                 with patch("eth_pipeline.activities.extract_events_v7.record_llm_usage"):
                     with patch("eth_pipeline.activities.extract_events_v7.record_llm_call_log"):
-                        result = await extract_events_v7_activity("doc-002", 1, "document text")
+                        result = await extract_events_v7_activity("doc-002", 1, None)
 
         assert "events" in result
         assert result["events"][0]["title"] == "Firma del contrato"
@@ -97,7 +97,7 @@ class TestExtractionV7:
                 "eth_pipeline.activities.extract_events_v7.OpenRouterProvider",
                 return_value=mock_provider,
             ):
-                result = await extract_events_v7_activity("doc-003", 0, "sensitive text")
+                result = await extract_events_v7_activity("doc-003", 0, None)
 
         assert result["events"] == []
         assert result["refused"] is True
@@ -119,7 +119,7 @@ class TestExtractionV7:
                 "eth_pipeline.activities.extract_events_v7.OpenRouterProvider",
                 return_value=mock_provider,
             ):
-                result = await extract_events_v7_activity("doc-004", 0, "some text")
+                result = await extract_events_v7_activity("doc-004", 0, None)
 
         assert result["events"] == []
         assert result["refused"] is True
@@ -160,7 +160,7 @@ class TestExtractionV7:
                         mock_record_call_log,
                     ):
                         result = await extract_events_v7_activity(
-                            "doc-005", 2, "test text"
+                            "doc-005", 2, None
                         )
 
         assert "events" in result
@@ -204,7 +204,7 @@ class TestExtractionV7:
             chunks = [text[i:i + chunk_size] for i in range(0, len(text), chunk_size)]
             for idx, chunk in enumerate(chunks[:3]):
                 result = await extract_events_v7_activity(
-                    f"corpus-{os.path.basename(txt_path)}", idx, chunk
+                    f"corpus-{os.path.basename(txt_path)}", idx, chunk  # Bypass: passes chunk as prior_events for direct-injection spike testing
                 )
                 total_chunks += 1
                 if result.get("refused"):
