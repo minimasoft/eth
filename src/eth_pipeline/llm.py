@@ -40,16 +40,16 @@ EVENT_EXTRACTION_SCHEMA_V7: dict = {
                     },
                     "time_start": {
                         "type": "string",
-                        "description": "ISO 8601 datetime when the event started. Omit if unclear.",
+                        "description": "ISO 8601 datetime when the event started. -03:00 Buenos Aires timezone bye default. Approximate best as possible",
                     },
                     "time_end": {
                         "type": "string",
-                        "description": "ISO 8601 datetime when the event ended. Omit if unclear.",
+                        "description": "ISO 8601 datetime when the event ended. -03:00 Buenos Aires timezone by default. Approximate best as possible",
                     },
                     "time_precision": {
                         "type": "string",
                         "enum": ["day", "month", "year"],
-                        "description": "Precision of extracted dates. Omit alongside time_start.",
+                        "description": "Precision of extracted dates.",
                     },
                     "location": {
                         "type": "object",
@@ -355,7 +355,7 @@ class OpenRouterProvider:
                 "NO extraigas estos eventos nuevamente:\n"
                 f"{json.dumps(prior_events, ensure_ascii=False, indent=2, default=str)}\n\n"
                 "A continuación se muestra una NUEVA parte del documento. "
-                "Extrae ÚNICAMENTE los eventos NUEVOS que no aparecen en la lista anterior.\n"
+                "Extrae ÚNICAMENTE los eventos NUEVOS que no aparecen en la lista anterior y no repitas los viejos en la respuesta.\n"
             )
 
         user_parts.append(
