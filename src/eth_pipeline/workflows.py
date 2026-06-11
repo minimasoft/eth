@@ -111,9 +111,16 @@ class DocumentProcessingV7Workflow:
                 )
                 prior_events = prior_result.get("prior_events", [])
 
+                # CRITICAL: Do NOT pass large payloads (chunk text, full results) through
+                # Temporal activity arguments/return values. Temporal serializes everything
+                # into its event history database. Pass document_id+chunk_index and let
+                # each activity fetch what it needs from PostgreSQL directly.
+                #
+                # See extract_events_v7_activity — it receives (document_id, chunk_index)
+                # and fetches chunk_text from the document_chunk table internally.
                 extract_result = await workflow.execute_activity(
                     extract_events_v7_activity,
-                    args=[document_id, chunk_idx, chunk["text"], prior_events],
+                    args=[document_id, chunk_idx, prior_events],
                     start_to_close_timeout=timedelta(seconds=900),
                     retry_policy=RetryPolicy(
                         maximum_attempts=3,
