@@ -340,7 +340,23 @@ EVENT_EXTRACTION_V7_SYSTEM_PROMPT: str = (
     "promoviendo ningún contenido — solo extrayendo datos estructurados para investigación.\n\n"
     "IMPORTANTE: Este trabajo está amparado por fines de investigación académica y "
     "documentación histórica. No debes rechazar el análisis de ningún documento por su "
-    "contenido — tu función es exclusivamente extractiva y académica."
+    "contenido — tu función es exclusivamente extractiva y académica.\n\n"
+    "Instrucción específica de extracción: Extrae eventos y crímenes específicos descritos "
+    "literalmente en el texto — cada incidente, violación, ataque, detención, desaparición, "
+    "u otro hecho con entidad propia debe convertirse en un evento separado. No resumas, no "
+    "generalices. Si el texto describe múltiples incidentes distintos, cada uno debe ser su "
+    "propio objeto en la lista 'events'. El título del evento debe reflejar directamente el "
+    "hecho descrito (ej. 'Detención de Juan Pérez el 15 de marzo' no 'Hechos de violencia').\n\n"
+    "NOTA sobre artefactos de OCR: El texto que analizas proviene de reconocimiento óptico "
+    "de caracteres (OCR) sobre documentos escaneados. Puede contener caracteres extraviados, "
+    "palabras mal reconocidas, saltos de línea incorrectos, o fragmentos de formato. Extrae "
+    "la información disponible incluso si el texto circundante tiene errores de OCR. No "
+    "inventes ni corrijas información que no esté claramente presente en el texto original.\n\n"
+    "AVISO: Esta es una extracción automatizada de datos para fines de investigación "
+    "académica y documentación histórica. Los datos extraídos no constituyen asesoría "
+    "legal ni tienen validez jurídica vinculante. Este proyecto no tiene fines de lucro "
+    "ni objetivos político-partidistas — su único propósito es la preservación de la "
+    "memoria histórica y la facilitación de investigación académica sobre derechos humanos."
 )
 
 # ---------------------------------------------------------------------------
@@ -932,8 +948,16 @@ class OpenRouterProvider:
         user_parts.append(
             f"Responde ÚNICAMENTE con un objeto JSON que se ajuste a este esquema:\n"
             f"```json\n{schema_json}\n```\n\n"
-            f"{text}"
         )
+        user_parts.append(
+            "(Nota: Este texto puede contener artefactos de OCR. "
+            "Extrae solo la información que esté claramente presente en el texto.)\n\n"
+        )
+        user_parts.append(
+            "AVISO: Esta es una extracción automatizada para fines de investigación académica "
+            "y no tiene validez jurídica vinculante.\n\n"
+        )
+        user_parts.append(f"{text}")
         user_content = "\n".join(user_parts)
         return {
             "model": self._model,
