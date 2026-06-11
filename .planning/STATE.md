@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-06-08)
 Phase: 38
 Plan: Not started
 Status: Executing Phase 38
-Last activity: 2026-06-11 - Completed quick task 260611-icn: Rewrite README.md focusing on simplicity
+Last activity: 2026-06-11 - Completed quick task 260611-kch: Add visible click affordance to Eventos tab event list rows
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -103,6 +103,7 @@ None yet.
  | 260611-jzq | Clean up dead code in llm.py — old v1 event/reference schemas, prompts, protocol, methods | 2026-06-11 | d9125f2 | [260611-cleanup-llm-py-old-schemas](./quick/260611-cleanup-llm-py-old-schemas/) |
 | 260611-hxu | Sort eventos by time ascending, null times at end | 2026-06-11 | c7e2598 | [260611-hxu-review-in-index-html-ui-for-event-viewer](./quick/260611-hxu-review-in-index-html-ui-for-event-viewer/) |
 | 260611-icn | Rewrite README.md focusing on simplicity | 2026-06-11 | 77fd110
+| 260611-kch | Add visible click affordance to Eventos tab event list rows | 2026-06-11 | d4c1c19 | [260611-kch-in-the-eventos-tab-add-a-visible-click-a](./quick/260611-kch-in-the-eventos-tab-add-a-visible-click-a/) |
 
 ## Deferred Items
 
