@@ -14,13 +14,19 @@ from eth_pipeline.db import get_db
 
 @activity.defn
 async def get_document_chunks_activity(document_id: str) -> dict:
-    """Fetch all chunks for a document from the document_chunk table."""
+    """Fetch all chunks for a document from the document_chunk table.
+
+    IMPORTANT: This only returns chunk metadata (index, offsets), NOT the full
+    chunk text. Activities that need chunk text should fetch it by
+    document_id+chunk_index from the database directly — do NOT pass large
+    text payloads through Temporal activity arguments/return values.
+    """
     params = _db_params()
     try:
         async with get_db(**params) as conn:
             rows = _extract_query_results(
                 await conn.fetch(
-                    "SELECT chunk_index, text, offset_start, offset_end "
+                    "SELECT chunk_index, offset_start, offset_end "
                     "FROM document_chunk "
                     "WHERE document = $1 "
                     "ORDER BY chunk_index ASC",
