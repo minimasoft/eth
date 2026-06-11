@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-06-08)
 Phase: 38
 Plan: Not started
 Status: Executing Phase 38
-Last activity: 2026-06-11 - Completed quick task 260611-h2m: Add per-chunk progress logging and prompt improvements
+Last activity: 2026-06-11 - Completed quick task 260611-hxu: Sort eventos by time ascending, null times at end
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -101,6 +101,7 @@ None yet.
 | 260611-gqd | Document Temporal activity payload pattern — activities should fetch from DB by ID, not receive large text payloads | 2026-06-11 | 9efff09 | [260611-gqd-document-temporal-activity-payload-patte](./quick/260611-gqd-document-temporal-activity-payload-patte/) |
  | 260611-h2m | Add per-chunk progress logging with N/T tracking, improve extraction prompts (literal extraction, OCR notes, disclaimer) | 2026-06-11 | 8a6435a, 6cc3114, d328ad3 | [260611-h2m-add-per-chunk-progress-logging-n-t-track](./quick/260611-h2m-add-per-chunk-progress-logging-n-t-track/) |
  | 260611-jzq | Clean up dead code in llm.py — old v1 event/reference schemas, prompts, protocol, methods | 2026-06-11 | d9125f2 | [260611-cleanup-llm-py-old-schemas](./quick/260611-cleanup-llm-py-old-schemas/) |
+| 260611-hxu | Sort eventos by time ascending, null times at end | 2026-06-11 | c7e2598 | [260611-hxu-review-in-index-html-ui-for-event-viewer](./quick/260611-hxu-review-in-index-html-ui-for-event-viewer/) |
 
 ## Deferred Items
 
