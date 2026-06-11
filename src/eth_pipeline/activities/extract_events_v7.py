@@ -1,4 +1,10 @@
-"""Extract structured events from a single document chunk using the v7 schema."""
+"""Extract structured events from a single document chunk using the v7 schema.
+
+IMPORTANT: Chunk text is fetched from the DB internally — it is NOT passed
+as an activity argument. This avoids bloating Temporal event history with
+large payloads (up to ~512KB per chunk). Always pass document_id+chunk_index
+and let activities fetch what they need from the database.
+"""
 
 from __future__ import annotations
 
@@ -18,7 +24,6 @@ from eth_pipeline.processing_log import ProcessingLogger
 async def extract_events_v7_activity(
     document_id: str,
     chunk_index: int,
-    chunk_text: str,
     prior_events: list[dict] | None = None,
 ) -> dict:
     api_key = os.environ.get("OPENROUTER_API_KEY")
@@ -29,10 +34,24 @@ async def extract_events_v7_activity(
                        "OPENROUTER_API_KEY not set — returning degraded result")
         return {"error": "OPENROUTER_API_KEY not set", "events": []}
 
+    params = _db_params()
+    async with get_db(**params) as conn:
+        row = _extract_query_results(
+            await conn.fetch(
+                "SELECT text FROM document_chunk "
+                "WHERE document = $1 AND chunk_index = $2",
+                document_id,
+                chunk_index,
+            )
+        )
+    if not row:
+        raise ValueError(
+            f"Chunk {chunk_index} not found for document {document_id}"
+        )
+    chunk_text: str = row[0]["text"]
+
     model = os.environ.get("OPENROUTER_MODEL", DEFAULT_MODEL)
     provider = OpenRouterProvider(api_key=api_key, model=model)
-
-    params = _db_params()
 
     activity.logger.info(
         "extract_events_v7_activity called [document_id=%s] [chunk_index=%d] [text_length=%d] [model=%s]",
