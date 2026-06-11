@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-06-08)
 Phase: 38
 Plan: Not started
 Status: Executing Phase 38
-Last activity: 2026-06-11
+Last activity: 2026-06-11 - Completed quick task 260611-gqd: Document Temporal activity payload pattern
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -93,6 +93,12 @@ None yet.
 - Phase 34 (Smart Chunking): Spanish-language sentence boundary detection may differ from English — needs validation on test corpus
 - Phase 35 (LLM Pipeline): Prior-event summary format needs prompt engineering experimentation; human rights prompt wording needs zero-refusal verification on actual documents
 - Phase 37 (Event UI): Text highlighting performance with large documents needs profiling before committing to character-by-character `<mark>` rendering
+
+### Quick Tasks Completed
+
+| # | Description | Date | Commit | Directory |
+|---|-------------|------|--------|-----------|
+| 260611-gqd | Document Temporal activity payload pattern — activities should fetch from DB by ID, not receive large text payloads | 2026-06-11 | 9efff09 | [260611-gqd-document-temporal-activity-payload-patte](./quick/260611-gqd-document-temporal-activity-payload-patte/) |
 
 ## Deferred Items
 
