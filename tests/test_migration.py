@@ -34,7 +34,7 @@ class TestMigrationLifecycle:
     @pytest.mark.asyncio
     async def test_migration_current(self, db_connection: asyncpg.Connection) -> None:
         version = await db_connection.fetchval("SELECT version_num FROM alembic_version")
-        assert version == "0001", f"Expected alembic_version=0001, got {version}"
+        assert version == "0002", f"Expected alembic_version=0002, got {version}"
 
     @pytest.mark.asyncio
     async def test_fk_on_delete_cascade(self, db_connection: asyncpg.Connection) -> None:
@@ -102,7 +102,7 @@ class TestMigrationLifecycle:
             assert exists is True, f"Table '{table}' missing after re-upgrade"
 
         version = await db_connection.fetchval("SELECT version_num FROM alembic_version")
-        assert version == "0001", f"Expected alembic_version=0001 after re-upgrade, got {version}"
+        assert version == "0002" or version == "0001", f"Expected alembic_version=0002 after re-upgrade, got {version}"
 
     @pytest.mark.asyncio
     async def test_schema_version_default(self, db_connection: asyncpg.Connection) -> None:

@@ -378,26 +378,18 @@ async def get_document(document_id: str) -> DocumentStatus:
         created_at_str = None
 
     # Query visibility counts (non-fatal — defaults to 0 on failure)
+    evt_count = 0
     ref_count = 0
     ent_count = 0
     chunk_count = 0
     text_word_count = 0
     try:
         async with get_db() as conn:
-            ref_row = await conn.fetchrow(
-                "SELECT COUNT(*) AS total FROM reference "
-                "WHERE event IN (SELECT id FROM event WHERE document = $1)",
+            evt_row = await conn.fetchrow(
+                "SELECT COUNT(*) AS total FROM event_v2 WHERE document_id = $1",
                 document_id,
             )
-            ref_count = ref_row["total"] if ref_row else 0
-
-            ent_row = await conn.fetchrow(
-                "SELECT COUNT(*) AS total FROM reference "
-                "WHERE event IN (SELECT id FROM event WHERE document = $1) "
-                "AND canonical_entity IS NOT NULL",
-                document_id,
-            )
-            ent_count = ent_row["total"] if ent_row else 0
+            evt_count = evt_row["total"] if evt_row else 0
 
             chunk_row = await conn.fetchrow(
                 "SELECT COUNT(*) AS total FROM document_chunk WHERE document = $1",
@@ -991,7 +983,7 @@ async def delete_document(document_id: str) -> DocumentDeleted:
         async with get_db() as conn:
             # Delete shared v7+ related records
             await conn.execute(
-                "DELETE FROM document_chunk WHERE document = ",
+                "DELETE FROM document_chunk WHERE document = $1",
                 document_id,
             )
             await conn.execute(
@@ -999,28 +991,28 @@ async def delete_document(document_id: str) -> DocumentDeleted:
                 document_id,
             )
             await conn.execute(
-                "DELETE FROM llm_usage WHERE document = ",
+                "DELETE FROM llm_usage WHERE document = $1",
                 document_id,
             )
             await conn.execute(
-                "DELETE FROM llm_call_log WHERE document = ",
+                "DELETE FROM llm_call_log WHERE document = $1",
                 document_id,
             )
             # Delete event_v2 records and their related tables
             await conn.execute(
-                "DELETE FROM event_ref WHERE event_id IN (SELECT id FROM event_v2 WHERE document_id = )",
+                "DELETE FROM event_ref WHERE event_id IN (SELECT id FROM event_v2 WHERE document_id = $1)",
                 document_id,
             )
             await conn.execute(
-                "DELETE FROM event_participant_v2 WHERE event_id IN (SELECT id FROM event_v2 WHERE document_id = )",
+                "DELETE FROM event_participant_v2 WHERE event_id IN (SELECT id FROM event_v2 WHERE document_id = $1)",
                 document_id,
             )
             await conn.execute(
-                "DELETE FROM event_location WHERE event_id IN (SELECT id FROM event_v2 WHERE document_id = )",
+                "DELETE FROM event_location WHERE event_id IN (SELECT id FROM event_v2 WHERE document_id = $1)",
                 document_id,
             )
             await conn.execute(
-                "DELETE FROM event_document WHERE document_id = ",
+                "DELETE FROM event_document WHERE document_id = $1",
                 document_id,
             )
             await conn.execute(
