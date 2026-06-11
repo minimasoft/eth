@@ -2338,7 +2338,7 @@
       params.set('page', String(eventosCurrentPage));
       params.set('per_page', '20');
       params.set('sort', 'time_start');
-      params.set('order', 'desc');
+      params.set('order', 'asc');
       if (eventosSearchTerm) params.set('search', eventosSearchTerm);
       if (eventosDocumentFilter) params.set('document', eventosDocumentFilter);
 
@@ -2388,7 +2388,13 @@
       eventosPagination.style.display = 'flex';
 
       eventosTbody.innerHTML = '';
-      data.items.forEach(function(item) {
+      var sortedItems = (data.items || []).slice().sort(function(a, b) {
+        if (a.time_start && !b.time_start) return -1;
+        if (!a.time_start && b.time_start) return 1;
+        if (!a.time_start && !b.time_start) return 0;
+        return a.time_start.localeCompare(b.time_start);
+      });
+      sortedItems.forEach(function(item) {
         var tr = document.createElement('tr');
         tr.style.cursor = 'pointer';
         tr.addEventListener('click', function() {
