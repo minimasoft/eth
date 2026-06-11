@@ -1157,6 +1157,7 @@
                 <th class="col-location">Lugar</th>
                 <th class="col-participants">Particip.</th>
                 <th class="col-refs">Refs</th>
+                <th class="col-actions" aria-label="Acción"></th>
               </tr>
             </thead>
             <tbody id="eventos-tbody"></tbody>
@@ -2407,7 +2408,8 @@
           '<td>' + escapeHtml(item.title || '') + '</td>' +
           '<td class="col-location">' + escapeHtml(item.location_name || '—') + '</td>' +
           '<td class="col-participants">' + escapeHtml(String(item.participant_count || 0)) + '</td>' +
-          '<td class="col-refs">' + escapeHtml(String(item.reference_count || 0)) + '</td>';
+          '<td class="col-refs">' + escapeHtml(String(item.reference_count || 0)) + '</td>' +
+          '<td class="col-actions"><span style="display:inline-flex;align-items:center;gap:4px;font-size:13px;font-weight:500;color:#2563eb;padding:2px 12px;border-radius:4px;border:1px solid #bfdbfe;background:#eff6ff;cursor:pointer">→ Ver</span></td>';
         eventosTbody.appendChild(tr);
       });
 
