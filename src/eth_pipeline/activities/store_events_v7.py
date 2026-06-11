@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
+import json
 import uuid
 
 from temporalio import activity
@@ -13,18 +14,22 @@ from eth_pipeline.processing_log import ProcessingLogger
 
 
 def _parse_date(val: str | None) -> datetime | None:
-    """Convert an LLM-returned date string to a datetime object."""
+    """Convert an LLM-returned date string to a timezone-aware datetime."""
     if val is None:
         return None
     if isinstance(val, datetime):
+        if val.tzinfo is None:
+            return val.replace(tzinfo=timezone.utc)
         return val
     if isinstance(val, str):
         val = val.strip()
         if not val:
             return None
+        if val.endswith("Z"):
+            val = val[:-1]
         for fmt in ("%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d"):
             try:
-                return datetime.strptime(val, fmt)
+                return datetime.strptime(val, fmt).replace(tzinfo=timezone.utc)
             except ValueError:
                 continue
     return None
@@ -90,6 +95,13 @@ async def store_events_v7_activity(
 
                 total_references = 0
                 for ev in events:
+                    parsed_start = _parse_date(ev.get("time_start"))
+                    parsed_end = _parse_date(ev.get("time_end"))
+                    if parsed_start is None:
+                        activity.logger.warning(
+                            "Event has missing or unparseable time_start: %s",
+                            json.dumps(ev, default=str),
+                        )
                     event_id = uuid.uuid4().hex
                     await conn.execute(
                         "INSERT INTO event_v2 "
@@ -101,8 +113,8 @@ async def store_events_v7_activity(
                         document_id,
                         ev.get("title", ""),
                         ev.get("description", ""),
-                        _parse_date(ev.get("time_start")),
-                        _parse_date(ev.get("time_end")),
+                        parsed_start,
+                        parsed_end,
                         ev.get("time_precision"),
                         1.0,
                     )
@@ -187,7 +199,6 @@ async def store_events_v7_activity(
                        f"Connection failed: {exc}")
         return {"error": str(exc), "document_id": document_id}
     except Exception as exc:
-        import json
         import traceback
 
         error_detail = {
