@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-06-08)
 Phase: 38
 Plan: Not started
 Status: Executing Phase 38
-Last activity: 2026-06-11 - Completed quick task 260611-gqd: Document Temporal activity payload pattern
+Last activity: 2026-06-11 - Completed quick task 260611-h2m: Add per-chunk progress logging and prompt improvements
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -99,6 +99,7 @@ None yet.
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
 | 260611-gqd | Document Temporal activity payload pattern — activities should fetch from DB by ID, not receive large text payloads | 2026-06-11 | 9efff09 | [260611-gqd-document-temporal-activity-payload-patte](./quick/260611-gqd-document-temporal-activity-payload-patte/) |
+| 260611-h2m | Add per-chunk progress logging with N/T tracking, improve extraction prompts (literal extraction, OCR notes, disclaimer) | 2026-06-11 | 8a6435a, 6cc3114, d328ad3 | [260611-h2m-add-per-chunk-progress-logging-n-t-track](./quick/260611-h2m-add-per-chunk-progress-logging-n-t-track/) |
 
 ## Deferred Items
 
