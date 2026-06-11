@@ -99,7 +99,8 @@ None yet.
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
 | 260611-gqd | Document Temporal activity payload pattern — activities should fetch from DB by ID, not receive large text payloads | 2026-06-11 | 9efff09 | [260611-gqd-document-temporal-activity-payload-patte](./quick/260611-gqd-document-temporal-activity-payload-patte/) |
-| 260611-h2m | Add per-chunk progress logging with N/T tracking, improve extraction prompts (literal extraction, OCR notes, disclaimer) | 2026-06-11 | 8a6435a, 6cc3114, d328ad3 | [260611-h2m-add-per-chunk-progress-logging-n-t-track](./quick/260611-h2m-add-per-chunk-progress-logging-n-t-track/) |
+ | 260611-h2m | Add per-chunk progress logging with N/T tracking, improve extraction prompts (literal extraction, OCR notes, disclaimer) | 2026-06-11 | 8a6435a, 6cc3114, d328ad3 | [260611-h2m-add-per-chunk-progress-logging-n-t-track](./quick/260611-h2m-add-per-chunk-progress-logging-n-t-track/) |
+| 260611-jzq | Clean up dead code in llm.py — old v1 event/reference schemas, prompts, protocol, methods | 2026-06-11 |  | [260611-cleanup-llm-py-old-schemas](./quick/260611-cleanup-llm-py-old-schemas/) |
 
 ## Deferred Items
 
