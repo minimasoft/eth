@@ -76,12 +76,6 @@
       border-bottom-color: #2563eb;
     }
 
-    nav button.tab-disabled {
-      color: #cbd5e1;
-      cursor: default;
-      pointer-events: none;
-    }
-
     main {
       max-width: 1400px;
       margin: 0 auto;
@@ -1054,8 +1048,8 @@
   <nav role="tablist" aria-label="Main navigation">
     <button role="tab" aria-selected="true" aria-controls="tab-upload" id="tab-btn-upload" data-tab="upload">Cargar</button>
     <button role="tab" aria-selected="false" aria-controls="tab-documents" id="tab-btn-documents" data-tab="documents">Documentos</button>
-    <button role="tab" aria-selected="false" aria-controls="tab-logs" id="tab-btn-logs" data-tab="logs">Registros</button>
     <button role="tab" aria-selected="false" aria-controls="tab-eventos" id="tab-btn-eventos" data-tab="eventos">Eventos</button>
+    <button role="tab" aria-selected="false" aria-controls="tab-logs" id="tab-btn-logs" data-tab="logs" style="display:none">Registros</button>
   </nav>
 
   <main>
@@ -1374,8 +1368,8 @@
     const sections = {
       upload: document.getElementById('tab-upload'),
       documents: document.getElementById('tab-documents'),
-      logs: document.getElementById('tab-logs'),
       eventos: document.getElementById('tab-eventos'),
+      logs: document.getElementById('tab-logs'),
     };
 
     function switchTab(tabName) {
@@ -1867,10 +1861,10 @@
       const logsTabBtn = document.querySelector('nav button[data-tab="logs"]');
       if (!logsTabBtn) return;
       if (logsDocumentId) {
-        logsTabBtn.classList.remove('tab-disabled');
+        logsTabBtn.style.display = '';
         logsTabBtn.title = 'Ver registros de ' + logsFilename;
       } else {
-        logsTabBtn.classList.add('tab-disabled');
+        logsTabBtn.style.display = 'none';
         logsTabBtn.title = 'Seleccione un documento para ver sus registros';
       }
     }
