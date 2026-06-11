@@ -30,10 +30,11 @@ def _parse_date(val: str | None) -> datetime | None:
         has_z = val.endswith("Z")
         if has_z:
             val = val[:-1]
-        for fmt in ("%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d"):
+        for fmt in ("%Y-%m-%dT%H:%M:%S%z", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d"):
             try:
                 dt = datetime.strptime(val, fmt)
-                dt = dt.replace(tzinfo=timezone.utc if has_z else GMT_MINUS_3)
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc if has_z else GMT_MINUS_3)
                 return dt
             except ValueError:
                 continue
