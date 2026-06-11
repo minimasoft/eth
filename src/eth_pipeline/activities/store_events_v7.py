@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import json
 import uuid
+
+GMT_MINUS_3 = timezone(timedelta(hours=-3))
 
 from temporalio import activity
 
@@ -19,17 +21,20 @@ def _parse_date(val: str | None) -> datetime | None:
         return None
     if isinstance(val, datetime):
         if val.tzinfo is None:
-            return val.replace(tzinfo=timezone.utc)
+            return val.replace(tzinfo=GMT_MINUS_3)
         return val
     if isinstance(val, str):
         val = val.strip()
         if not val:
             return None
-        if val.endswith("Z"):
+        has_z = val.endswith("Z")
+        if has_z:
             val = val[:-1]
         for fmt in ("%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d"):
             try:
-                return datetime.strptime(val, fmt).replace(tzinfo=timezone.utc)
+                dt = datetime.strptime(val, fmt)
+                dt = dt.replace(tzinfo=timezone.utc if has_z else GMT_MINUS_3)
+                return dt
             except ValueError:
                 continue
     return None
