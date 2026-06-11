@@ -2633,6 +2633,18 @@
     let docViewerRefs = null;
     let docViewerCurrentChunkText = '';
 
+    function getLocalMatchIndex(chunkIndex, verbatimText, globalRefIndex) {
+      if (!docViewerRefs) return 0;
+      var local = 0;
+      for (var i = 0; i <= globalRefIndex; i++) {
+        if (docViewerRefs[i] && docViewerRefs[i].chunk_index === chunkIndex && docViewerRefs[i].verbatim_text === verbatimText) {
+          if (i === globalRefIndex) return local;
+          local++;
+        }
+      }
+      return 0;
+    }
+
     function openDocViewer(documentId, chunkIndex, verbatimText, refIndex, totalRefs, refsArray) {
       docViewerTriggerEl = document.activeElement;
       docViewerCurrentDocId = documentId;
@@ -2723,7 +2735,8 @@
 
       document.addEventListener('keydown', docViewerKeyHandler);
 
-      fetchAndRenderChunk(documentId, chunkIndex, verbatimText, refIndex);
+      var localMatchIndex = getLocalMatchIndex(chunkIndex, verbatimText, refIndex);
+      fetchAndRenderChunk(documentId, chunkIndex, verbatimText, localMatchIndex);
     }
 
     function docViewerKeyHandler(e) {
@@ -2773,11 +2786,11 @@
           if (docViewerTotalMatches > 0) {
             matchNav.style.display = '';
             var matchInfo = document.getElementById('doc-viewer-match-info');
-            if (matchInfo) matchInfo.textContent = 'Referencia ' + (refIndex + 1) + ' de ' + docViewerTotalRefs;
+            if (matchInfo) matchInfo.textContent = 'Referencia ' + (docViewerCurrentMatch + 1) + ' de ' + docViewerTotalRefs;
             var matchPrevBtn = document.getElementById('doc-viewer-match-prev');
             var matchNextBtn = document.getElementById('doc-viewer-match-next');
-            if (matchPrevBtn) matchPrevBtn.disabled = refIndex <= 0;
-            if (matchNextBtn) matchNextBtn.disabled = refIndex >= docViewerTotalRefs - 1;
+            if (matchPrevBtn) matchPrevBtn.disabled = docViewerCurrentMatch <= 0;
+            if (matchNextBtn) matchNextBtn.disabled = docViewerCurrentMatch >= docViewerTotalRefs - 1;
           } else {
             matchNav.style.display = 'none';
           }
@@ -2812,29 +2825,76 @@
         return { matchCount: 0 };
       }
 
+      var cleanSearch = '';
+      for (var si = 0; si < verbatimText.length; si++) {
+        var sc = verbatimText[si];
+        if (sc === '\n' || sc === '\r') continue;
+        if (sc === ' ') {
+          if (cleanSearch.length === 0 || cleanSearch[cleanSearch.length - 1] !== ' ') {
+            cleanSearch += ' ';
+          }
+        } else {
+          cleanSearch += sc;
+        }
+      }
+      if (!cleanSearch) {
+        body.textContent = chunkText;
+        return { matchCount: 0 };
+      }
+
+      var searchText = '';
+      var origRanges = [];
+      var prevSpace = false;
+      for (var ci = 0; ci < chunkText.length; ci++) {
+        var cc = chunkText[ci];
+        if (cc === '\n' || cc === '\r') continue;
+        if (cc === ' ') {
+          if (!prevSpace) {
+            searchText += ' ';
+            origRanges.push([ci, ci + 1]);
+            prevSpace = true;
+          } else {
+            origRanges[origRanges.length - 1][1] = ci + 1;
+          }
+        } else {
+          searchText += cc;
+          origRanges.push([ci, ci + 1]);
+          prevSpace = false;
+        }
+      }
+
+      var lowerSearchText = searchText.toLowerCase();
+      var lowerClean = cleanSearch.toLowerCase();
+
       var fragment = document.createDocumentFragment();
-      var lowerText = chunkText.toLowerCase();
-      var lowerSearch = verbatimText.toLowerCase();
-      var pos = 0;
+      var searchPos = 0;
+      var chunkPos = 0;
       var matchIdx = 0;
 
-      while (pos < chunkText.length) {
-        var found = lowerText.indexOf(lowerSearch, pos);
+      while (searchPos < searchText.length) {
+        var found = lowerSearchText.indexOf(lowerClean, searchPos);
         if (found === -1) {
-          fragment.appendChild(document.createTextNode(chunkText.slice(pos)));
+          fragment.appendChild(document.createTextNode(chunkText.slice(chunkPos)));
           break;
         }
-        if (found > pos) {
-          fragment.appendChild(document.createTextNode(chunkText.slice(pos, found)));
+
+        var origStart = origRanges[found][0];
+        var origEnd = origRanges[found + cleanSearch.length - 1][1];
+
+        if (origStart > chunkPos) {
+          fragment.appendChild(document.createTextNode(chunkText.slice(chunkPos, origStart)));
         }
+
         var span = document.createElement('span');
         span.className = 'doc-viewer-highlight';
         if (matchIdx === activeMatchIndex) {
           span.classList.add('doc-viewer-highlight-active');
         }
-        span.textContent = chunkText.slice(found, found + verbatimText.length);
+        span.textContent = chunkText.slice(origStart, origEnd);
         fragment.appendChild(span);
-        pos = found + verbatimText.length;
+
+        chunkPos = origEnd;
+        searchPos = found + cleanSearch.length;
         matchIdx++;
       }
 
@@ -2854,8 +2914,18 @@
       if (docViewerCurrentMatch >= docViewerTotalRefs - 1) docViewerCurrentMatch = docViewerTotalRefs - 1;
 
       var ref = docViewerRefs ? docViewerRefs[docViewerCurrentMatch] : null;
-      var verbatim = ref ? ref.verbatim_text : docViewerVerbatimText;
-      var result = renderHighlightedChunk(docViewerCurrentChunkText, verbatim, docViewerCurrentMatch);
+      if (!ref) return;
+
+      if (ref.chunk_index !== docViewerCurrentChunk) {
+        docViewerCurrentChunk = ref.chunk_index;
+        var localIdx = getLocalMatchIndex(ref.chunk_index, ref.verbatim_text || '', docViewerCurrentMatch);
+        fetchAndRenderChunk(docViewerCurrentDocId, ref.chunk_index, ref.verbatim_text || '', localIdx);
+        return;
+      }
+
+      var verbatim = ref.verbatim_text || docViewerVerbatimText;
+      var localIdx = getLocalMatchIndex(docViewerCurrentChunk, verbatim, docViewerCurrentMatch);
+      var result = renderHighlightedChunk(docViewerCurrentChunkText, verbatim, localIdx);
 
       var matchInfo = document.getElementById('doc-viewer-match-info');
       if (matchInfo) matchInfo.textContent = 'Referencia ' + (docViewerCurrentMatch + 1) + ' de ' + docViewerTotalRefs;
@@ -2869,8 +2939,18 @@
       docViewerCurrentChunk = docViewerCurrentChunk + direction;
       if (docViewerCurrentChunk < 0) docViewerCurrentChunk = 0;
 
-      var ref = docViewerRefs ? docViewerRefs[0] : null;
-      var verbatim = ref ? ref.verbatim_text : docViewerVerbatimText;
+      var verbatim = docViewerVerbatimText;
+      var globalIdx = 0;
+      if (docViewerRefs) {
+        for (var i = 0; i < docViewerRefs.length; i++) {
+          if (docViewerRefs[i] && docViewerRefs[i].chunk_index === docViewerCurrentChunk) {
+            verbatim = docViewerRefs[i].verbatim_text || verbatim;
+            globalIdx = i;
+            break;
+          }
+        }
+      }
+      docViewerCurrentMatch = globalIdx;
       fetchAndRenderChunk(docViewerCurrentDocId, docViewerCurrentChunk, verbatim, 0);
     }
 
