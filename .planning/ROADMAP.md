@@ -11,7 +11,7 @@ v7.0 is a clean-break rewrite of the references/entities/events system. The old 
 - [x] **Phase 35: LLM Pipeline** — Part-by-part extraction with compact prior-context, unified event schema, human rights prompts, reference resolution (completed 2026-06-09)
 - [x] **Phase 36: Event API** — Event list/detail endpoints, chunk text endpoint (completed 2026-06-09)
 - [ ] **Phase 37: Event UI** — Eventos tab with paginated list, detail modal, clickable reference navigation, document filter
-- [ ] **Phase 38: Cleanup** — Drop old tables, remove old API routes, old activities, old UI code — no deprecated code survives
+- [x] **Phase 38: Cleanup** — Drop old tables, remove old API routes, old activities, old UI code — no deprecated code survives (completed 2026-06-10)
 
 ## Phase Details
 
@@ -172,13 +172,13 @@ v7.0 is a clean-break rewrite of the references/entities/events system. The old 
 
 **Wave 1**
 
-- [ ] 38-01-PLAN.md — Alembic migration to drop 5 old tables + update test_schema.py
-- [ ] 38-02-PLAN.md — Delete old API route files, remove old Pydantic models, clean re-exports
+- [x] 38-01-PLAN.md — Alembic migration to drop 5 old tables + update test_schema.py
+- [x] 38-02-PLAN.md — Delete old API route files, remove old Pydantic models, clean re-exports
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 38-03-PLAN.md — Delete old activities + orphan scripts, clean workflows.py + chunker.py + documents.py
-- [ ] 38-04-PLAN.md — Remove Entidades/Referencias UI tabs from index.html, delete entity/reference JS
+- [x] 38-03-PLAN.md — Delete old activities + orphan scripts, clean workflows.py + chunker.py + documents.py
+- [x] 38-04-PLAN.md — Remove Entidades/Referencias UI tabs from index.html, delete entity/reference JS
 
 ## Progress
 
@@ -189,4 +189,4 @@ v7.0 is a clean-break rewrite of the references/entities/events system. The old 
 | 35. LLM Pipeline | 3/3 | Complete   | 2026-06-09 |
 | 36. Event API | 4/4 | Complete   | 2026-06-09 |
 | 37. Event UI | 0/3 | Not started | - |
-| 38. Cleanup | 0/4 | Not started | - |
+| 38. Cleanup | 4/4 | Complete   | 2026-06-10 |
