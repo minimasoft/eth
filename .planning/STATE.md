@@ -102,7 +102,7 @@ None yet.
  | 260611-h2m | Add per-chunk progress logging with N/T tracking, improve extraction prompts (literal extraction, OCR notes, disclaimer) | 2026-06-11 | 8a6435a, 6cc3114, d328ad3 | [260611-h2m-add-per-chunk-progress-logging-n-t-track](./quick/260611-h2m-add-per-chunk-progress-logging-n-t-track/) |
  | 260611-jzq | Clean up dead code in llm.py — old v1 event/reference schemas, prompts, protocol, methods | 2026-06-11 | d9125f2 | [260611-cleanup-llm-py-old-schemas](./quick/260611-cleanup-llm-py-old-schemas/) |
 | 260611-hxu | Sort eventos by time ascending, null times at end | 2026-06-11 | c7e2598 | [260611-hxu-review-in-index-html-ui-for-event-viewer](./quick/260611-hxu-review-in-index-html-ui-for-event-viewer/) |
-| 260611-icn | Rewrite README.md focusing on simplicity | 2026-06-11 | 71b7d7b
+| 260611-icn | Rewrite README.md focusing on simplicity | 2026-06-11 | 77fd110
 
 ## Deferred Items
 
