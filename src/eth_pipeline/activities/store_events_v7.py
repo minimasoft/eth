@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 import uuid
 
 from temporalio import activity
@@ -9,6 +10,24 @@ from temporalio import activity
 from eth_pipeline.activities._common import _db_params, _extract_query_results
 from eth_pipeline.db import get_db
 from eth_pipeline.processing_log import ProcessingLogger
+
+
+def _parse_date(val: str | None) -> datetime | None:
+    """Convert an LLM-returned date string to a datetime object."""
+    if val is None:
+        return None
+    if isinstance(val, datetime):
+        return val
+    if isinstance(val, str):
+        val = val.strip()
+        if not val:
+            return None
+        for fmt in ("%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d"):
+            try:
+                return datetime.strptime(val, fmt)
+            except ValueError:
+                continue
+    return None
 
 
 @activity.defn
@@ -82,8 +101,8 @@ async def store_events_v7_activity(
                         document_id,
                         ev.get("title", ""),
                         ev.get("description", ""),
-                        ev.get("time_start"),
-                        ev.get("time_end"),
+                        _parse_date(ev.get("time_start")),
+                        _parse_date(ev.get("time_end")),
                         ev.get("time_precision"),
                         1.0,
                     )

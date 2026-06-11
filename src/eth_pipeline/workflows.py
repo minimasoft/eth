@@ -21,8 +21,10 @@ with workflow.unsafe.imports_passed_through():
         chunk_document_activity,
         extract_events_v7_activity,
         extract_text_activity,
+        get_document_chunks_activity,
         get_document_metadata_activity,
         get_document_text_activity,
+        get_prior_events_activity,
         resolve_references_v7_activity,
         store_events_v7_activity,
         update_document_status_activity,
@@ -34,70 +36,6 @@ with workflow.unsafe.imports_passed_through():
 __all__ = [
     "DocumentProcessingV7Workflow",
 ]
-
-
-# ---------------------------------------------------------------------------
-# Helper query activities for the v7 pipeline
-# ---------------------------------------------------------------------------
-
-
-@activity.defn
-async def get_document_chunks_activity(document_id: str) -> dict:
-    """Fetch all chunks for a document from the document_chunk table."""
-    params = _db_params()
-    try:
-        async with get_db(**params) as conn:
-            rows = _extract_query_results(
-                await conn.fetch(
-                    "SELECT chunk_index, text, offset_start, offset_end "
-                    "FROM document_chunk "
-                    "WHERE document = $1 "
-                    "ORDER BY chunk_index ASC",
-                    document_id,
-                )
-            )
-        return {"chunks": rows}
-    except Exception as exc:
-        activity.logger.error(
-            "get_document_chunks_activity failed [document_id=%s]: %s",
-            document_id,
-            exc,
-        )
-        return {"error": str(exc), "document_id": document_id}
-
-
-@activity.defn
-async def get_prior_events_activity(document_id: str) -> dict:
-    """Fetch up to 10 most recent prior events for context injection."""
-    params = _db_params()
-    try:
-        async with get_db(**params) as conn:
-            rows = _extract_query_results(
-                await conn.fetch(
-                    "SELECT ev.id, ev.title, ev.description, ev.time_start "
-                    "FROM event_v2 ev "
-                    "JOIN event_document ed ON ev.id = ed.event_id "
-                    "WHERE ed.document_id = $1 "
-                    "ORDER BY ev.time_start DESC NULLS LAST "
-                    "LIMIT 10",
-                    document_id,
-                )
-            )
-        prior_events = []
-        for row in rows:
-            entry = {"id": row["id"], "title": row["title"], "description": row["description"]}
-            ts = row.get("time_start")
-            if ts is not None:
-                entry["time_start"] = str(ts) if not isinstance(ts, str) else ts
-            prior_events.append(entry)
-        return {"prior_events": prior_events}
-    except Exception as exc:
-        activity.logger.error(
-            "get_prior_events_activity failed [document_id=%s]: %s",
-            document_id,
-            exc,
-        )
-        return {"error": str(exc), "document_id": document_id}
 
 
 @workflow.defn
@@ -121,6 +59,38 @@ class DocumentProcessingV7Workflow:
                 update_document_status_activity,
                 args=[document_id, "processing"],
                 start_to_close_timeout=timedelta(seconds=10),
+            )
+
+            # Check document metadata — extract text if blob-stored
+            meta = await workflow.execute_activity(
+                get_document_metadata_activity,
+                args=[document_id],
+                start_to_close_timeout=timedelta(seconds=30),
+                retry_policy=RetryPolicy(maximum_attempts=3),
+            )
+            if not meta.get("has_text_content", True):
+                await workflow.execute_activity(
+                    update_document_status_activity,
+                    args=[document_id, "extracting_blob"],
+                    start_to_close_timeout=timedelta(seconds=10),
+                )
+                await workflow.execute_activity(
+                    extract_text_activity,
+                    args=[document_id],
+                    start_to_close_timeout=timedelta(minutes=5),
+                    retry_policy=RetryPolicy(maximum_attempts=3),
+                )
+
+            # Chunk the document
+            await workflow.execute_activity(
+                chunk_document_activity,
+                args=[document_id, {"page_offsets": [0]}],
+                start_to_close_timeout=timedelta(minutes=10),
+                retry_policy=RetryPolicy(
+                    maximum_attempts=3,
+                    initial_interval=timedelta(seconds=5),
+                    backoff_coefficient=2.0,
+                ),
             )
 
             chunks_result = await workflow.execute_activity(

@@ -15,6 +15,10 @@ from eth_pipeline.activities.extract_events_v7 import extract_events_v7_activity
 from eth_pipeline.activities.extract_text import extract_text_activity
 from eth_pipeline.activities.get_document_metadata import get_document_metadata_activity
 from eth_pipeline.activities.get_document_text import get_document_text_activity
+from eth_pipeline.activities.query_helpers import (
+    get_document_chunks_activity,
+    get_prior_events_activity,
+)
 from eth_pipeline.activities.resolve_references_v7 import (
     resolve_references_v7_activity,
 )

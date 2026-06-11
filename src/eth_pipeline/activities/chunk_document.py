@@ -37,9 +37,8 @@ async def chunk_document_activity(document_id: str, extraction_result: dict) -> 
             schema_version = row['schema_version']
             page_offsets = extraction_result.get("page_offsets", [0])
 
-            if schema_version == 'v7':
-                chunker = SmartChunker()
-                chunks = chunker.chunk(text, page_offsets)
+            chunker = SmartChunker()
+            chunks = chunker.chunk(text, page_offsets)
 
             chunks_dicts: list[dict] = []
             for c in chunks:
