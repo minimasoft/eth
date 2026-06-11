@@ -4,11 +4,26 @@ from __future__ import annotations
 
 import logging
 import os
+from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
 logger = logging.getLogger(__name__)
+
+
+@pytest.fixture
+def mock_db():
+    """Patch get_db to return a mock connection with a stubbed fetch."""
+    mock_conn = AsyncMock()
+    mock_conn.fetch.return_value = [{"text": "dummy chunk text for testing"}]
+
+    @asynccontextmanager
+    async def _mock_db(**kwargs):
+        yield mock_conn
+
+    with patch("eth_pipeline.activities.extract_events_v7.get_db", _mock_db):
+        yield
 
 
 class TestExtractionV7:
@@ -23,7 +38,7 @@ class TestExtractionV7:
         assert result == {"error": "OPENROUTER_API_KEY not set", "events": []}
 
     @pytest.mark.asyncio
-    async def test_returns_structured_events_v7_schema(self) -> None:
+    async def test_returns_structured_events_v7_schema(self, mock_db) -> None:
         """Activity returns events matching v7 schema shape from a mocked provider."""
         from eth_pipeline.activities.extract_events_v7 import extract_events_v7_activity
 
@@ -83,7 +98,7 @@ class TestExtractionV7:
         assert result["events"][0]["references"][0]["verbatim_text"] == "en la ciudad de Buenos Aires"
 
     @pytest.mark.asyncio
-    async def test_refusal_detection(self) -> None:
+    async def test_refusal_detection(self, mock_db) -> None:
         """Mocked provider raising RuntimeError with 'refusal' returns degraded result."""
         from eth_pipeline.activities.extract_events_v7 import extract_events_v7_activity
 
@@ -105,7 +120,7 @@ class TestExtractionV7:
         assert "safety filter" in result["refusal_reason"]
 
     @pytest.mark.asyncio
-    async def test_non_json_content_degraded(self) -> None:
+    async def test_non_json_content_degraded(self, mock_db) -> None:
         """Mocked provider returning non-JSON content returns degraded result."""
         from eth_pipeline.activities.extract_events_v7 import extract_events_v7_activity
 
@@ -126,7 +141,7 @@ class TestExtractionV7:
         assert "plain text" in result["refusal_reason"]
 
     @pytest.mark.asyncio
-    async def test_records_llm_usage_on_success(self) -> None:
+    async def test_records_llm_usage_on_success(self, mock_db) -> None:
         """Activity calls record_llm_usage with step_name='extract_events_v7'."""
         from eth_pipeline.activities.extract_events_v7 import extract_events_v7_activity
 
