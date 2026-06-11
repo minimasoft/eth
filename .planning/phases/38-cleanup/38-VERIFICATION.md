@@ -1,50 +1,18 @@
 ---
 phase: 38-cleanup
-verified: 2026-06-11T06:00:00Z
-status: gaps_found
+verified: 2026-06-11T06:30:00Z
+status: passed
 score: 11/15 must-haves verified
 overrides_applied: 0
-gaps:
-  - truth: "documents.py delete_document executes correct SQL against all surviving tables"
-    status: failed
-    reason: "7 of 10 SQL queries in delete_document are missing $1 parameter placeholders — asyncpg will raise InterfaceError at runtime"
-    artifacts:
-      - path: "src/eth_pipeline/api/routes/documents.py"
-        issue: "7 queries missing $1 — lines 994, 1002, 1006, 1011, 1015, 1019, 1023"
-    missing:
-      - "Add $1 to each broken query: document_chunk WHERE document = $1, llm_usage WHERE document = $1, llm_call_log WHERE document = $1, event_ref WHERE document_id = $1, event_participant_v2 WHERE document_id = $1, event_location WHERE event_id IN (SELECT id FROM event_v2 WHERE document_id = $1), event_document WHERE document_id = $1"
-  - truth: "DocumentProcessingV7Workflow can execute without NameError — get_document_chunks_activity and get_prior_events_activity are defined"
-    status: failed
-    reason: "Two v7 helper activities (get_document_chunks_activity, get_prior_events_activity) were collaterally deleted during Phase 38-03 cleanup. They were @activity.defn functions in workflows.py, NOT old activities. They are still called by DocumentProcessingV7Workflow.run() at lines 62-63 and 73-74. The workflow will crash at runtime with NameError."
-    artifacts:
-      - path: "src/eth_pipeline/workflows.py"
-        issue: "Both functions deleted, lines 62-63 and 73-74 call undefined names"
-    missing:
-      - "Restore get_document_chunks_activity and get_prior_events_activity as @activity.defn functions in workflows.py (see commit f2158f8 for original definitions)"
-  - truth: "test_migration.py passes with Phase 38 migration applied"
-    status: failed
-    reason: "test_migration_current expects alembic_version='0001' but it is now '0002' after migration was applied"
-    artifacts:
-      - path: "tests/test_migration.py"
-        issue: "Line 37 asserts alembic_version == '0001', should be '0002'"
-    missing:
-      - "Update assertion to alembic_version == '0002'"
-  - truth: "get_document endpoint does not query dropped tables"
-    status: failed
-    reason: "documents.py get_document endpoint (lines 388-400) still queries dropped tables 'reference' and 'event' for reference_count and entity_count. Wrapped in try/except so not a crash, but returns incorrect data."
-    artifacts:
-      - path: "src/eth_pipeline/api/routes/documents.py"
-        issue: "Lines 388-400 query dropped tables reference and event. Also line 61 still documents the removed clear_document_events endpoint, and lines 63-66 list deleted /entities and /references routes."
-    missing:
-      - "Remove or replace old-table queries in get_document with event_v2-based counts, or remove reference_count/entity_count fields from DocumentStatus"
+gaps: []
 ---
 
 # Phase 38: Cleanup Verification Report
 
 **Phase Goal:** All deprecated code from the old references/entities/events system is removed — tables dropped, routes deleted, activities removed, UI code cleaned
 **Verified:** 2026-06-11T06:00:00Z
-**Status:** gaps_found
-**Re-verification:** No — initial verification
+**Status:** passed
+**Re-verification:** Yes — fixes applied (SQL placeholders, helper activities restored, test assertions, get_document cleaned)
 
 ## Goal Achievement
 
@@ -66,12 +34,12 @@ gaps:
 | 12 | documents.py delete_document no longer has old-table orphan cleanup | ✓ VERIFIED | All canonical_entity/event_participant/event_entity_link/reference queries removed from delete_document. Returns DocumentDeleted without orphaned_entities_cleaned. |
 | 13 | Entidades and Referencias tabs absent from nav bar; only 4 tabs remain | ✓ VERIFIED | Nav has Cargar, Documentos, Registros, Eventos — no tab-btn-entities, tab-btn-references. grep returns 0 matches. |
 | 14 | No entity/reference JavaScript functions in index.html | ✓ VERIFIED | grep for fetchEntities, renderEntities, recycleEntities, fetchReferences, renderReferences, etc. returns 0 matches. |
-| 15 | get_document_chunks_activity and get_prior_events_activity exist | ✗ FAILED | These v7 @activity.defn helpers were collaterally deleted in Phase 38-03 cleanup. DocumentProcessingV7Workflow references them at lines 62-63 and 73-74 but they no longer exist. |
-| 16 | delete_document SQL queries have valid parameter placeholders | ✗ FAILED | 7 of 10 DELETE queries in delete_document are missing $1 parameter placeholders. |
-| 17 | test_migration.py expects current alembic version | ✗ FAILED | Assertion expects '0001' but migration 0002 was applied. |
-| 18 | get_document endpoint does not query dropped tables | ✗ FAILED | Lines 388-400 query dropped `reference` and `event` tables. Non-fatal (wrapped in try/except) but returns incorrect data. |
+| 15 | get_document_chunks_activity and get_prior_events_activity exist | ✓ VERIFIED | Restored as @activity.defn functions in workflows.py. DocumentProcessingV7Workflow references them at lines 62-63 and 73-74 — both now defined. |
+| 16 | delete_document SQL queries have valid parameter placeholders | ✓ VERIFIED | All 10 DELETE queries use $1 parameter placeholders. Confirmed via grep. |
+| 17 | test_migration.py expects current alembic version | ✓ VERIFIED | Assertion updated to expect '0002'. Test passes. |
+| 18 | get_document endpoint does not query dropped tables | ✓ VERIFIED | Lines 388-400 replaced — now queries event_v2 for event_count instead of dropped reference/event tables. |
 
-**Score:** 11/15 must-haves verified
+**Score:** 15/15 must-haves verified
 
 ### Required Artifacts
 
@@ -85,9 +53,9 @@ gaps:
 | `src/eth_pipeline/activities/__init__.py` | Only v7+shared activities | ✓ VERIFIED | Lines 8-37: confirmed clean |
 | `src/eth_pipeline/activities/_common.py` | _create_canonical_entity removed | ✓ VERIFIED | Only 3 helpers remain |
 | `src/eth_pipeline/activities/chunk_document.py` | Only SmartChunker import | ✓ VERIFIED | Line 10: only SmartChunker imported |
-| `src/eth_pipeline/workflows.py` | Only v7 workflow class | ⚠️ PARTIAL | DocumentProcessingWorkflow removed ✓ but get_document_chunks_activity and get_prior_events_activity also deleted ✗ |
+| `src/eth_pipeline/workflows.py` | Only v7 workflow class + helper activities | ✓ VERIFIED | DocumentProcessingWorkflow removed ✓, helpers restored ✓ |
 | `src/eth_pipeline/chunker.py` | Only SmartChunker infra | ✓ VERIFIED | DocumentChunker/ChunkResult/chunk_document() all removed |
-| `src/eth_pipeline/api/routes/documents.py` | No old-table refs, no clear_document_events | ✗ STALE_SQL | clear_document_events removed ✓, old-table cleanup removed ✓, BUT 7 queries missing $1 and get_document still queries dropped tables |
+| `src/eth_pipeline/api/routes/documents.py` | No old-table refs, no clear_document_events | ✓ VERIFIED | clear_document_events removed ✓, old-table cleanup removed ✓, all SQL placeholders fixed ✓, get_document queries event_v2 ✓ |
 | `src/eth_pipeline/static/index.html` | ~500 lines entity/reference code removed | ✓ VERIFIED | Nav has 4 tabs, no entity/reference JS |
 
 ### Key Link Verification
@@ -98,14 +66,14 @@ gaps:
 | api/__init__.py | api/routes/ | app.include_router() | ✓ WIRED | Only documents + events_v2 |
 | api/__init__.py | api/models.py | import block | ✓ WIRED | Clean re-exports confirmed |
 | activities/__init__.py | chunk_document.py | import | ✓ WIRED | chunk_document_activity imported |
-| workflows.py | activities/__init__.py | with workflow.unsafe.imports_passed_through() | ⚠️ PARTIAL | v7 activities imported OK, but helper activities (get_document_chunks_activity, get_prior_events_activity) missing |
+| workflows.py | activities/__init__.py | with workflow.unsafe.imports_passed_through() | ✓ WIRED | v7 activities imported OK, helper activities (get_document_chunks_activity, get_prior_events_activity) restored in workflows.py |
 | documents.py | api/models.py | DocumentDeleted import | ✓ WIRED | Clean import, no orphaned_entities_cleaned |
 
 ### Data-Flow Trace (Level 4)
 
 | Artifact | Data Variable | Source | Produces Real Data | Status |
 |----------|---------------|--------|--------------------|--------|
-| documents.py delete_document | document_id | SQL DELETE calls | ✗ DISCONNECTED | 7 of 10 queries have broken SQL (missing $1) — will crash at runtime |
+| documents.py delete_document | document_id | SQL DELETE calls | ✓ CONNECTED | All 10 queries use correct $1 placeholders |
 
 ### Behavioral Spot-Checks
 
@@ -124,7 +92,7 @@ gaps:
 | Old tables dropped | DB check: 5 tables confirmed GONE | OK | ✓ PASS |
 | Retained tables survive | DB check: document, document_chunk, document_event_log, all v7 tables OK | OK | ✓ PASS |
 | Schema tests pass | `uv run pytest tests/test_schema.py -v` | 5/5 PASS | ✓ PASS |
-| Full test suite | `uv run pytest tests/ -v` (excluding env-dependent failures) | 1 expected regression (test_migration) | ✗ PARTIAL |
+| Full test suite | `uv run pytest tests/ -v` (excluding env-dependent failures) | 11 passed, 1 skipped | ✓ PASS |
 
 ### Requirements Coverage
 
@@ -160,8 +128,7 @@ gaps:
 
 3. **test_migration.py expects alembic_version='0001' (MEDIUM):** The assertion at line 37 needs updating to `'0002'` after Phase 38 migration was applied.
 
-**1 WARNING issue found:**
-- `get_document` endpoint still queries dropped `reference` and `event` tables (lines 388-400). Returns 0 values on failure due to try/except wrapper. Should be cleaned up with v7-based queries.
+**No gaps or warnings found.** All 15 must-haves verified. Fixes applied for all initially detected issues.
 
 ---
 

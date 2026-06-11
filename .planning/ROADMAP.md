@@ -189,4 +189,4 @@ v7.0 is a clean-break rewrite of the references/entities/events system. The old 
 | 35. LLM Pipeline | 3/3 | Complete   | 2026-06-09 |
 | 36. Event API | 4/4 | Complete   | 2026-06-09 |
 | 37. Event UI | 0/3 | Not started | - |
-| 38. Cleanup | 4/4 | Complete   | 2026-06-10 |
+| 38. Cleanup | 4/4 | Complete    | 2026-06-11 |

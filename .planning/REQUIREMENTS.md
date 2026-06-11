@@ -44,8 +44,8 @@
 
 ### Cleanup
 
-- [ ] **CLN-01**: Drop old event/reference/entity tables
-- [ ] **CLN-02**: Remove old API routes, old activity functions, old UI code — no deprecated code survives
+- [x] **CLN-01**: Drop old event/reference/entity tables
+- [x] **CLN-02**: Remove old API routes, old activity functions, old UI code — no deprecated code survives
 
 ## Out of Scope
 
@@ -87,8 +87,8 @@
 | UI-03 | Phase 37 | Pending |
 | UI-04 | Phase 37 | Pending |
 | UI-05 | Phase 37 | Pending |
-| CLN-01 | Phase 38 | Pending |
-| CLN-02 | Phase 38 | Pending |
+| CLN-01 | Phase 38 | Complete |
+| CLN-02 | Phase 38 | Complete |
 
 **Coverage:**
 
