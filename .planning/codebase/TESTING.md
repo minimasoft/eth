@@ -1,320 +1,257 @@
 # Testing Patterns
 
-**Analysis Date:** 2026-06-02
+**Analysis Date:** 2026-08-03
 
 ## Test Framework
 
-**Python:**
-- No Python test framework detected. No `pytest`, `unittest`, or test runner configuration in `pyproject.toml`.
-- Verification scripts (e.g., `scripts/verify_s01.py`, `scripts/verify_s02.py`) serve as integration verification but are not structured as unit/integration tests. They are standalone Python scripts that print PASS/FAIL and exit 0 or 1.
+**Runner:** pytest 8.x + pytest-asyncio 0.21+
 
-**TypeScript (Integration Tests):**
-- **Runner:** Node.js built-in test runner — `node:test`
-- **Config:** `tests/integration/package.json` with script `"test": "node --test"`
-- **Assertion Library:** `node:assert/strict`
-- **Language:** TypeScript compiled via `tsc` before running
-- **Config file:** `tests/integration/tsconfig.json` with `strict: true`, `target: ESNext`, `module: NodeNext`
+**Config:** No `[tool.pytest]` section in `pyproject.toml`. Configuration is done via:
+- `conftest.py` — custom markers and fixtures
+- Command-line flags for slow tests (`RUN_SLOW_TESTS=1`)
+
+**Assertion Library:** Standard Python `assert` statements (pytest's assertion rewriting).
 
 **Run Commands:**
 ```bash
-# Run integration tests (inside Docker — `docker compose run integration-tests`)
-npm install --silent && npx tsc && node --test dist/*.test.js
-
-# Run tests locally (dev workflow)
-cd tests/integration && npm test
-
-# Watch mode
-cd tests/integration && npm run test:watch
+uv run pytest                          # Run all tests
+uv run pytest -m "not slow"            # Skip slow tests
+uv run pytest --run-slow               # Include slow tests (requires RUN_SLOW_TESTS=1 env var)
+uv run pytest -v                       # Verbose output
 ```
 
 ## Test File Organization
 
-**Location:**
-- All tests live in `tests/integration/` — no unit test directory exists
-- Test data lives in `test_data/sample_criminal_case.txt`
-- Source code in `src/eth_pipeline/` has no co-located test files
-
-**Naming:**
-- Files: `snake_case.test.ts` (e.g., `pipeline.test.ts`, `pipeline_v2.test.ts`, `pipeline_m002.test.ts`, `e2e_pipeline.test.ts`)
-- Helper: `helpers.ts` (not named `*.test.ts`)
-- Each test file targets a specific milestone or feature area
-
-**Structure:**
+**Location:** Flat structure under `tests/` — no subdirectories for unit vs. integration:
 ```
 tests/
-└── integration/
-    ├── helpers.ts              # Shared test utilities, HTTP helpers, assertions
-    ├── pipeline.test.ts        # M001 foundation tests (schema, CRUD, events, references)
-    ├── pipeline_v2.test.ts     # V2 blob/chunk pipeline tests
-    ├── pipeline_m002.test.ts   # M002 canonical entity tests (merge, split)
-    ├── e2e_pipeline.test.ts    # Full end-to-end lifecycle with real Spanish case data
-    ├── package.json            # Node.js project config
-    ├── tsconfig.json           # TypeScript config
-    └── .gitignore
+├── conftest.py                          # Shared fixtures (async DB connections, seeded data)
+├── test_schema.py                       # Schema foundation tests
+├── test_migration.py                    # Migration lifecycle tests
+├── test_migration_0002.py               # Specific migration unit tests
+├── test_chunk_api.py                    # API chunk endpoint tests
+├── test_event_api.py                    # API event endpoint tests
+├── test_v7_workflow.py                  # Workflow integration tests
+├── test_extract_events_v7.py            # Event extraction activity tests
+├── test_store_events_v7.py              # Event storage activity tests
+├── test_resolve_references_v7.py        # Reference offset resolution tests
+└── test_smart_chunker.py                # Chunking logic unit tests
 ```
+
+**Naming:** `test_<module>.py` — mirrors the source module being tested.
 
 ## Test Structure
 
-**Suite Organization:**
-```typescript
-import { describe, it, after } from "node:test";
-import assert from "node:assert/strict";
-import { /* helpers */ } from "./helpers.js";
+**Suite Organization:** Class-based test suites with descriptive class names:
+```python
+# tests/test_schema.py
+class TestSchemaFoundation:
+    @pytest.mark.asyncio
+    async def test_postgis_version(self, db_connection): ...
 
-describe("Test suite name", () => {
-  after(async () => {
-    await cleanup();
-  });
+# tests/test_smart_chunker.py
+class TestBalancedDistribution:
+    """CHK-01: Chunks are approximately balanced — no extreme skew."""
+    @pytest.fixture(autouse=True)
+    def _chunker(self):
+        self.chunker = SmartChunker(target_size=1000)
 
-  describe("N. Test group name", () => {
-    it("should do something specific", async () => {
-      await skipIfDegraded(`${API_BASE}/health`, async () => {
-        // test body
-        assert.equal(result, expected);
-      });
-    });
-  });
-});
+# tests/test_extract_events_v7.py
+class TestExtractionV7:
+    @pytest.mark.asyncio
+    async def test_missing_api_key_returns_degraded(self): ...
 ```
 
 **Patterns:**
-- All tests wrapped in `skipIfDegraded()` — degraceful degradation: tests run only if API is reachable
-- `after()` hook cleans up test documents (best-effort, errors logged but don't fail)
-- Each test file maintains its own `testDocIds: string[]` for cleanup
-- Module-level test state shared across tests within a file via `testDocIds`
-- Tests are numbered (e.g., "1. Schema introspection", "2. Submit document and query events") for traceability
+- **Setup pattern:** Fixtures provide seeded data; some tests use `with patch()` for mocking.
+- **Teardown pattern:** Fixtures always clean up in `finally` blocks to avoid polluting the database:
+  ```python
+  # tests/conftest.py
+  try:
+      await db_connection.execute("INSERT INTO document ...")
+      yield doc_id
+  finally:
+      try:
+          await db_connection.execute("DELETE FROM event_v2 WHERE id = $1", event_id)
+      except Exception as exc:
+          logger.warning("v7_test_event cleanup failed: %s", exc)
+  ```
+- **Assertion pattern:** Direct `assert` with descriptive messages on failure:
+  ```python
+  assert exists is True, f"Table '{table}' does not exist"
+  assert result["events_stored"] == 2
+  ```
 
 ## Mocking
 
-**Framework:** None detected — no mocking library (e.g., sinon, vitest mocks, unittest.mock) is used.
+**Framework:** `unittest.mock.AsyncMock`, `patch`, and `patch.dict`.
 
-**Patterns:**
-- Integration tests test against real infrastructure (Dockerized SurrealDB, MinIO, Temporal)
-- No unit-level mocking — the codebase has no Python unit tests at all
-- Degraded mode in the application itself (e.g., graceful fallback when Temporal/SurrealDB is unavailable) substitutes for mock-based testing
-- The `skipIfDegraded()` wrapper in test helpers provides environment-aware test gating instead of mocking
+**Patterns observed:**
+
+1. **Async mock for database connections:**
+   ```python
+   # tests/test_extract_events_v7.py
+   @pytest.fixture
+   def mock_db():
+       mock_conn = AsyncMock()
+       mock_conn.fetch.return_value = [{"text": "dummy chunk text"}]
+       with patch("eth_pipeline.activities.extract_events_v7.get_db", _mock_db):
+           yield
+   ```
+
+2. **Patch for activity dependencies:**
+   ```python
+   # tests/test_store_events_v7.py
+   with patch("eth_pipeline.activities.store_events_v7.ProcessingLogger") as mock_logger:
+       mock_logger.return_value.log = AsyncMock()
+   ```
+
+3. **Environment variable mocking via `patch.dict`:**
+   ```python
+   # tests/test_extract_events_v7.py
+   with patch.dict(os.environ, {}, clear=True):
+       result = await extract_events_v7_activity("doc-001", 0, None)
+   assert result == {"error": "OPENROUTER_API_KEY not set", "events": []}
+   ```
+
+4. **Monkeypatch for env vars in unit tests:**
+   ```python
+   # tests/test_smart_chunker.py
+   def test_default_target_size(self, monkeypatch):
+       monkeypatch.delenv("CHUNK_SIZE_TARGET", raising=False)
+       chunker = SmartChunker()
+       assert chunker.target_size == 524288
+   ```
 
 **What to Mock:**
-- Not applicable — no mocking used
+- External services (LLM providers, MinIO storage) — `OpenRouterProvider`, `ProcessingLogger`
+- Database connections for unit tests that don't need real DB state
+- Environment-dependent behavior (`OPENROUTER_API_KEY`)
 
 **What NOT to Mock:**
-- Not applicable — no mocking used
+- Database integration tests use real PostgreSQL connections via fixtures
+- Schema validation tests query the actual database directly
 
 ## Fixtures and Factories
 
-**Test Data:**
-```typescript
-// Inline test data in test files
-const SAMPLE_CRIMINAL_CASE = [
-  "EXPEDIENTE PENAL NÚMERO: 12345/2024",
-  "JUZGADO DE INSTRUCCIÓN NÚMERO 3",
-  "MADRID",
-  // ...
-].join("\n");
+**Test Data:** Seeded via raw SQL in conftest.py fixtures — no factory library used.
 
-// Minimal PDF generator (pipeline_v2.test.ts)
-function minimalPdfBytes(): Uint8Array {
-  const bytes = new Uint8Array([/* hand-crafted PDF bytes */]);
-  return bytes;
-}
-
-// Document creation via REST API
-const doc = await createDocument(
-  "Test document for event query. El acusado fue condenado por robo.",
-  "event_query_test.txt",
-);
-
-// SQL-based fixture creation (pipeline_m002.test.ts)
-const setupSql = `
-  CREATE canonical_entity:${entId} CONTENT {
-    entity_type: 'person',
-    name: '...',
-    properties: {},
-    superseded_by: null
-  };
-`;
-await sqlExecute(setupSql);
+```python
+# tests/conftest.py — fixture seeds a complete v7 event with all child records
+@pytest_asyncio.fixture
+async def v7_test_event(db_connection, v7_test_document):
+    """Seeds a complete v7 event with all child records."""
+    try:
+        await db_connection.execute(
+            "INSERT INTO event_v2 (id, document_id, title, ...) VALUES ($1, $2, ...)",
+            event_id, doc_id, "Reunión de prueba", ...
+        )
+        yield {"event_id": event_id, "document_id": doc_id}
+    finally:
+        # Cleanup all child records in FK-safe order
 ```
 
-**Location:**
-- Test data inline: directly inside test files (`pipeline.test.ts`, `e2e_pipeline.test.ts`)
-- Test data file: `test_data/sample_criminal_case.txt` (used by `e2e_pipeline.test.ts`)
-- Minimal PDF generator: function inside `pipeline_v2.test.ts` (`minimalPdfBytes()`)
+**Location:** `tests/conftest.py` — shared fixtures for DB connections and seeded data. Per-test-file fixtures also exist (e.g., `_clean_pool`, `mock_db`).
 
 ## Coverage
 
-**Requirements:** None enforced — no coverage tooling detected.
+**Requirements:** No coverage target enforced. No `[tool.coverage]` section in pyproject.toml. No coverage tool configured.
 
-**Areas covered:**
-- **Integration tests only** — no unit tests
-- Schema introspection (GraphQL types exist with expected fields)
-- Document CRUD via REST API (create, read, delete, list)
-- Event query via GraphQL proxy
-- Reference-to-event linking via GraphQL
-- Provenance chain (event → document)
-- Delete and reprocess (status reset, orphan cleanup)
-- PDF upload / blob path (blob_format, chunk transparency)
-- Processing status transitions (pending → processing → processed)
-- Entity merge via REST with GraphQL/SQL confirmation
-- Entity split via REST with SQL confirmation
-- Full end-to-end lifecycle with Spanish criminal case text
-
-**Coverage gaps:**
-- No Python unit tests for any module (`db.py`, `storage.py`, `chunker.py`, `extractors.py`, `llm.py`, `activities.py`, `workflows.py`, `api.py`)
-- No tests for error handling paths (e.g., corrupt PDF, empty text, LLM failures)
-- No tests for `extract_text_activity` quality gate scenarios (empty PDF, scanned PDF)
-- No tests for `DocumentChunker` validation edge cases
-- No tests for `_extract_query_results()` parsing edge cases
-- No tests for `_create_canonical_entity()` failure scenarios
-- No tests for `OpenRouterProvider` API error handling (HTTP errors, timeouts, JSON parse errors)
-
-**View Coverage:**
+**View Coverage:** Would require adding a coverage tool:
 ```bash
-cd tests/integration && npm test   # Run all tests
+uv run pytest --cov=src/eth_pipeline  # Requires pip install pytest-cov
 ```
 
 ## Test Types
 
 **Unit Tests:**
-- Not detected in either Python or TypeScript
-- The codebase has no unit test files or configuration
+- Pure logic tests without database: `test_smart_chunker.py` (chunking algorithm), `test_migration_0002.py` (migration source inspection)
+- Mocked activity tests: `test_extract_events_v7.py` (LLM provider mocking, refusal detection)
+- Static analysis tests: `test_v7_workflow.py::test_v6_activities_not_called_for_v7` (source code inspection via `inspect.getsource()`)
 
 **Integration Tests:**
-- **Framework:** Node.js `node:test` runner
-- **Scope:** End-to-end against running Docker services (API, SurrealDB, MinIO, Temporal)
-- **Pattern:** HTTP-level tests against REST API and GraphQL proxy
-- **Degraded-mode aware:** Tests gracefully handle unavailable services via `skipIfDegraded()`
-- **Cleanup:** Best-effort cleanup of created test resources via `after()` hook
-- **Timeout-based polling:** Tests use polling loops with timeout for async processing (Temporal workflows)
+- Database-backed tests using real PostgreSQL: most test files use `db_connection` fixture from conftest.py
+- Workflow integration: `test_v7_workflow.py` — per-chunk commit isolation, prior-context passing
+- API endpoint tests: `test_chunk_api.py`, `test_event_api.py` — query the database directly to verify API behavior
 
 **E2E Tests:**
-- **File:** `e2e_pipeline.test.ts`
-- **Data:** Real Spanish criminal case document from `test_data/sample_criminal_case.txt`
-- **Lifecycle:** Full document submit → status polling (up to 120s) → event query → reference query → provenance verification
-- **Graceful:** Does not fail if Temporal/LLM is unavailable — logs informative warnings
+- TypeScript-based e2e pipeline tests in `tests/integration/` using Node.js native test runner (`node:test`)
+- Helpers at `tests/integration/helpers.ts` provide HTTP client functions and graceful degradation patterns
+- Test files: `pipeline_v6.test.ts`, `e2e_pipeline.test.ts`
 
 ## Common Patterns
 
 **Async Testing:**
-```typescript
-// Timeout-based polling for async processing
-const deadline = Date.now() + PROCESSING_TIMEOUT;
-while (Date.now() < deadline) {
-  await new Promise((r) => setTimeout(r, POLL_INTERVAL));
-  const current = await getDocumentStatus(doc.document_id);
-  if (current.status === "processed") return;
-  if (current.status === "failed") {
-    console.log(`ℹ  Document failed: ${current.error_message}`);
-    return;  // Don't fail — processing may be unavailable
-  }
-}
-```
-
-**Graceful Degradation:**
-```typescript
-// Wraps any test block so it only runs if the service is reachable
-await skipIfDegraded(`${API_BASE}/health`, async () => {
-  // Test body here
-});
-
-// Document creation with degraded mode handling
-if (doc === null) {
-  console.log("ℹ  Document creation returned null (degraded mode)");
-  return;
-}
-
-// GraphQL query with fallback patterns
-if (graphqlOk(result)) {
-  // Assert on result
-} else {
-  console.log("ℹ  GraphQL query unavailable (degraded mode)");
-}
+```python
+# tests/test_schema.py — async test with pytest.mark.asyncio
+@pytest.mark.asyncio
+async def test_postgis_version(self, db_connection):
+    has_postgis = await db_connection.fetchval(
+        "SELECT EXISTS(SELECT 1 FROM pg_available_extensions WHERE name = 'postgis')"
+    )
+    if not has_postgis:
+        pytest.skip("PostGIS extension not available")
 ```
 
 **Error Testing:**
-```typescript
-// HTTP status code assertions
-assert.equal(error, null, `No transport error expected: ${error}`);
-assert.equal(status, 404, `Expected 404 — got ${status}: ${body?.slice(0, 100)}`);
-
-// Non-existent document returns 404
-const [status, body, error] = await httpDelete(
-  `${API_BASE}/documents/nonexistent_id_12345`,
-);
-assert.equal(error, null, `No transport error: ${error}`);
-assert.equal(status, 404, `Expected 404 — got ${status}`);
-
-// Self-merge rejection (entity management)
-if (mergeStatus === 503) {
-  console.log("ℹ  Merge returned 503 (SurrealDB degraded) — skipping");
-  return;
-}
+```python
+# tests/test_extract_events_v7.py — test refusal detection via mocked RuntimeError
+mock_provider.extract_events_v7.side_effect = RuntimeError(
+    "content refusal: safety filter triggered"
+)
+result = await extract_events_v7_activity("doc-003", 0, None)
+assert result["refused"] is True
+assert "safety filter" in result["refusal_reason"]
 ```
 
-**HTTP Helper Pattern:**
-```typescript
-export async function httpGet(
-  url: string,
-  timeout = REQUEST_TIMEOUT,
-): Promise<[number, string | null, string | null]> {
-  try {
-    const resp = await fetch(url, {
-      method: "GET",
-      signal: AbortSignal.timeout(timeout),
-    });
-    const body = await resp.text();
-    return [resp.status, body, null];
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
-    return [-1, null, msg];
-  }
-}
+**Slow Test Gating:**
+```python
+# tests/test_smart_chunker.py — slow tests gated by env var
+@pytest.mark.slow
+def test_chunk_sample_civil_case(self):
+    with open("test_data/sample_civil_case.txt", encoding="utf-8") as f:
+        text = f.read()
+    ...
+
+# tests/conftest.py — custom marker registration
+def pytest_configure(config):
+    config.addinivalue_line("markers", "slow: marks tests as slow (skip unless RUN_SLOW_TESTS=1)")
 ```
 
-**SQL Verification (Fallback in M002 tests):**
-```typescript
-// Direct SurrealDB SQL queries used when GraphQL proxy has limitations
-const checkSql = `SELECT id, name, superseded_by FROM canonical_entity WHERE id = canonical_entity:${srcId};`;
-const [, sqlResult] = await sqlExecute(checkSql);
-const rows = extractSqlRows(sqlResult);
-assert.ok(rows[0].superseded_by !== null, "Source should have superseded_by");
+**Idempotency Testing:**
+```python
+# tests/test_store_events_v7.py — test per-chunk idempotent re-insertion
+async def test_per_chunk_idempotent(self, db_connection):
+    # Insert events for chunk 0, then insert DIFFERENT events for same chunk
+    result1 = await store_events_v7_activity(doc_id, 0, events_first)
+    assert result1["events_stored"] == 2
+    result2 = await store_events_v7_activity(doc_id, 0, events_second)
+    # Assert only the second insert's events exist (idempotent overwrite)
 ```
 
-**Assertion Helper Pattern:**
-```typescript
-export function assertNonNull<T>(
-  value: T,
-  message = "Expected non-null value",
-): asserts value is NonNullable<T> {
-  assert.ok(value !== null && value !== undefined, message);
-}
+**FK Cascade Testing:**
+```python
+# tests/test_migration.py — verify FK delete rules are CASCADE
+async def test_fk_on_delete_cascade(self, db_connection):
+    for table in CASCADE_TABLES:
+        rows = await db_connection.fetch(
+            "SELECT rc.delete_rule FROM information_schema.table_constraints tc ..."
+        )
+        assert row["delete_rule"] == "CASCADE"
 ```
 
-**Query Variant Discovery Pattern:**
-```typescript
-// Multiple GraphQL query variants to handle different SurrealDB versions
-const variants = ["canonicalEntities", "canonicalEntity", "canonical_entity"];
-for (const variant of variants) {
-  const query = `query { ${variant} { ${fields} } }`;
-  const [status, parsed, error] = await graphqlQuery(query);
-  if (graphqlOk([status, parsed, error]) && parsed?.data) {
-    return [items, variant];
-  }
-}
-return [null, null];  // All variants failed
+**Migration Round-Trip Testing:**
+```python
+# tests/test_migration.py — downgrade and re-upgrade via subprocess
+@pytest.mark.slow
+async def test_migration_downgrade_reupgrade(self, db_connection):
+    result = subprocess.run(
+        ["uv", "run", "alembic", "downgrade", "-1"],
+        capture_output=True, text=True, timeout=30, env=pg_env,
+    )
+    assert result.returncode == 0
 ```
-
-## Verification Scripts (Python)
-
-**Location:** `scripts/verify_s01.py` through `scripts/verify_s04.py` (and `*_m2.py` variants)
-
-**Pattern:**
-- Standalone Python scripts using stdlib only (`urllib`, `subprocess`, `json`)
-- Each check prints `PASS` or `FAIL` with diagnostic message
-- Exit code 0 only if all checks pass
-- Used as manual verification steps, not automated test suite
-- Check Docker containers, SurrealDB, GraphQL schema, Temporal, and Python module imports
 
 ---
 
-*Testing analysis: 2026-06-02*
+*Testing analysis: 2026-08-03*

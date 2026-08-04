@@ -1,188 +1,187 @@
 # Coding Conventions
 
-**Analysis Date:** 2026-06-02
+**Analysis Date:** 2026-08-03
+
+## Languages
+
+**Primary:** Python 3.11+ (enforced via `requires-python = ">=3.11"` in `pyproject.toml`)
+
+**Secondary:** TypeScript — only for integration tests (`tests/integration/`), using Node.js native test runner
+
+## Runtime
+
+**Environment:** CPython 3.11 (Dockerfile uses `python:3.11-slim`)
+
+**Package Manager:** uv — lockfile present at `uv.lock`, build backend is hatchling
 
 ## Naming Patterns
 
 **Files:**
-- Python source files: `snake_case.py` (e.g., `activities.py`, `extractors.py`, `chunker.py`)
-- SurrealDB schema files: `lowercase.surql` (e.g., `schema.surql`)
-- SQL migration files: `m002-s01-migration.surql`, `m002-s02-migration.surql`, `event-migration.surql`
-- TypeScript test files: `snake_case.test.ts` (e.g., `pipeline.test.ts`, `pipeline_v2.test.ts`, `e2e_pipeline.test.ts`)
-- TypeScript helper files: `snake_case.ts` (e.g., `helpers.ts`)
-- Script files: `snake_case.py` (e.g., `run_api.py`, `run_worker.py`, `verify_s01.py`)
-- Docker configuration: `Dockerfile`, `docker-compose.yml`
+- snake_case for modules and packages: `chunker.py`, `extract_events_v7.py`, `_common.py`
+- Private/internal helpers prefixed with underscore: `_db_params()`, `_extract_query_results()` in `activities/_common.py`
+- Test files follow `test_<module>.py` pattern: `test_chunk_api.py`, `test_extract_events_v7.py`
 
 **Functions:**
-- Python: `snake_case` for all functions and methods (e.g., `_db_params()`, `_extract_query_results()`, `extract_events_activity()`, `_create_canonical_entity()`)
-- Private / internal helpers prefixed with underscore: `_db_params()`, `_connect()`, `_extract_query_results()`, `_create_canonical_entity()`, `_parse_secure()`
-- Async functions: use `async def` consistently (e.g., `async def extract_events_activity()`, `async def get_db()`)
-- TypeScript: `camelCase` for functions (e.g., `httpGet()`, `httpPost()`, `createDocument()`, `uploadDocument()`, `sqlCountChunks()`, `skipIfDegraded()`)
-- TypeScript static methods: `camelCase` (e.g., `_offset_to_page()` in Python vs. no equivalent in TS)
+- snake_case for functions and methods: `store_events_v7_activity()`, `distribute_balanced()`, `_parse_date()`
+- Activity functions suffixed with `_activity`: `extract_events_v7_activity()`, `chunk_document_activity()`
+- Helper functions prefixed with underscore when internal to a module
 
 **Variables:**
-- Python: `snake_case` (e.g., `doc_id`, `blob_format`, `text_content`, `page_offsets`, `existing_entities`)
-- TypeScript: `camelCase` (e.g., `docId`, `blobFormat`, `testDocIds`, `observedStatus`, `surrealdbUrl`)
-- Constants: `SCREAMING_SNAKE_CASE` in both languages
-  - Python: `MAX_RETRIES = 3`, `DEFAULT_URL = "ws://localhost:8000/rpc"`, `EXTRACTION_CHUNK_SIZE = 800_000`
-  - TypeScript: `API_BASE`, `REQUEST_TIMEOUT = 10_000`, `GRAPHQL_TIMEOUT = 15_000`, `POLL_INTERVAL = 2_000`, `PROCESSING_TIMEOUT = 120_000`
-- TypeScript module-level mutable state: `let` with descriptive names (e.g., `let searchWorked`, `let paginationWorked`, `let observedStatus`)
-- Python type annotations use `str | None` (PEP 604 style, requires `from __future__ import annotations`)
+- snake_case for variables: `doc_id`, `event_id`, `chunk_index`
+- Constants in UPPER_SNAKE_CASE at module level: `GMT_MINUS_3`, `MAX_UPLOAD_SIZE`, `DEFAULT_HOST`
+- Type aliases use `|` union syntax (PEP 604): `str | None`, `dict[str, str]`
 
-**Classes:**
-- Python: `PascalCase` for classes (e.g., `DocumentChunker`, `PdfExtractor`, `OpenRouterProvider`, `DocumentProcessingWorkflow`)
-- Python Protocols: `PascalCase` (e.g., `ContentExtractor`, `LLMProvider`)
-- TypeScript interfaces: `PascalCase` (e.g., `DocumentCreated`, `DocumentStatus`, `CanonicalEntity`, `MergeResponse`, `SplitResponse`)
-- TypeScript types: `PascalCase` (e.g., `ServiceState = "available" | "degraded" | "unavailable"`)
-
-**Pydantic Models:**
-- PascalCase with fields in snake_case (e.g., `DocumentInput`, `DocumentCreated`, `DocumentStatus`, `DocumentListResponse`, `MergeRequest`, `SplitRequest`)
-- Each model class has a docstring and per-field docstring comment using `"""..."""` multiline syntax
-- All fields have type annotations; optional fields use `| None = None`
+**Types:**
+- PascalCase for classes and dataclasses: `SmartChunker`, `DocumentChunk`, `EventV2`, `ProcessingLogger`
+- Pydantic models follow PascalCase with descriptive suffixes: `DocumentInput`, `HealthResponse`, `EventListV2Response`
+- SQLAlchemy ORM models use PascalCase: `EventV2(Base)`, `EventLocation(Base)`
 
 ## Code Style
 
-**Formatting:**
-- No automated formatting tool detected (no `.prettierrc`, `eslint.config.*`, or `biome.json` found)
-- Python: follows PEP 8 style conventions (snake_case, indentation)
-- TypeScript: follows standard TypeScript conventions, using `@typescript-eslint` through tsc (`strict: true`)
-- Consistent use of module docstrings with `"""` triple-quotes at the top of every Python file
+**Formatting:** No dedicated formatter configured (no ruff, black, or isort in pyproject.toml). The codebase uses consistent 4-space indentation and follows PEP 8 conventions organically.
 
-**Linting:**
-- No ESLint or Ruff configuration files detected
-- TypeScript: `strict: true` in `tsconfig.json` provides type-level linting
-- Python: no explicit linter configuration detected (relies on Python 3.11+ type checking via annotations)
-
-**Docstrings:**
-- Every Python module has a top-level docstring describing the module's purpose, typically using reStructuredText format
-- Every function/class has a docstring with:
-  - Description of purpose
-  - `Parameters` section with type and description
-  - `Returns` section with type and description
-  - `Raises` section (when applicable)
-  - Example: `activities.py`, `llm.py`, `chunker.py`
-- TypeScript JSDoc: every exported function has a `/** */` JSDoc block with:
-  - `@param` annotations for each parameter
-  - `@returns` annotation for return values
-  - `@module` annotation at the top of test files
-  - Example from `helpers.ts`: `@param url - The URL to fetch.`
-
-**Type Annotations (Python):**
-- Uses `from __future__ import annotations` for PEP 604 union syntax (`str | None` instead of `Optional[str]`)
-- Return types always annotated (e.g., `-> dict`, `-> None`, `-> AsyncIterator[Minio]`)
-- Parameter types always annotated (e.g., `document_id: str`, `status: str`, `error_message: str | None = None`)
-- ClassVar for class-level constants: `DEFAULT_CHUNK_SIZE: ClassVar[int] = 128_000`
-- Protocol classes used for interface definitions: `class ContentExtractor(Protocol)` and `class LLMProvider(Protocol)`
+**Linting:** No linting tool configured. No `.flake8`, `pyproject.toml` `[tool.ruff]`, or similar sections exist.
 
 ## Import Organization
 
-**Python:**
-1. Standard library imports (e.g., `asyncio`, `base64`, `logging`, `os`, `uuid`, `pathlib`)
-2. Third-party library imports (e.g., `httpx`, `fastapi`, `pydantic`, `surrealdb`, `temporalio`)
-3. Project local imports (e.g., `eth_pipeline.db`, `eth_pipeline.storage`, `eth_pipeline.chunker`)
+**Order (observed pattern):**
+1. Standard library imports (`import os`, `from datetime import ...`)
+2. Third-party imports (`import asyncpg`, `from temporalio import activity`)
+3. Local package imports (`from eth_pipeline.db import get_db`, `from eth_pipeline.activities._common import _db_params`)
 
-Each group separated by a blank line. Imports within groups are alphabetically sorted.
-
-**TypeScript:**
-1. Node.js built-in module (dynamic imports via `await import("fs/promises")`)
-2. `node:test` / `node:assert` imports
-3. Local project imports (`./helpers.js`)
+**Path Aliases:** None configured — all local imports use full package paths like `eth_pipeline.activities.extract_events_v7`.
 
 ## Error Handling
 
-**Patterns:**
-- Python: Use granular exception handling. Each API endpoint and activity wraps DB operations in `try/except` blocks with specific exception types
-- Temporal activities: Return error dicts on failure (`{"error": str(exc), "document_id": document_id}`) rather than raising — enables degraded mode
-- FastAPI endpoints: Convert exceptions to `HTTPException` with appropriate status codes (404, 502, 503) and descriptive `detail` messages
-- TypeScript: Use `catch (err: unknown)` with type narrowing via `err instanceof Error`
-- TypeScript: Return tuple pattern `[statusCode, bodyOrNull, errorOrNull]` — never throw from HTTP helpers
-- TypeScript GraphQL helpers: Return `[number, GraphQLResponse<T> | null, string | null]` tuples for transport errors
+**Patterns observed:**
 
-**Degraded Mode:**
-- API continues when SurrealDB or Temporal is unreachable (set `app.state.db = None` / `app.state.temporal = None`)
-- Activities return error dicts instead of raising, allowing workflows to continue or retry
-- TypeScript tests use `skipIfDegraded()` to gracefully handle unavailable services
+1. **Graceful degradation with structured error responses:** Activities return dicts with `"error"` keys instead of raising exceptions, allowing the workflow to continue:
+   ```python
+   # src/eth_pipeline/activities/store_events_v7.py
+   if not events:
+       activity.logger.info("No events to store for chunk %d", chunk_index)
+       ...
+   ```
 
-**Exception Chain:**
-- Use `raise ... from exc` to preserve exception context (e.g., `raise HTTPException(...) from exc`)
-- Temporal workflow catches broad `Exception` to mark documents as failed before re-raising
+2. **Try/except with specific exception types and cleanup in finally blocks:** Fixtures always clean up database state:
+   ```python
+   # tests/conftest.py
+   try:
+       await db_connection.execute("INSERT INTO document ...")
+       yield doc_id
+   finally:
+       try:
+           await db_connection.execute("DELETE FROM event_v2 WHERE id = $1", event_id)
+       except Exception as exc:
+           logger.warning("v7_test_event cleanup failed: %s", exc)
+   ```
+
+3. **Refusal detection via RuntimeError inspection:** LLM provider errors are caught and classified:
+   ```python
+   # tests/test_extract_events_v7.py
+   mock_provider.extract_events_v7.side_effect = RuntimeError(
+       "content refusal: safety filter triggered"
+   )
+   assert result["refused"] is True
+   ```
+
+4. **HTTPException for API errors:** FastAPI routes raise `HTTPException` with appropriate status codes.
+
+5. **None returns for missing data:** Database queries return `None` when no row found, checked explicitly:
+   ```python
+   # tests/test_chunk_api.py
+   assert chunk_row is None, "Expected None for nonexistent document_id"
+   ```
 
 ## Logging
 
-**Framework:** Python standard `logging` module (`logger = logging.getLogger(__name__)`)
+**Framework:** Standard library `logging.getLogger(__name__)` throughout.
 
-**Patterns:**
-- Every module creates module-level logger: `logger = logging.getLogger(__name__)`
-- Activity loggers use `activity.logger` provided by the Temporal SDK
-- Log levels: `logger.info()` for normal operations, `logger.warning()` for degraded mode, `logger.error()` for failures, `logger.debug()` for verbose payloads
-- Structured log messages with key-value pairs in `[key=value]` or inline format: `"[document_id=%s] [status=%s]"`, `document_id`, `status`
-- Temporal activities log start and completion: `"extract_events_activity called [document_id=%s]"` → `"extract_events_activity completed [document_id=%s]"`
-- TypeScript: `console.log()` and `console.warn()` for test output — no structured logging in TS
+**Patterns observed:**
+- Module-level logger instance: `logger = logging.getLogger(__name__)` in every module
+- Activity functions use Temporal's built-in `activity.logger`:
+  ```python
+  # src/eth_pipeline/activities/store_events_v7.py
+  activity.logger.info(
+      "store_events_v7_activity called [document_id=%s] [chunk_index=%d]",
+      document_id, chunk_index,
+  )
+  ```
+- ProcessingLogger class for structured log entries: `await _log.log(document_id, "store_events_v7", "info", ...)` in `processing_log.py`
 
 ## Comments
 
 **When to Comment:**
-- Module-level docstrings describe purpose, usage, and key design decisions
-- Section comments use `# =====` separator lines in Python (e.g., `# =======================================================================`)
-- Inline comments explain WHY, not what (e.g., `# hex = no dashes (SurrealDB SQL parser limitation)`)
-- TypeScript test files use numbered section comments: `// =================================================================== // Test N: ...`
-- Python activity functions carry detailed NumPy-style docstrings explaining replay safety, idempotency, and degraded mode behavior
+- Module-level docstrings explain the purpose of each file (every module has one)
+- Inline comments explain *why* not *what*: `# Bypass: passes chunk as prior_events for direct-injection spike testing`
+- Section separators using comment blocks: `# ── Configuration ────────────────────────────────`
 
-**JSDoc/TSDoc:**
-- Used consistently in TypeScript test files
-- Every exported function has `@param` and `@returns`
-- Test files have `@module` at the top
+**Docstrings:** Google-style docstrings with Parameters/Returns sections used in public functions:
+```python
+def distribute_balanced(
+    sentences: list[str],
+    sentence_lengths: list[int],
+    target_size: int,
+) -> list[list[int]]:
+    """Distribute sentences into balanced chunk groups.
+
+    Two-pass greedy algorithm with redistribution:
+    1. First pass — greedy fill each chunk up to *target_size*.
+    ...
+
+    Parameters
+    ----------
+    sentences:
+        List of sentence texts (used only for length validation).
+    ...
+
+    Returns
+    -------
+    list[list[int]]
+        Each inner list contains the sentence indices belonging to that chunk.
+    """
+```
 
 ## Function Design
 
-**Size:**
-- Python activities: typically 30-100 lines (one logical operation: query DB, process, return)
-- Python helpers: small focused functions (e.g., `_extract_query_results()` at 28 lines, `_offset_to_page()` at 12 lines)
-- TypeScript test functions: 20-80 lines (one assertion or test scenario)
-- TypeScript helper functions: 10-50 lines (one HTTP operation or domain task)
+**Size:** Functions are generally focused — activity functions handle one logical step, helper functions do one thing (e.g., `_parse_date()`).
 
-**Parameters:**
-- Python: typed parameters with sensible defaults
-- Temporal activities: accept `document_id: str` and a `result: dict` payload
-- TypeScript: typed parameters with default values where applicable (e.g., `timeout = REQUEST_TIMEOUT`)
+**Parameters:** Positional parameters for required args, keyword-only with defaults for optional: `SmartChunker(target_size=524288)`.
 
-**Return Values:**
-- Temporal activities: return `dict` with success/error keys
-- FastAPI endpoints: return Pydantic response models (typed)
-- TypeScript helpers: return tuple `[number, string | null, string | null]` for `[status, body, error]`
-- TypeScript GraphQL helpers: return tuple `[number, GraphQLResponse<T> | null, string | null]`
+**Return Values:** Activities return dicts with structured keys (`{"events_stored": 2, "references_stored": 1}`), Pydantic models for API responses.
 
 ## Module Design
 
 **Exports:**
-- Python: each module exports public classes/functions; private helpers prefixed with `_`
-- `__init__.py` contains package docstring only (no re-exports)
-- TypeScript: all helpers are `export`-ed from `helpers.ts`; test files don't export
+- `__all__` lists used in key modules: `api/models.py`, `workflows.py`
+- Re-export shims exist for backward compatibility: `src/eth_pipeline/api.py` re-exports from `api/__init__.py`
+- Internal helpers prefixed with `_`: `_db_params()`, `_extract_query_results()`
 
-**Barrel Files:**
-- Not used in Python — each import is explicit and full-path
-- TypeScript helpers are imported individually from `./helpers.js`
+**Barrel Files:** `activities/__init__.py` and `api/__init__.py` serve as barrel files, importing and re-exporting public symbols.
 
-**Module Responsibilities:**
-- `api.py` — FastAPI application, endpoints, Pydantic models
-- `db.py` — SurrealDB connection factory with context manager
-- `storage.py` — MinIO client factory (sync/async)
-- `activities.py` — Temporal activity definitions
-- `workflows.py` — Temporal workflow orchestration
-- `extractors.py` — Document content extraction (PDF, etc.)
-- `chunker.py` — Document text chunking with page provenance
-- `llm.py` — LLM provider abstraction and OpenRouter client
-- `worker.py` — Temporal worker entrypoint
+## Type Hints
 
-## Temporal-Specific Conventions
+**Universal usage:** Every function parameter and return type is annotated. The project uses `from __future__ import annotations` in every file for forward reference support without string quotes.
 
-- Activity functions: decorated with `@activity.defn`, async, accept plain params, return `dict`
-- Workflow class: decorated with `@workflow.defn`, has `@workflow.run` async method
-- Workflow imports: use `with workflow.unsafe.imports_passed_through():` for activity imports
-- `__all__` exported from `workflows.py`: `["DocumentProcessingWorkflow"]`
-- Activity timeout values defined at call site: `start_to_close_timeout=timedelta(seconds=...)`
-- Retry policy on event extraction: `RetryPolicy(maximum_attempts=3, initial_interval=5, backoff_coefficient=2.0)`
+```python
+# src/eth_pipeline/workflows.py
+async def run(self, document_id: str) -> dict:
+    ...
+
+# tests/conftest.py
+@pytest_asyncio.fixture
+async def db_dsn() -> str:
+    ...
+```
+
+## Data Models
+
+**Dataclasses:** Used for domain data that isn't an API model: `DocumentChunk` in `chunker.py`, `SmartChunk`.
+
+**Pydantic BaseModel:** All API request/response models extend Pydantic's `BaseModel` with field-level docstrings.
+
+**SQLAlchemy ORM:** Declarative base pattern — `class EventV2(Base): __tablename__ = "event_v2"` in `models/v7_event.py`.
 
 ---
 
-*Convention analysis: 2026-06-02*
+*Convention analysis: 2026-08-03*

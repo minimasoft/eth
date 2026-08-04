@@ -1,108 +1,121 @@
 # External Integrations
 
-**Analysis Date:** 2026-06-02
+**Analysis Date:** 2026-08-03
 
 ## APIs & External Services
 
 **LLM Provider:**
-- **OpenRouter** — LLM-based event extraction and entity resolution from document text.
-  - SDK/Client: `httpx.AsyncClient` (direct REST calls, no dedicated SDK)
-  - Endpoint: `https://openrouter.ai/api/v1/chat/completions`
-  - Auth: Bearer token via `OPENROUTER_API_KEY` env var (value from `.env`)
-  - Model: `OPENROUTER_MODEL` env var (default: `deepseek/deepseek-v4-flash`)
-  - Schema: JSON Schema constrained decoding via `response_format: { type: "json_object" }`
-  - Timeout: 120 seconds per request
-  - Usage locations: `src/eth_pipeline/llm.py` (provider implementation), `src/eth_pipeline/activities.py` (workflow activity calls)
+- **OpenRouter API** — LLM-based event extraction from document text
+  - SDK/Client: `httpx.AsyncClient` (direct HTTP calls, no dedicated SDK)
+  - Auth: `OPENROUTER_API_KEY` env var → Bearer token in request headers
+  - Endpoint: `https://openrouter.ai/api/v1/chat/completions` (`src/eth_pipeline/llm.py`)
+  - Model: Configurable via `OPENROUTER_MODEL` (default: `deepseek/deepseek-v4-flash`; example in `.env.example`: `openai/gpt-4o-mini`)
+  - Response format: JSON Schema constrained decoding via `response_format.type = "json_object"` with v7 extraction schema (`EVENT_EXTRACTION_SCHEMA_V7`)
+  - Usage tracking: Captures prompt_tokens, completion_tokens, cached_tokens, cost from OpenRouter response → stored in PostgreSQL `llm_usage` and `llm_call_log` tables
+
+**Cloud Tunnel:**
+- **Cloudflare Tunnel (cloudflared)** — Exposes services via Cloudflare Zero Trust network
+  - Auth: `TUNNEL_TOKEN` env var
+  - Service: `cloudflared` container in docker-compose.yml, runs `tunnel --no-autoupdate run --token $TUNNEL_TOKEN`
 
 ## Data Storage
 
 **Databases:**
-- **SurrealDB** — Multi-model (document/graph/relational) database for document records, events, verbatim references, and canonical entities.
-  - Connection: `SURREAL_URL` env var (WebSocket: `ws://localhost:8000/rpc`, or HTTP: `http://localhost:8000`)
-  - Client: `surrealdb` Python SDK (`AsyncWsSurrealConnection`)
-  - Auth: `SURREAL_USER` / `SURREAL_PASS` (default: `root`/`root`)
-  - Namespace: `SURREAL_NS` (default: `eth`)
-  - Database: `SURREAL_DB` (default: `pipeline`)
-  - Schema: SurrealQL schema files in `src/eth_pipeline/schema.surql` and `sql/*.surql`
-  - Auto-GraphQL enabled on schema init (`DEFINE CONFIG GRAPHQL AUTO`)
-  - Tables: `document` (SCHEMAFULL), `document_chunk` (SCHEMAFULL), `event` (SCHEMAFULL), `reference` (SCHEMAFULL), `canonical_entity` (SCHEMAFULL)
-  - Usage locations: `src/eth_pipeline/db.py` (connection helper with retry), `src/eth_pipeline/api.py` (API endpoints), `src/eth_pipeline/activities.py` (all workflow activities)
-  - Docker: `surrealdb/surrealdb:latest` in `docker-compose.yml`, port 8000, persistent volume `surrealdb_data`
-  - Init script: `scripts/init_schema.py` (applies SurrealQL schema via HTTP `/sql` endpoint)
+- **PostgreSQL + PostGIS** — Primary relational store for documents, events, references, and metadata
+  - Connection: `PGUSER`, `PGPASSWORD`, `PGHOST`, `PGPORT`, `PGDATABASE` env vars → DSN via `src/eth_pipeline/db.py`
+  - Client: `asyncpg` (direct async driver) + SQLAlchemy 2.x ORM for Alembic migrations (`src/eth_pipeline/alembic/env.py`)
+  - Pool: Singleton pool with min_size=2, max_size=10 (`src/eth_pipeline/db.py`)
+  - JSONB support: Custom type codec registered in `_init_conn()` for `jsonb` and `json` columns
+  - PostGIS extension: Created via migration `0001_v7_foundation.py` (spatial geometry column on `event_location.geom`)
+  - Key tables: `document`, `document_chunk`, `document_event_log`, `llm_usage`, `llm_call_log`, `event_v2`, `event_ref`, `event_participant_v2`, `event_location`, `event_document`
+
+- **SurrealDB** — Document and event storage (declared in `.env.example` but not yet integrated into source code)
+  - Connection: `SURREAL_URL`, `SURREAL_USER`, `SURREAL_PASS`, `SURREAL_NS`, `SURREAL_DB` env vars
+  - Status: Not detected in any Python source file — appears to be planned/legacy configuration
 
 **File Storage:**
-- **MinIO** — S3-compatible object storage for binary document blobs (PDFs, uploaded files).
-  - Connection: `MINIO_ENDPOINT` (default: `minio:9000`)
-  - Client: `minio` Python SDK (`minio.Minio` — synchronous, wrapped in `asyncio.to_thread()` for async usage)
-  - Auth: `MINIO_ACCESS_KEY` / `MINIO_SECRET_KEY` (default: `minioadmin`/`minioadmin`)
-  - Bucket: `MINIO_BUCKET` (default: `eth-documents`)
-  - TLS: `MINIO_SECURE` (default: `false` for local dev)
-  - Usage locations: `src/eth_pipeline/storage.py` (client factory), `src/eth_pipeline/api.py` (file upload `/documents/upload`), `src/eth_pipeline/activities.py` (blob retrieval in `extract_text_activity`)
-  - Docker: `minio/minio:latest` in `docker-compose.yml`, ports 9000 (API) + 9001 (console), persistent volume `minio_data`
-  - Init script: `scripts/init_bucket.py` (ensures bucket exists)
-  - Upload limit: 50 MB enforced in `src/eth_pipeline/api.py` (`MAX_UPLOAD_SIZE = 50 * 1024 * 1024`)
-
-**Blob path fallback:**
-- Legacy base64 inline storage in SurrealDB's `original_blob` field when MinIO is unavailable (degraded mode). Controlled by `blob_format` field: `"minio"` or `null`.
+- **MinIO/S3-compatible object storage** — Binary blob storage for uploaded documents (PDFs, etc.)
+  - Connection: `MINIO_ENDPOINT`, `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY`, `MINIO_BUCKET`, `MINIO_SECURE` env vars → `src/eth_pipeline/storage.py`
+  - Client: `minio.Minio` sync client wrapped in async context managers (`get_storage()`, `get_storage_async()`)
+  - Bucket: Default `eth-documents` (configurable via `MINIO_BUCKET`)
+  - Degraded mode: Falls back to base64 inline storage in PostgreSQL if MinIO is unavailable (`src/eth_pipeline/api/routes/documents.py`)
 
 **Caching:**
-- None detected. No caching layer (Redis, Memcached, or in-memory) is used anywhere in the pipeline.
+- None detected. LLM token caching is handled by OpenRouter's own cache layer (reported in usage data).
 
 ## Authentication & Identity
 
 **Auth Provider:**
-- **Custom/Basic auth** — No external identity provider.
-  - SurrealDB uses HTTP Basic Auth (`Authorization: Basic base64(user:pass)` header) for schema initialization.
-  - No API authentication on FastAPI endpoints (all REST endpoints are public).
-  - Cloudflare Tunnel provides optional network-level security when `TUNNEL_TOKEN` is configured.
+- **None** — No authentication middleware or identity provider configured. The API has no auth endpoints, JWT handling, or session management. All access is unauthenticated.
 
 ## Monitoring & Observability
 
 **Error Tracking:**
-- None detected. No Sentry, Datadog, or similar error tracking integration.
+- None detected (no Sentry, Datadog, or similar integration)
 
 **Logs:**
-- Python `logging` module with `logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")` to stdout.
-- Structured log messages with document IDs and context throughout `src/eth_pipeline/` modules.
-- Temporal workflow/activity logging via `activity.logger` and `workflow.logger`.
-- Log destinations: stdout (Docker container logs).
+- Python `logging` module with structured format: `%(asctime)s [%(levelname)s] %(name)s: %(message)s` (`scripts/run_api.py`)
+- LLM call logs persisted to PostgreSQL `llm_call_log` table (full prompt/response text, token counts, cost, duration) — exposed via `GET /documents/{id}/llm-calls`
+- Processing event logs in `document_event_log` table — exposed via `GET /documents/{id}/logs`
 
 **Health Checks:**
-- `GET /health` endpoint — Returns `{"status": "ok"}` regardless of database state (liveness check).
-- Docker Compose-level health checks for SurrealDB, MinIO, and API services.
-- Graceful degradation: API continues without SurrealDB or Temporal (returns 503 for DB-dependent endpoints).
+- `/health` endpoint returns `{"status": "ok"}` regardless of database state (for orchestrator monitoring) (`src/eth_pipeline/api/routes/documents.py`)
+- Docker health checks for postgres, minio, temporal-server, and api services in docker-compose.yml
 
 ## CI/CD & Deployment
 
 **Hosting:**
-- Docker Compose — Local/self-hosted deployment (8 services in `docker-compose.yml`).
-- Cloudflare Tunnel — Optional secure tunnel to expose the API externally (`cloudflare/cloudflared:latest` container, requires `TUNNEL_TOKEN`).
+- Docker containers orchestrated via `docker-compose.yml` — 9 services total:
+  - `postgres` (postgis/postgis:17-3.4-alpine)
+  - `minio` (minio/minio:latest)
+  - `temporal-server` (temporalio/temporal:latest, dev mode)
+  - `temporal-ui` (temporalio/ui:latest)
+  - `api` (FastAPI on port 8001, host-mapped to 1985)
+  - `worker` (Temporal worker for task queue "event-extraction")
+  - `schema-init` (Alembic migration runner)
+  - `bucket-init` (MinIO bucket creation)
+  - `cloudflared` (optional tunnel)
 
 **CI Pipeline:**
-- None detected. No `.github/workflows/`, Jenkinsfile, or CI configuration files.
+- Integration tests run via docker-compose profile `test` — Node.js container executes TypeScript E2E tests against the API (`tests/integration/`)
 
 ## Environment Configuration
 
 **Required env vars:**
-- `OPENROUTER_API_KEY` — LLM event extraction (required for processing; API works without it in degraded mode returning empty events)
-
-**Critical defaults (all overrideable via env vars):**
-- SurrealDB: `SURREAL_URL=ws://localhost:8000/rpc`, `SURREAL_USER=root`, `SURREAL_PASS=root`, `SURREAL_NS=eth`, `SURREAL_DB=pipeline`
-- MinIO: `MINIO_ENDPOINT=localhost:9000`, `MINIO_ACCESS_KEY=minioadmin`, `MINIO_SECRET_KEY=minioadmin`, `MINIO_BUCKET=eth-documents`, `MINIO_SECURE=false`
-- Temporal: `TEMPORAL_URL=localhost:7233`, `TEMPORAL_NAMESPACE=default`
-- Optional: `OPENROUTER_MODEL=deepseek/deepseek-v4-flash`, `USE_PYPDF=false`, `TUNNEL_TOKEN`
+| Variable | Purpose | Default |
+|----------|---------|---------|
+| `PGUSER` | PostgreSQL username | `eth` |
+| `PGPASSWORD` | PostgreSQL password | `eth` |
+| `PGHOST` | PostgreSQL host | `postgres` (Docker) / `localhost` |
+| `PGPORT` | PostgreSQL port | `5432` |
+| `PGDATABASE` | PostgreSQL database name | `eth` |
+| `MINIO_ENDPOINT` | MinIO S3 API endpoint | `minio:9000` (Docker) / `localhost:9000` |
+| `MINIO_ACCESS_KEY` | MinIO access key | `minioadmin` |
+| `MINIO_SECRET_KEY` | MinIO secret key | `minioadmin` |
+| `MINIO_BUCKET` | MinIO bucket name | `eth-documents` |
+| `MINIO_SECURE` | Use TLS for MinIO | `false` |
+| `OPENROUTER_API_KEY` | OpenRouter API key | Required (no default) |
+| `OPENROUTER_MODEL` | LLM model identifier | `deepseek/deepseek-v4-flash` |
+| `TEMPORAL_URL` | Temporal server address | `localhost:7233` |
+| `TEMPORAL_NAMESPACE` | Temporal namespace | `default` |
+| `CHUNK_SIZE_TARGET` | Target chunk size in chars | `524288` (512KB) |
+| `USE_PYPDF` | Use pypdf instead of pypdfium2 | `false` |
+| `TUNNEL_TOKEN` | Cloudflare tunnel token | Empty (optional) |
 
 **Secrets location:**
-- `.env` file (gitignored, template in `.env.example`). Contains OpenRouter API key and MinIO/SurrealDB credentials.
+- `.env` file (not committed; `.env.example` is the template)
+- Docker Compose passes secrets via environment variables to containers
 
 ## Webhooks & Callbacks
 
 **Incoming:**
-- None detected. No webhook endpoints.
+- None detected — No webhook endpoints or callback URLs configured
 
 **Outgoing:**
-- None detected. The pipeline is pull-based (API endpoint → Temporal workflow → SurrealDB storage). No outgoing webhook calls.
+- OpenRouter API: POST requests to `https://openrouter.ai/api/v1/chat/completions` for event extraction (`src/eth_pipeline/llm.py`)
+  - Timeout: 555 seconds per request
+  - Payload: System prompt (Spanish HR research context) + user text chunk + JSON Schema constraint
 
 ---
 
-*Integration audit: 2026-06-02*
+*Integration audit: 2026-08-03*

@@ -1,83 +1,84 @@
 # Technology Stack
 
-**Analysis Date:** 2026-06-02
+**Analysis Date:** 2026-08-03
 
 ## Languages
 
 **Primary:**
-- Python 3.11+ — All core pipeline logic: FastAPI API server (`src/eth_pipeline/api.py`), Temporal workflow/activities (`src/eth_pipeline/workflows.py`, `src/eth_pipeline/activities.py`), LLM integration (`src/eth_pipeline/llm.py`), database access (`src/eth_pipeline/db.py`), blob storage (`src/eth_pipeline/storage.py`), PDF extraction (`src/eth_pipeline/extractors.py`), and text chunking (`src/eth_pipeline/chunker.py`). Defined in `pyproject.toml` with `requires-python = ">=3.11"`.
+- Python 3.11+ — All application logic, API, workflows, and activities (`src/eth_pipeline/`)
 
 **Secondary:**
-- TypeScript 6.x — Integration tests only (`tests/integration/`). Built with `tsconfig.json`, type: `module`. Tests exercise the REST and GraphQL API via `node:test` runners.
+- TypeScript (ESNext) — Integration tests only (`tests/integration/*.ts`)
 
 ## Runtime
 
 **Environment:**
-- Python 3.11-slim — Base Docker image (`Dockerfile` uses `python:3.11-slim` in both builder and runtime stages).
-- Node.js 22-slim — Integration tests Docker image (`docker-compose.yml` uses `node:22-slim`).
+- CPython 3.11 — Specified in `pyproject.toml` (`requires-python = ">=3.11"`) and Dockerfile (`FROM python:3.11-slim`)
 
 **Package Manager:**
-- **uv** — Python dependency management and virtual environments (`pyproject.toml`, `uv.lock`, `uv sync --frozen` in Docker build). Installer from `ghcr.io/astral-sh/uv:latest`.
-- **npm** — Node.js dependency management (integration tests only). Lockfile: `package-lock.json`.
+- uv (latest) — Lockfile present at `uv.lock`; used for dependency resolution and execution via `uv run`
 
 ## Frameworks
 
 **Core:**
-- **FastAPI** ≥0.115.0 — HTTP API server (`src/eth_pipeline/api.py`). Serves REST endpoints for document ingestion, status queries, entity management, and proxy to SurrealDB auto-GraphQL. Uses lifespan handlers for SurrealDB and Temporal client connections.
-- **Temporalio** ≥1.10.0 — Workflow orchestration engine (`src/eth_pipeline/workflows.py`). Defines `DocumentProcessingWorkflow` that orchestrates: text extraction → chunking → LLM event extraction → storage → entity resolution. Connected via `TEMPORAL_URL` (default `localhost:7233`), task queue `event-extraction`.
+- FastAPI 0.115+ [standard] — REST API server (`src/eth_pipeline/api.py`, routes in `src/eth_pipeline/api/routes/`)
+- Temporalio 1.10+ — Workflow orchestration engine for document processing pipeline (`src/eth_pipeline/workflows.py`, `src/eth_pipeline/activities/`)
 
 **Testing:**
-- **Node.js built-in `node:test`** — Integration test runner (`tests/integration/`). Run with `node --test` or `node --test --watch`.
-- **Python scripts** (`scripts/verify_s*.py`) — Slice verification scripts using stdlib only (`urllib`, `subprocess`, `json`). No external test framework.
+- pytest 8.0+ with pytest-asyncio — Python unit/integration tests (`tests/unit/`, `tests/integration/` Python fixtures)
+- Node.js native test runner (v22-slim image) — TypeScript E2E integration tests (`tests/integration/*.ts`)
 
-**Build/Dev:**
-- **Hatchling** — Python build backend (`pyproject.toml`: `build-backend = "hatchling.build"`). Wheel package `src/eth_pipeline`.
-- **uv** — Python dependency resolution and venv management.
+**Build:**
+- hatchling — Build backend for wheel packaging (`pyproject.toml: [build-system]`)
+- Docker + docker-compose.yml — Container orchestration with 9 services (postgres, minio, temporal-server, temporal-ui, api, worker, schema-init, bucket-init, cloudflared)
 
 ## Key Dependencies
 
 **Critical:**
-- `fastapi[standard]>=0.115.0` — Web framework with Pydantic v2 models (`src/eth_pipeline/api.py`). Uses `File`, `UploadFile`, `Query`, `HTTPException`, `StaticFiles`.
-- `temporalio>=1.10.0` — Workflow engine client + SDK (`src/eth_pipeline/workflows.py`, `src/eth_pipeline/worker.py`, `src/eth_pipeline/activities.py`). Defines workflows via `@workflow.defn`, activities via `@activity.defn`.
-- `surrealdb>=0.3.0` — SurrealDB async WebSocket client (`src/eth_pipeline/db.py`). Uses `AsyncWsSurrealConnection` for all DB operations.
-- `httpx>=0.28.0` — Async HTTP client for LLM API calls (`src/eth_pipeline/llm.py`). Calls OpenRouter `/v1/chat/completions` with 120s timeout.
-- `minio>=7.2.0` — S3-compatible object storage client (`src/eth_pipeline/storage.py`). For binary document blob storage.
+- `asyncpg` 0.30+ — Async PostgreSQL driver (`src/eth_pipeline/db.py`)
+- `sqlalchemy[asyncio]` 2.0+ — ORM layer for Alembic migrations (`src/eth_pipeline/alembic/env.py`)
+- `temporalio` 1.10+ — Workflow client and worker (`src/eth_pipeline/workflows.py`, `scripts/run_worker.py`)
+- `httpx` 0.28+ — Async HTTP client for OpenRouter API calls (`src/eth_pipeline/llm.py`)
 
 **Infrastructure:**
-- `langchain-text-splitters>=0.3.0` — Text chunking via `RecursiveCharacterTextSplitter` (`src/eth_pipeline/chunker.py`). Used in `src/eth_pipeline/activities.py` for large document splitting.
-- `pypdf>=5.1.0` — Fallback PDF text extraction (AGPL license mitigation path, enabled via `USE_PYPDF=true`).
-- `pypdfium2>=4.30.0` — Primary PDF text extraction library (BSD-3-Clause). Used in `src/eth_pipeline/extractors.py`.
-- `jsonschema>=4.26.0` — JSON Schema validation for LLM output (used in `scripts/test_llm.py` and `scripts/run_worker_plus.py`).
-- `uvicorn>=0.34.0` — ASGI server (`scripts/run_api.py`). Serves the FastAPI app on `0.0.0.0:8001`.
+- `alembic` 1.18+ — Database migration tooling (`src/eth_pipeline/alembic/`, `alembic.ini`)
+- `minio` 7.2+ — S3-compatible client for blob storage (`src/eth_pipeline/storage.py`)
+- `pypdfium2` 4.30+ — Primary PDF text extraction engine (`src/eth_pipeline/extractors.py`)
+- `pypdf` 5.1+ — Fallback PDF extractor (AGPL mitigation path, activated via `USE_PYPDF=true`)
+- `nltk` 3.9+ — Spanish sentence tokenizer for chunking (`src/eth_pipeline/chunker.py`, downloads `punkt_tab`)
+- `langchain-text-splitters` 0.3+ — Text splitting utilities (listed as dependency)
+- `jsonschema` 4.26+ — JSON Schema validation for LLM extraction output (`src/eth_pipeline/llm.py`)
+
+**API Server:**
+- `uvicorn` 0.34+ — ASGI server for FastAPI (`scripts/run_api.py`)
 
 ## Configuration
 
 **Environment:**
-- Configuration via `.env` file and environment variables. Template: `.env.example`.
-- Key env vars: `OPENROUTER_API_KEY`, `OPENROUTER_MODEL`, `SURREAL_URL`, `SURREAL_USER`, `SURREAL_PASS`, `SURREAL_NS`, `SURREAL_DB`, `MINIO_ENDPOINT`, `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY`, `MINIO_BUCKET`, `MINIO_SECURE`, `TEMPORAL_URL`, `TUNNEL_TOKEN`, `USE_PYPDF`.
-- `.env` is gitignored (in `.gitignore`).
+- `.env.example` documents all required environment variables:
+  - Database: `PGUSER`, `PGPASSWORD`, `PGHOST`, `PGPORT`, `PGDATABASE`
+  - MinIO: `MINIO_ENDPOINT`, `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY`, `MINIO_BUCKET`, `MINIO_SECURE`
+  - OpenRouter: `OPENROUTER_API_KEY`, `OPENROUTER_MODEL`
+  - Temporal: `TEMPORAL_URL`, `TEMPORAL_NAMESPACE` (defaults in code)
+  - Chunking: `CHUNK_SIZE_TARGET` (default 524288 = 512KB)
+  - PDF extraction: `USE_PYPDF` (default false, uses pypdfium2)
 
 **Build:**
-- `pyproject.toml` — Python project metadata, dependencies, build config.
-- `Dockerfile` — Multi-stage build (builder + runtime). `uv sync --frozen --no-dev` for dependency installation.
-- `docker-compose.yml` — Full service orchestration (8 services, 3 volumes, 1 network).
+- `pyproject.toml` — Project metadata, dependencies, build config
+- `uv.lock` — Deterministic dependency lockfile
+- `alembic.ini` — Alembic migration configuration with PostgreSQL DSN template (`postgresql+asyncpg://${PGUSER}:${PGPASSWORD}@${PGHOST}:${PGPORT}/${PGDATABASE}`)
 
 ## Platform Requirements
 
 **Development:**
-- Docker & Docker Compose
-- OpenRouter API key
-- Python 3.11+ (optional, for running outside Docker)
-- uv package manager (installed via `curl -LsSf https://astral.sh/uv/install.sh | sh`)
+- Docker + docker-compose for local services (PostgreSQL/PostGIS, MinIO, Temporal server/UI)
+- Node.js 22-slim for integration test runner
+- Python 3.11+ with uv installed
 
 **Production:**
-- Docker Compose or Kubernetes deployment
-- SurrealDB instance (or use the bundled container)
-- Temporal Server instance (or use the bundled container)
-- MinIO S3-compatible storage for document blobs
-- OpenRouter API key for LLM calls
-- Cloudflare Tunnel token (optional, for external API exposure)
+- Multi-stage Docker build: builder stage installs deps via `uv sync --frozen`, runtime stage copies only `.venv` and scripts
+- Cloudflared tunnel service (optional, requires `TUNNEL_TOKEN`) for public exposure of services
 
 ---
 
-*Stack analysis: 2026-06-02*
+*Stack analysis: 2026-08-03*

@@ -1,251 +1,259 @@
-<!-- refreshed: 2026-06-02 -->
+<!-- refreshed: 2026-08-03 -->
 # Architecture
 
-**Analysis Date:** 2026-06-02
+**Analysis Date:** 2026-08-03
 
 ## System Overview
 
 ```text
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                          HTTP API (FastAPI)                                 │
-│                     `src/eth_pipeline/api.py`                               │
-│   POST /documents  GET /documents/{id}  DELETE /documents/{id}/events       │
-│   POST /documents/upload  GET /entities  POST /entities/merge              │
-└────────────────────┬────────────────────────────────────────────────────────┘
-                     │
-                     ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                    Temporal Workflow Orchestrator                           │
-│               `src/eth_pipeline/workflows.py`                               │
-│              DocumentProcessingWorkflow.run(document_id)                    │
-│                                                                             │
-│   ┌──────────────────────────────────────────────────────────────────┐     │
-│   │  Activities (`src/eth_pipeline/activities.py`)                  │     │
-│   │  get_document_metadata → extract_text → chunk_document          │     │
-│   │  → extract_events → store_extraction_results → resolve_entities │     │
-│   └──────────────────────────────────────────────────────────────────┘     │
-└────────────────────────┬────────────────────────────────────────────────────┘
-                         │
-                         ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                         Domain Layer                                       │
-│  ┌─────────────────┐  ┌─────────────────┐  ┌──────────────────────────┐    │
-│  │  LLM Extraction  │  │   PDF Extractors │  │   Document Chunker      │    │
-│  │ `llm.py`         │  │  `extractors.py` │  │  `chunker.py`            │    │
-│  │ OpenRouter →     │  │  pypdfium2/pypdf │  │  langchain Recursive    │    │
-│  │ structured JSON  │  │  + quality gates │  │  + page-provenance      │    │
-│  └─────────────────┘  └─────────────────┘  └──────────────────────────┘    │
-└────────────────────────┬────────────────────────────────────────────────────┘
-                         │
-                         ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                         Storage Layer                                      │
-│  ┌──────────────────────────────┐  ┌────────────────────────────┐          │
-│  │  SurrealDB (`db.py`)          │  │  MinIO (`storage.py`)      │          │
-│  │  • Async WebSocket connection │  │  • S3-compatible blob      │          │
-│  │  • Retry logic (3 attempts)   │  │  • Sync + async context    │          │
-│  │  • Tables: document, event,   │  │  • Fallback to base64      │          │
-│  │    reference, document_chunk, │  │  • Retry logic (3 attempts)│          │
-│  │    canonical_entity           │  └────────────────────────────┘          │
-│  └──────────────────────────────┘                                          │
-└─────────────────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│                     Client / Browser                         │
+│              (Vanilla JS SPA at /ui)                        │
+└──────────────────┬──────────────────────────────────────────┘
+                   │ HTTP REST API
+                   ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    FastAPI Application                       │
+│         `src/eth_pipeline/api/`                              │
+│  ┌──────────────┐  ┌──────────────┐  ┌───────────────────┐  │
+│  │ documents.py │  │ events_v2.py │  │ models.py (Pydantic)│ │
+│  └──────────────┘  └──────────────┘  └───────────────────┘  │
+└──────────────────┬──────────────────────────────────────────┘
+                   │ asyncpg (PostgreSQL pool)
+                   ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    PostgreSQL + PostGIS                      │
+│         `src/eth_pipeline/db.py`                             │
+│  ┌──────────────┐  ┌──────────────┐  ┌───────────────────┐  │
+│  │ document     │  │ event_v2     │  │ event_ref         │  │
+│  │ document_chunk│  │ event_location│ │ event_participant │  │
+│  │ llm_usage    │  │ event_document│  │ llm_call_log      │  │
+│  └──────────────┘  └──────────────┘  └───────────────────┘  │
+└──────────────────┬──────────────────────────────────────────┘
+                   │ Temporal client (best-effort)
+                   ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    Temporal Server                           │
+│         `src/eth_pipeline/workflows.py`                      │
+│  ┌──────────────────────────────────────────────────────┐   │
+│  │ DocumentProcessingV7Workflow                         │   │
+│  │  ├─ extract_text_activity                            │   │
+│  │  ├─ chunk_document_activity                          │   │
+│  │  ├─ extract_events_v7_activity (per-chunk, LLM)      │   │
+│  │  ├─ store_events_v7_activity                         │   │
+│  │  └─ resolve_references_v7_activity                   │   │
+│  └──────────────────────────────────────────────────────┘   │
+└──────────────────┬──────────────────────────────────────────┘
+                   │ httpx (OpenRouter API)
+                   ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    OpenRouter LLM                            │
+│         `src/eth_pipeline/llm.py`                            │
+│  ┌──────────────────────────────────────────────────────┐   │
+│  │ OpenRouterProvider                                   │   │
+│  │  ├─ extract_events_v7() — JSON Schema constrained    │   │
+│  │  └─ batch_references() — token-bounded batching      │   │
+│  └──────────────────────────────────────────────────────┘   │
+└──────────────────┬──────────────────────────────────────────┘
+                   │ MinIO S3 API (blob storage)
+                   ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    MinIO / S3                                │
+│         `src/eth_pipeline/storage.py`                        │
+└─────────────────────────────────────────────────────────────┘
 ```
 
 ## Component Responsibilities
 
 | Component | Responsibility | File |
 |-----------|----------------|------|
-| API Server | HTTP ingestion, document CRUD, entity management, health, GraphQL proxy | `src/eth_pipeline/api.py` |
-| Workflow Orchestrator | Temporal workflow coordinating multi-step document processing | `src/eth_pipeline/workflows.py` |
-| Activities | Individual Temporal activity implementations (extraction, chunking, persistence) | `src/eth_pipeline/activities.py` |
-| LLM Provider | OpenRouter API client for structured event extraction and entity resolution | `src/eth_pipeline/llm.py` |
-| PDF Extractors | PDF text extraction with pypdfium2 primary / pypdf fallback + quality gates | `src/eth_pipeline/extractors.py` |
-| Document Chunker | Text splitting with page-level provenance tracking via langchain-text-splitters | `src/eth_pipeline/chunker.py` |
-| DB Connector | SurrealDB async connection factory with retry and context manager | `src/eth_pipeline/db.py` |
-| Storage | MinIO/S3 client factory for blob storage (sync + async) | `src/eth_pipeline/storage.py` |
-| Schema Init | Applies SurrealDB schema definitions from surql file | `scripts/init_schema.py` |
-| Bucket Init | Creates MinIO bucket for document blobs | `scripts/init_bucket.py` |
-| API Entrypoint | Uvicorn runner for the FastAPI app | `scripts/run_api.py` |
-| Worker Entrypoint | Temporal worker runner | `scripts/run_worker.py` |
+| FastAPI App | HTTP server, lifespan management, route registration | `src/eth_pipeline/api/__init__.py` |
+| Documents API | Document CRUD, upload (MinIO fallback), status, logs, tokens | `src/eth_pipeline/api/routes/documents.py` |
+| Events V2 API | Event list/detail endpoints with pagination and filtering | `src/eth_pipeline/api/routes/events_v2.py` |
+| Pydantic Models | Request/response schemas for all API endpoints | `src/eth_pipeline/api/models.py` |
+| Temporal Workflow | Orchestrates multi-step document processing lifecycle | `src/eth_pipeline/workflows.py` |
+| Temporal Activities | Individual execution units (text extraction, chunking, LLM, storage) | `src/eth_pipeline/activities/*.py` |
+| PostgreSQL Pool | Connection pool management with asyncpg | `src/eth_pipeline/db.py` |
+| Alembic Migrations | Schema versioning and evolution | `src/eth_pipeline/alembic/env.py`, `versions/0001_v7_foundation.py` |
+| LLM Provider | OpenRouter API client with JSON Schema constrained decoding | `src/eth_pipeline/llm.py` |
+| Smart Chunker | Sentence-aware balanced chunking using NLTK Punkt (Spanish) | `src/eth_pipeline/chunker.py` |
+| PDF Extractor | Text extraction from PDFs via pypdfium2/pypdf with quality gates | `src/eth_pipeline/extractors.py` |
+| MinIO Storage | Blob storage client factory for document files | `src/eth_pipeline/storage.py` |
+| Processing Logger | Fire-and-forget audit logging per Temporal activity | `src/eth_pipeline/processing_log.py` |
+| LLM Usage Recorder | Token usage tracking with deterministic replay-safe IDs | `src/eth_pipeline/llm_usage.py` |
+| LLM Call Recorder | Full prompt/response logging for debugging | `src/eth_pipeline/llm_call_recorder.py` |
+| Offset Resolver | Deterministic page-number and character-offset computation | `src/eth_pipeline/offsets.py` |
 
 ## Pattern Overview
 
-**Overall:** Temporal workflow-orchestrated microservices with degraded-mode resilience.
+**Overall:** Event-driven orchestration with Temporal workflows as the central coordinator.
 
 **Key Characteristics:**
-- **Degraded mode:** Every external dependency (SurrealDB, Temporal, MinIO, OpenRouter) has a fallback that lets the system continue with reduced functionality rather than crashing.
-- **Workflow-driven orchestration:** Temporal `DocumentProcessingWorkflow` coordinates the multi-step pipeline with retries, timeouts, and idempotent activities.
-- **Chunk transparency:** The LLM extraction activity always queries full `text_content` from SurrealDB directly — it never receives individual chunk records, avoiding large Temporal payloads.
-- **Idempotent activities:** Activities like `store_extraction_results_activity` and `resolve_entities_activity` first delete prior results then recreate, making Temporal replays safe.
-- **Protocol-based abstraction:** `LLMProvider` protocol and `ContentExtractor` protocol define pluggable interfaces for extraction backends.
+- **Temporal-first**: All document processing is orchestrated by Temporal workflows, which provide replay safety, retry policies, and durable state management
+- **Activity isolation**: Each activity fetches its own data from PostgreSQL — no large payloads passed through Temporal arguments (avoids event history bloat)
+- **Fire-and-forget logging**: Processing logs, LLM usage, and call logs use deterministic SHA256 IDs for replay-safe UPSERTs with no shared state
+- **Degraded mode**: API starts even if PostgreSQL or Temporal is unavailable; workflows are best-effort (document stored regardless)
+- **Per-chunk commit**: Event extraction happens per-chunk with delete-then-insert replay safety
 
 ## Layers
 
 **API Layer:**
-- Purpose: HTTP interface for document ingestion, status queries, entity management, and health checks
-- Location: `src/eth_pipeline/api.py`
-- Contains: FastAPI application with Pydantic models, lifespan management, 15+ REST endpoints
-- Depends on: `eth_pipeline.db`, `eth_pipeline.storage`, `eth_pipeline.workflows`
-- Used by: External clients (CLI, UI, curl), integration tests
+- Purpose: HTTP REST interface for document ingestion, status queries, and event retrieval
+- Location: `src/eth_pipeline/api/`
+- Contains: FastAPI app, route modules (documents.py, events_v2.py), Pydantic models
+- Depends on: PostgreSQL pool (`db.py`), MinIO client (`storage.py`)
+- Used by: Browser SPA at `/ui`, external API consumers
 
-**Workflow Layer:**
-- Purpose: Temporal workflow definition orchestrating the document processing lifecycle
+**Orchestration Layer:**
+- Purpose: Durable workflow orchestration with retry and replay guarantees
 - Location: `src/eth_pipeline/workflows.py`
-- Contains: `DocumentProcessingWorkflow` class with blob path and text path branching
-- Depends on: `eth_pipeline.activities` (imports passed through Temporal's unsafe import mechanism)
-- Used by: Temporal worker (`worker.py`)
+- Contains: `DocumentProcessingV7Workflow` — the single v7 pipeline workflow
+- Depends on: Temporal client, all activities
+- Used by: API layer (best-effort workflow start), worker process
 
 **Activity Layer:**
-- Purpose: Individual Temporal activity functions — the unit of execution invoked by workflows
-- Location: `src/eth_pipeline/activities.py`
-- Contains: 8 activities — `extract_events_activity`, `resolve_entities_activity`, `store_extraction_results_activity`, `update_document_status_activity`, `extract_text_activity`, `chunk_document_activity`, `get_document_metadata_activity`, `get_document_text_activity`
-- Depends on: `eth_pipeline.chunker`, `eth_pipeline.db`, `eth_pipeline.extractors`, `eth_pipeline.llm`, `eth_pipeline.storage`
-- Used by: `DocumentProcessingWorkflow`
+- Purpose: Individual processing steps executed by Temporal workers
+- Location: `src/eth_pipeline/activities/*.py`
+- Contains: 10 activity functions — text extraction, chunking, LLM extraction, event storage, reference resolution, status updates, metadata queries, and query helpers
+- Depends on: PostgreSQL pool (`db.py`), MinIO client (`storage.py`), LLM provider (`llm.py`)
+- Used by: Temporal worker
 
-**Domain Layer:**
-- Purpose: Core domain logic — LLM-based extraction, PDF parsing, document chunking
-- Location: `src/eth_pipeline/llm.py`, `extractors.py`, `chunker.py`
-- Contains: `OpenRouterProvider`, `LLMProvider` protocol, `PdfExtractor`, `ContentExtractor` protocol, `DocumentChunker`
-- Depends on: `httpx` (LLM), `pypdfium2`/`pypdf` (PDF), `langchain-text-splitters` (chunking)
-- Used by: Activities layer
+**Data Layer:**
+- Purpose: Persistent storage for documents, events, references, and usage metrics
+- Location: `src/eth_pipeline/db.py`, `models/v7_event.py`
+- Contains: asyncpg connection pool, SQLAlchemy ORM models (v7 event schema)
+- Depends on: PostgreSQL + PostGIS database
+- Used by: All layers
+
+**LLM Layer:**
+- Purpose: Structured JSON extraction from documents via OpenRouter API
+- Location: `src/eth_pipeline/llm.py`
+- Contains: `OpenRouterProvider` with v7 schema, system prompt, batch reference handling
+- Depends on: httpx AsyncClient, OpenRouter API key (env var)
+- Used by: `extract_events_v7_activity`
 
 **Storage Layer:**
-- Purpose: Database and blob storage connectivity
-- Location: `src/eth_pipeline/db.py`, `storage.py`
-- Contains: `get_db()` async context manager, `get_storage()` sync/async context managers, retry logic, defaults
-- Depends on: `surrealdb` Python SDK, `minio` Python SDK
-- Used by: API layer, Activity layer
-
-**Bootstrap Layer:**
-- Purpose: Application entrypoints and infrastructure setup
-- Location: `scripts/`
-- Contains: Uvicorn runner, Temporal worker runner, schema initialization script, MinIO bucket init script
-- Depends on: `eth_pipeline` package
-- Used by: Docker Compose services (`api`, `worker`, `schema-init`, `bucket-init`)
+- Purpose: Binary blob storage for document files (PDFs, etc.)
+- Location: `src/eth_pipeline/storage.py`
+- Contains: Sync and async MinIO client factories with retry logic
+- Depends on: MinIO S3-compatible endpoint (env vars)
+- Used by: API upload endpoint, text extraction activity
 
 ## Data Flow
 
-### Primary Request Path (Document Ingestion → Processing → Storage)
+### Primary Request Path
 
-1. **Ingestion:** Client sends `POST /documents` (text) or `POST /documents/upload` (binary file) to FastAPI API (`api.py:526-604`, `api.py:615-784`)
-2. **Storage:** API stores document record in SurrealDB `document` table; binary blobs stored in MinIO with base64 inline fallback (`api.py:553-564`, `api.py:714-749`)
-3. **Workflow Trigger:** API starts Temporal `DocumentProcessingWorkflow` best-effort (`api.py:579-602`)
-4. **Metadata:** Workflow calls `get_document_metadata_activity` to determine blob vs text path (`workflows.py:113-119`)
-5. **Text Extraction (blob path):** `extract_text_activity` fetches blob from MinIO/SurrealDB, runs `PdfExtractor` or plain-text decoder, updates `text_content` on document record (`activities.py:802-989`)
-6. **Chunking:** `chunk_document_activity` runs `DocumentChunker`, stores chunks in `document_chunk` table (`activities.py:992-1122`)
-7. **Event Extraction:** `extract_events_activity` queries `text_content` from SurrealDB, calls `OpenRouterProvider.extract_events()` with chunked processing for long documents (`activities.py:90-201`)
-8. **Persistence:** `store_extraction_results_activity` deletes prior events+references then creates new `event` and `reference` records idempotently (`activities.py:638-794`)
-9. **Entity Resolution:** `resolve_entities_activity` nullifies prior links, then calls `OpenRouterProvider.resolve_references()` grouped by reference type, creates or matches `canonical_entity` records (`activities.py:204-491`)
+1. **Document ingestion** — `POST /documents/upload` (`api/routes/documents.py:168`)
+   - File uploaded → stored in MinIO (or base64 fallback) → document record created in PostgreSQL with status "pending"
+   - Best-effort Temporal workflow start via `app.state.temporal.start_workflow()`
 
-### Secondary Flow: Entity Management
+2. **Workflow execution** — `DocumentProcessingV7Workflow.run` (`workflows.py:56`)
+   - Status set to "processing" → metadata check → text extraction (if blob-stored) → chunking → per-chunk LLM extraction + storage → reference resolution → status "processed"
 
-1. **Merge:** `POST /entities/merge` validates source/target types, rewires references, soft-deletes source via `superseded_by` (`api.py:1443-1717`)
-2. **Split:** `POST /entities/{entity_type}/{entity_id}/split` partitions references into new canonical entities (`api.py:1718-1895`)
-3. **Delete Cascade:** `DELETE /documents/{document_id}` cascades through chunks → references → events → document → orphaned entities, terminates active Temporal workflow (`api.py:1283-1435`)
+3. **Event retrieval** — `GET /events` or `GET /events/{id}` (`api/routes/events_v2.py:24,122`)
+   - PostgreSQL queries with JOINs across event_v2, document, event_location, event_participant_v2, event_ref tables
 
-### Degraded Mode Flows
+### Per-Chunk LLM Extraction Flow
 
-- **SurrealDB down:** API returns HTTP 503, document ingestion blocked
-- **Temporal down:** API stores document but workflow not started — documents queue for later processing
-- **MinIO down:** Upload falls back to base64 inline storage in SurrealDB
-- **OpenRouter key missing:** Activities return `{"error": "OPENROUTER_API_KEY not set", "events": []}` — degraded extraction
+1. **Get prior events** — `get_prior_events_activity` (`activities/query_helpers.py:47`)
+   - Fetches up to 10 most recent prior events (compact context: id, title, description) from PostgreSQL
 
-**State Management:**
-- Document lifecycle states: `pending` → `processing` → `extracting_blob` → `extracting_text` → `processed` (or `failed`)
-- State is persisted in SurrealDB `document.status` field
-- Temporal workflow replays are safe because activities are idempotent (delete-then-recreate pattern)
-- No in-memory state beyond `app.state` references in FastAPI lifespan
+2. **Extract events** — `extract_events_v7_activity` (`activities/extract_events_v7.py:24`)
+   - Fetches chunk text from DB by document_id+chunk_index → calls OpenRouterProvider with v7 schema + system prompt → records LLM usage and call log
+
+3. **Store events** — `store_events_v7_activity` (`activities/store_events_v7.py:45`)
+   - Deletes prior events for this chunk (replay safety) → inserts event_v2, event_location, event_participant_v2, event_document, event_ref records in a single transaction
+
+### Document Upload Flow (MinIO path)
+
+1. **Upload** — `POST /documents/upload` (`api/routes/documents.py:168`)
+   - File read → MinIO put_object with blob_path "doc/{id}{ext}" → document record created with blob_format="minio"
+
+2. **Text extraction** — `extract_text_activity` (`activities/extract_text.py:21`)
+   - Fetches blob from MinIO via `_get_blob_from_minio()` → PdfExtractor extracts text + page offsets → stores in document.text_content
 
 ## Key Abstractions
 
-**LLMProvider Protocol:**
-- Purpose: Defines a pluggable interface for LLM-based structured extraction and entity resolution
-- Examples: `OpenRouterProvider` in `src/eth_pipeline/llm.py`
-- Pattern: Protocol class with `extract_events()` and `resolve_references()` async methods; convenience functions `extract_events()` and `resolve_references()` create provider from env vars
+**Temporal Workflow:**
+- Purpose: Durable orchestration of multi-step document processing
+- Examples: `DocumentProcessingV7Workflow` (`workflows.py`)
+- Pattern: Single workflow class with `@workflow.run` method, activities invoked via `workflow.execute_activity()`
 
-**ContentExtractor Protocol:**
-- Purpose: Pluggable interface for binary document text extraction with page-level offset tracking
-- Examples: `PdfExtractor` in `src/eth_pipeline/extractors.py`
-- Pattern: Protocol with `extract(content, filename) → ExtractionResult`; registry pattern with `register_extractor()` / `get_extractor()`
+**Activity:**
+- Purpose: Individual execution unit that fetches its own data from PostgreSQL
+- Examples: `extract_events_v7_activity`, `store_events_v7_activity` (`activities/*.py`)
+- Pattern: `@activity.defn` decorated async functions — always receive document_id+chunk_index, never large text payloads
 
-**ExtractionResult:**
-- Purpose: Result type carrying extracted text with page-level offset metadata
-- Location: `src/eth_pipeline/extractors.py`
-- Pattern: Dataclass with `text`, `page_count`, `page_offsets`, `metadata` — enables exact page-to-chunk mapping
+**Fire-and-forget Logger:**
+- Purpose: Audit logging safe for Temporal replay (deterministic IDs)
+- Examples: `ProcessingLogger`, `record_llm_usage()`, `record_llm_call_log()` (`processing_log.py`, `llm_usage.py`, `llm_call_recorder.py`)
+- Pattern: Each log call opens its own PostgreSQL connection, writes one UPSERT entry with SHA256-deterministic ID, closes — errors logged at WARNING level but never raised
 
-**Degraded Mode Pattern:**
-- Purpose: Graceful degradation when external dependencies are unavailable
-- Location: Throughout — `api.py` lifespan, `activities.py` per-activity SurrealDB connections, `scripts/init_schema.py`
-- Pattern: Check availability, log warning, return degraded result/status code rather than crashing
+**Content Extractor Protocol:**
+- Purpose: Pluggable document text extraction (PDF primary, extensible)
+- Examples: `PdfExtractor` (`extractors.py`)
+- Pattern: `ContentExtractor` protocol with `extract(content, filename)` → returns `ExtractionResult(text, page_count, page_offsets)`
+
+**Offset Resolver:**
+- Purpose: Deterministic mapping from LLM-extracted character offsets to page-level positions
+- Examples: `compute_reference_offsets()`, `reconstruct_page_offsets()` (`offsets.py`)
+- Pattern: Pure function — no side effects, no I/O, fully deterministic across Temporal replays
 
 ## Entry Points
 
 **API Server:**
-- Location: `scripts/run_api.py`
-- Triggers: Docker Compose `api` service, or `uv run python scripts/run_api.py`
-- Responsibilities: Start Uvicorn server on port 8001, load FastAPI app from `eth_pipeline.api:app`
+- Location: `scripts/run_api.py` → imports `eth_pipeline.api:app`
+- Triggers: HTTP requests to FastAPI on port 8001
+- Responsibilities: Document ingestion, status queries, event retrieval, static UI serving at `/ui`
 
 **Temporal Worker:**
-- Location: `scripts/run_worker.py`
-- Triggers: Docker Compose `worker` service, or `uv run python scripts/run_worker.py`
-- Responsibilities: Connect to Temporal server, register `DocumentProcessingWorkflow` + 8 activities on `event-extraction` task queue, run until shutdown
-
-**Schema Init:**
-- Location: `scripts/init_schema.py`
-- Triggers: Docker Compose `schema-init` service (depends on SurrealDB healthy)
-- Responsibilities: Parse `schema.surql`, send each statement to SurrealDB `/sql` endpoint, enable auto-GraphQL
-
-**Bucket Init:**
-- Location: `scripts/init_bucket.py`
-- Triggers: Docker Compose `bucket-init` service (depends on MinIO healthy)
-- Responsibilities: Verify MinIO connectivity, create `eth-documents` bucket if absent
+- Location: `scripts/run_worker.py` → imports from `eth_pipeline.activities`, `eth_pipeline.workflows`
+- Triggers: Temporal server dispatches tasks to the "event-extraction" task queue
+- Responsibilities: Executes all 10 activity functions registered with the worker
 
 ## Architectural Constraints
 
-- **Threading:** Single-threaded async event loop (asyncio) via FastAPI/Uvicorn. MinIO sync operations wrapped in `asyncio.to_thread()` to avoid blocking the event loop.
-- **Global state:** `app.state.db` and `app.state.temporal` are module-level singletons managed by FastAPI lifespan. Temporal activities create fresh SurrealDB connections per-call via `get_db()` context manager — no shared connection state across activities.
-- **Circular imports:** Not detected. The `workflows.py` module uses `workflow.unsafe.imports_passed_through()` to import activities, which is a Temporal SDK requirement, not a circular dependency.
-- **Temporal 2 MB payload limit:** Activities avoid passing large payloads through Temporal's serialization — `extract_events_activity` and `get_document_text_activity` query SurrealDB directly. Chunk metadata (no text) returned from `chunk_document_activity`.
-- **Workflow replay compatibility:** All SurrealDB queries use parameterized variable binding (`$param` patterns) except DELETE operations where f-strings are documented as necessary for SurrealDB v3 compatibility.
+- **Threading:** Single-threaded async event loop (asyncpg, httpx AsyncClient). MinIO sync operations run via `asyncio.to_thread()` in async context. Worker runs as a single asyncio task.
+- **Global state:** Module-level singleton PostgreSQL pool (`_pool` in `db.py`) with double-checked locking pattern. Temporal client stored on FastAPI app.state. No other shared mutable state.
+- **Circular imports:** Router modules import `app` from `api/__init__.py` AFTER the app is created to avoid circular imports (documented in `api/__init__.py:62`).
+- **Temporal event history bloat:** Activities must NOT pass large payloads through Temporal arguments — always fetch by document_id+chunk_index from PostgreSQL directly. This is a critical architectural constraint documented in multiple activity files.
 
 ## Anti-Patterns
 
-### Inline f-string SQL in DELETE queries
+### Large Payloads Through Temporal Arguments
 
-**What happens:** `activities.py`, `api.py`, `worker.py` use f-strings for SurrealQL DELETE and UPDATE queries where variable binding won't work (e.g., `f"UPDATE {doc_ref} SET status = 'failed'"`).
-**Why it's wrong:** f-string interpolation of table/record references is fragile and bypasses SurrealDB's parameterized query safety. The code documents this as a SurrealDB v3 SDK limitation.
-**Do this instead:** Use `RecordID` objects and parameterized query syntax consistently. The API layer already uses `RecordID` and `$doc_id` params for SELECT queries. This pattern should be extended to DELETE/UPDATE as the SDK matures.
+**What happens:** Passing chunk text or full extraction results as activity arguments/return values, which bloats the Temporal event history database (up to ~512KB per chunk).
 
-### Multiple SurrealDB connection patterns
+**Why it's wrong:** Temporal serializes all activity arguments and return values into its event history. Large payloads cause event history growth proportional to document size, leading to performance degradation and potential storage limits.
 
-**What happens:** The API layer holds a single persistent connection (`app.state.db`) while activities open fresh connections per invocation via `get_db()` context manager.
-**Why it's wrong:** Two different connection management strategies in one codebase — one persistent (API), one per-operation (activities). The API can degrade completely if the initial connection fails; activities reconnect gracefully.
-**Do this instead:** Consistent pattern — either use persistent connections with health checks everywhere, or use per-operation connections everywhere. The activity pattern (per-operation with get_db()) is more resilient and should be preferred.
+**Do this instead:** Pass only `document_id` + `chunk_index` as arguments; let each activity fetch what it needs from PostgreSQL directly. Documented in `workflows.py:114-120`, `activities/extract_events_v7.py:3-6`, and `activities/query_helpers.py:19-22`.
 
-### Duplicate activity registration lists
+### Shared Mutable State Across Activities
 
-**What happens:** The same list of 8 activities is registered in `worker.py:41-54` and duplicated in `scripts/run_worker.py:45-54`.
-**Why it's wrong:** Adding a new activity requires updating both files. They can drift apart.
-**Do this instead:** Export the activity list from `activities.py` (e.g., `__activities__ = [...]`) and import it in both worker registration points.
+**What happens:** Using module-level mutable state (e.g., shared lists, caches) across Temporal activities.
+
+**Why it's wrong:** Temporal replays the same activity multiple times during recovery. Shared mutable state can produce different results on replay vs. first execution, leading to data corruption or duplicate entries.
+
+**Do this instead:** Use deterministic SHA256 IDs for UPSERTs (as done in `processing_log.py:87-88`, `llm_usage.py:81-82`, `llm_call_recorder.py:79-80`). Each activity opens its own PostgreSQL connection — no shared state.
 
 ## Error Handling
 
-**Strategy:** Graceful degradation with logging. External failures log warnings and return degraded results rather than crashing. All activities return error dicts (`{"error": ...}`) on connection failure. The API layer raises HTTP exceptions with status codes matching the failure mode (503 = unavailable, 502 = operation failed, 404 = not found).
+**Strategy:** Best-effort with graceful degradation at every layer.
 
 **Patterns:**
-- **Activity error dicts:** Every activity catches `ConnectionError` and returns `{"error": ..., "document_id": ...}` — the workflow checks for `"error"` keys and raises `RuntimeError` to trigger the `failed` status catch block
-- **API HTTP exceptions:** `HTTPException` with specific status codes and human-readable detail messages
-- **Quality gate exceptions:** `ExtractorQualityError` with `.reason` enum for programmatic handling
-- **LLM error recovery:** Individual type-group resolution failures in `resolve_entities_activity` are logged but don't block resolution of other types
+- API endpoints return HTTP 502 on database failures, HTTP 404 for missing resources
+- Workflows catch exceptions and update document status to "failed" before re-raising
+- Activities log errors at ERROR level but never raise — they return error dicts instead (except `ConnectionError` which is caught and logged)
+- Fire-and-forget loggers catch all exceptions silently, logging at WARNING level
 
 ## Cross-Cutting Concerns
 
-**Logging:** Standard Python `logging` module with `logging.basicConfig(level=INFO)` in entrypoints. Activity logging uses `activity.logger` for Temporal-aware context. All external operations log on entry and completion. API endpoints log rejections (503) and creation events.
+**Logging:** Structured logging via Python `logging` module with activity-level context. ProcessingLogger provides deterministic audit trail per document step. LLM usage and call logs provide observability into model interactions.
 
-**Validation:** SurrealDB `SCHEMAFULL` tables enforce field types and constraints at the database level. API layer uses Pydantic models for request/response validation. LLM outputs validated via JSON Schema with additionalProperties: false for strict compliance.
+**Validation:** Pydantic models for API request/response validation. JSON Schema constrained decoding via OpenRouter's `response_format` parameter ensures structured extraction output. Quality gates in PdfExtractor validate extracted text quality.
 
-**Authentication:** No application-level authentication. SurrealDB uses basic auth for internal communication. OpenRouter uses bearer token via `OPENROUTER_API_KEY`. MinIO uses access/secret key auth. The `cloudflared` tunnel in docker-compose provides optional network-level access control.
+**Authentication:** None — single-user research tool. API key required only for OpenRouter LLM access (env var `OPENROUTER_API_KEY`). Database credentials configured via env vars (`PGUSER`, `PGPASSWORD`, etc.).
 
 ---
 
-*Architecture analysis: 2026-06-02*
+*Architecture analysis: 2026-08-03*
