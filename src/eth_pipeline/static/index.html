@@ -1050,6 +1050,7 @@
     <button role="tab" aria-selected="false" aria-controls="tab-documents" id="tab-btn-documents" data-tab="documents">Documentos</button>
     <button role="tab" aria-selected="false" aria-controls="tab-eventos" id="tab-btn-eventos" data-tab="eventos">Eventos</button>
     <button role="tab" aria-selected="false" aria-controls="tab-logs" id="tab-btn-logs" data-tab="logs" style="display:none">Registros</button>
+    <button role="tab" aria-selected="false" aria-controls="tab-providers" id="tab-btn-providers" data-tab="providers">Proveedores LLM</button>
   </nav>
 
   <main>
@@ -1347,8 +1348,16 @@
         </div>
       </div>
     </section>
-  </main>
 
+    <section id="tab-providers" role="tabpanel" aria-labelledby="tab-btn-providers" class="tab-content">
+      <div class="placeholder-card">
+        <div class="icon" aria-hidden="true">🤖</div>
+        <h2>Proveedores LLM</h2>
+        <p><a href="/ui/providers">Gestionar configuraciones de proveedores →</a></p>
+      </div>
+    </section>
+
+  </main>
   <script>
     // Deferred loading: only show loading spinner if fetch takes >200ms
     const deferredLoaders = {};
@@ -1370,6 +1379,7 @@
       documents: document.getElementById('tab-documents'),
       eventos: document.getElementById('tab-eventos'),
       logs: document.getElementById('tab-logs'),
+      providers: document.getElementById('tab-providers'),
     };
 
     function switchTab(tabName) {
@@ -1406,6 +1416,11 @@
 
     function onTabClick(tabName) {
       if (tabName === 'logs' && !logsDocumentId) return;
+      // Providers tab navigates to standalone page, not inline content
+      if (tabName === 'providers') {
+        window.location.href = '/ui/providers';
+        return;
+      }
       switchTab(tabName);
       if (tabName === 'documents') fetchDocuments();
       if (tabName === 'logs') resumeLogPolling();
