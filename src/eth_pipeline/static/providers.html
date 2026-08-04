@@ -1,0 +1,719 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ETH — Proveedores LLM</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body { margin: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-size: 16px;
+      line-height: 1.5;
+      color: #1e293b;
+      background: #ffffff;
+    }
+
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      height: 56px;
+      background: #2563eb;
+      display: flex;
+      align-items: center;
+      padding: 0 24px;
+    }
+
+    header h1 {
+      font-size: 28px;
+      font-weight: 700;
+      line-height: 1.2;
+      color: #ffffff;
+    }
+
+    .back-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      margin-left: auto;
+      font-size: 14px;
+      font-weight: 500;
+      color: #ffffffcc;
+      text-decoration: none;
+      padding: 6px 12px;
+      border-radius: 6px;
+      transition: background 0.15s, color 0.15s;
+    }
+
+    .back-link:hover {
+      background: rgba(255,255,255,0.1);
+      color: #ffffff;
+    }
+
+    main {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+
+    .card {
+      background: #f8fafc;
+      border-radius: 8px;
+      padding: 24px;
+      margin-bottom: 24px;
+      border: 1px solid #e2e8f0;
+    }
+
+    .card h2 {
+      font-size: 20px;
+      font-weight: 600;
+      line-height: 1.3;
+      color: #1e293b;
+      margin: 0 0 16px 0;
+    }
+
+    .card h3 {
+      font-size: 16px;
+      font-weight: 600;
+      line-height: 1.3;
+      color: #1e293b;
+      margin: 0 0 8px 0;
+    }
+
+    .btn-outline {
+      display: inline-block;
+      font-family: inherit;
+      font-size: 14px;
+      font-weight: 500;
+      line-height: 1.4;
+      color: #2563eb;
+      background: #ffffff;
+      border: 1px solid #2563eb;
+      border-radius: 6px;
+      padding: 8px 16px;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    .btn-outline:hover {
+      background: #eff6ff;
+    }
+
+    .btn-primary {
+      display: inline-block;
+      font-family: inherit;
+      font-size: 14px;
+      font-weight: 500;
+      line-height: 1.4;
+      color: #ffffff;
+      background: #2563eb;
+      border: none;
+      border-radius: 6px;
+      padding: 8px 16px;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    .btn-primary:hover {
+      background: #1d4ed8;
+    }
+
+    .btn-icon {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 32px;
+      height: 32px;
+      padding: 0;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      background: transparent;
+      color: #94a3b8;
+      transition: color 0.15s, background 0.15s;
+    }
+
+    .btn-icon:hover {
+      color: #dc2626;
+      background: #fef2f2;
+    }
+
+    .btn-icon.btn-select:hover {
+      color: #2563eb;
+      background: #eff6ff;
+    }
+
+    .col-actions {
+      width: 100px;
+      text-align: center;
+    }
+
+    .col-actions button + button {
+      margin-left: 4px;
+    }
+
+    .table-container {
+      overflow-x: auto;
+    }
+
+    .providers-table {
+      width: 100%;
+      border-collapse: separate;
+      border-spacing: 0;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      overflow: hidden;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    .providers-table thead {
+      background: #f8fafc;
+    }
+
+    .providers-table th {
+      text-align: left;
+      padding: 10px 12px;
+      font-weight: 600;
+      color: #1e293b;
+      border-bottom: 1px solid #e2e8f0;
+      white-space: nowrap;
+    }
+
+    .providers-table td {
+      padding: 10px 12px;
+      border-bottom: 1px solid #e2e8f0;
+      color: #1e293b;
+    }
+
+    .providers-table tbody tr:last-child td {
+      border-bottom: none;
+    }
+
+    .providers-table tbody tr:hover {
+      background: #f8fafc;
+    }
+
+    .providers-table tbody tr.active-row {
+      background: #eff6ff;
+    }
+
+    .providers-table tbody tr.active-row td:first-child::before {
+      content: "●";
+      color: #2563eb;
+      margin-right: 8px;
+      font-size: 10px;
+    }
+
+    .provider-type-badge {
+      display: inline-block;
+      font-size: 13px;
+      font-weight: 500;
+      line-height: 1.4;
+      padding: 2px 8px;
+      border-radius: 4px;
+      background: #f1f5f9;
+      color: #475569;
+    }
+
+    .api-key-masked {
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+      font-size: 13px;
+      color: #64748b;
+    }
+
+    .form-group {
+      margin-bottom: 16px;
+    }
+
+    .form-group label {
+      display: block;
+      font-size: 14px;
+      font-weight: 500;
+      color: #374151;
+      margin-bottom: 4px;
+    }
+
+    .form-group input,
+    .form-group select {
+      width: 100%;
+      font-family: inherit;
+      font-size: 16px;
+      line-height: 1.5;
+      color: #1e293b;
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 8px 12px;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+
+    .form-group input:focus,
+    .form-group select:focus {
+      border-color: #2563eb;
+      box-shadow: 0 0 0 2px rgba(37,99,235,0.15);
+    }
+
+    .form-group input::placeholder {
+      color: #94a3b8;
+    }
+
+    .form-actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 16px;
+    }
+
+    .banner {
+      position: fixed;
+      top: 100px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 20;
+      padding: 12px 24px;
+      border-radius: 8px;
+      font-size: 14px;
+      line-height: 1.4;
+      max-width: 600px;
+      width: 90%;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+      animation: slideDown 0.3s ease-out;
+    }
+
+    @keyframes slideDown {
+      from { transform: translateX(-50%) translateY(-20px); opacity: 0; }
+      to { transform: translateX(-50%) translateY(0); opacity: 1; }
+    }
+
+    .banner-success {
+      background: #f0fdf4;
+      border: 1px solid #bbf7d0;
+      color: #166534;
+    }
+
+    .banner-error {
+      background: #fef2f2;
+      border: 1px solid #fecaca;
+      color: #991b1b;
+    }
+
+    .banner-info {
+      background: #eff6ff;
+      border: 1px solid #bfdbfe;
+      color: #1e40af;
+    }
+
+    .banner .banner-close {
+      margin-left: auto;
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-size: 16px;
+      color: inherit;
+      opacity: 0.6;
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+
+    .banner .banner-close:hover {
+      opacity: 1;
+      background: rgba(0,0,0,0.05);
+    }
+
+    .active-provider-info {
+      display: flex;
+      align-items: center;
+      gap: 24px;
+      padding: 16px;
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+    }
+
+    .active-provider-info .info-item {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .active-provider-info .label {
+      font-size: 12px;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      font-weight: 600;
+    }
+
+    .active-provider-info .value {
+      font-size: 14px;
+      font-weight: 500;
+      color: #1e293b;
+    }
+
+    .placeholder-card {
+      background: #f8fafc;
+      border-radius: 8px;
+      padding: 48px;
+      text-align: center;
+      color: #64748b;
+    }
+
+    .placeholder-card h2 {
+      font-size: 20px;
+      font-weight: 600;
+      line-height: 1.3;
+      color: #1e293b;
+      margin-bottom: 8px;
+    }
+
+    .warning-banner {
+      background: #fffbeb;
+      border: 1px solid #fde68a;
+      border-radius: 8px;
+      padding: 12px 16px;
+      font-size: 13px;
+      color: #92400e;
+      margin-bottom: 24px;
+    }
+
+    .warning-banner strong {
+      display: block;
+      margin-bottom: 4px;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>ETH — Espacio Tiempo Humanos</h1>
+    <a href="/ui" class="back-link">&larr; Volver al panel principal</a>
+  </header>
+
+  <main>
+    <div id="banner-container"></div>
+
+    <div class="warning-banner">
+      <strong>⚠️ Advertencia de seguridad</strong>
+      Las claves API se almacenan en el almacenamiento local del navegador (localStorage). Cualquier persona con acceso a este navegador puede ver las claves. No use esta interfaz en equipos compartidos o públicos.
+    </div>
+
+    <!-- Active Provider Card -->
+    <section class="card" id="active-provider-section">
+      <h2>Proveedor Activo</h2>
+      <div id="active-provider-content"></div>
+    </section>
+
+    <!-- Add Provider Form -->
+    <section class="card">
+      <h2>Agregar Proveedor</h2>
+      <form id="add-provider-form" autocomplete="off">
+        <div class="form-group">
+          <label for="provider-type">Tipo de proveedor</label>
+          <select id="provider-type" required>
+            <option value="">— Seleccionar —</option>
+            <option value="openrouter">OpenRouter</option>
+            <option value="anthropic">Anthropic</option>
+            <option value="openai">OpenAI</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="api-key">Clave API</label>
+          <input type="text" id="api-key" placeholder="sk-..." required />
+        </div>
+        <div class="form-group">
+          <label for="model-name">Modelo</label>
+          <input type="text" id="model-name" placeholder="deepseek/deepseek-v4-flash" required />
+        </div>
+        <div class="form-group" id="base-url-group" style="display:none">
+          <label for="base-url">URL base</label>
+          <input type="text" id="base-url" placeholder="https://openrouter.ai" value="https://openrouter.ai" />
+        </div>
+        <div class="form-actions">
+          <button type="submit" class="btn-primary">Agregar proveedor</button>
+        </div>
+      </form>
+    </section>
+
+    <!-- Provider List -->
+    <section class="card">
+      <h2>Proveedores Guardados</h2>
+      <div id="providers-list-content"></div>
+    </section>
+  </main>
+
+  <script>
+    // ===== Utility functions =====
+
+    function escapeHtml(text) {
+      const d = document.createElement('div');
+      d.textContent = text;
+      return d.innerHTML;
+    }
+
+    function maskApiKey(key) {
+      if (!key || key.length === 0) return '—';
+      if (key.length <= 4) return key + '****';
+      return key.slice(0, 4) + '****' + key.slice(-2);
+    }
+
+    function generateId() {
+      try {
+        return crypto.randomUUID();
+      } catch (_e) {
+        // Fallback for older browsers: use Date.now + random
+        return (Date.now().toString(36) + Math.random().toString(36).slice(2, 9));
+      }
+    }
+
+    function showBanner(message, type, autoDismiss) {
+      const div = document.createElement('div');
+      div.className = 'banner banner-' + type;
+      div.innerHTML = '<span>' + escapeHtml(message) + '</span><button class="banner-close" aria-label="Descartar">&times;</button>';
+      div.querySelector('.banner-close').addEventListener('click', () => div.remove());
+      document.getElementById('banner-container').appendChild(div);
+      if (autoDismiss) {
+        setTimeout(() => { if (div.parentNode) div.remove(); }, 5000);
+      }
+    }
+
+    // ===== localStorage persistence =====
+
+    const STORAGE_KEY = 'llm_providers';
+
+    function loadProviders() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (!raw) return null;
+        const data = JSON.parse(raw);
+        if (Array.isArray(data)) return data;
+        return null;
+      } catch (_e) {
+        return null;
+      }
+    }
+
+    function saveProviders(providers) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(providers));
+    }
+
+    // ===== Default config on first load =====
+
+    const DEFAULT_PROVIDERS = [
+      {
+        id: generateId(),
+        provider: 'openrouter',
+        api_key: '',
+        model: 'deepseek/deepseek-v4-flash',
+        base_url: 'https://openrouter.ai',
+        active: true,
+      },
+    ];
+
+    // ===== Provider rendering =====
+
+    function renderActiveProvider() {
+      const providers = loadProviders();
+      if (!providers || providers.length === 0) {
+        document.getElementById('active-provider-content').innerHTML =
+          '<div class="placeholder-card"><h2>Sin proveedores configurados</h2><p>Agregue un proveedor usando el formulario de abajo.</p></div>';
+        return;
+      }
+
+      const active = providers.find(p => p.active);
+      if (!active) {
+        document.getElementById('active-provider-content').innerHTML =
+          '<div class="placeholder-card"><h2>Ningún proveedor activo</h2><p>Seleccione un proveedor como activo desde la lista de abajo.</p></div>';
+        return;
+      }
+
+      const providerLabels = { openrouter: 'OpenRouter', anthropic: 'Anthropic', openai: 'OpenAI' };
+      document.getElementById('active-provider-content').innerHTML =
+        '<div class="active-provider-info">' +
+          '<div class="info-item"><span class="label">Proveedor</span><span class="value">' + escapeHtml(providerLabels[active.provider] || active.provider) + '</span></div>' +
+          '<div class="info-item"><span class="label">Modelo</span><span class="value">' + escapeHtml(active.model) + '</span></div>' +
+          '<div class="info-item"><span class="label">Clave API</span><span class="value api-key-masked">' + maskApiKey(active.api_key) + '</span></div>' +
+          (active.base_url ? '<div class="info-item"><span class="label">URL base</span><span class="value">' + escapeHtml(active.base_url) + '</span></div>' : '') +
+          '<button class="btn-outline" id="change-active-btn">Cambiar</button>' +
+        '</div>';
+
+      document.getElementById('change-active-btn').addEventListener('click', () => {
+        // Show the provider list and scroll to it so user can select a different one
+        const listSection = document.getElementById('providers-list-content');
+        if (listSection) {
+          listSection.scrollIntoView({ behavior: 'smooth' });
+        }
+      });
+    }
+
+    function renderProviderList() {
+      const providers = loadProviders();
+      const container = document.getElementById('providers-list-content');
+
+      if (!providers || providers.length === 0) {
+        container.innerHTML = '<div class="placeholder-card"><h2>Sin proveedores guardados</h2><p>Agregue un proveedor usando el formulario de arriba.</p></div>';
+        return;
+      }
+
+      const providerLabels = { openrouter: 'OpenRouter', anthropic: 'Anthropic', openai: 'OpenAI' };
+
+      let html = '<div class="table-container"><table class="providers-table">' +
+        '<thead><tr>' +
+          '<th>Estado</th>' +
+          '<th>Tipo</th>' +
+          '<th>Modelo</th>' +
+          '<th>Clave API</th>' +
+          (providers.some(p => p.base_url) ? '<th>URL base</th>' : '') +
+          '<th class="col-actions">Acciones</th>' +
+        '</tr></thead><tbody>';
+
+      providers.forEach((p, idx) => {
+        const isActive = !!p.active;
+        html += '<tr class="' + (isActive ? 'active-row' : '') + '">' +
+          '<td>' + (isActive ? '<span style="color:#2563eb;font-weight:600">Activo</span>' : '<span style="color:#94a3b8">Inactivo</span>') + '</td>' +
+          '<td><span class="provider-type-badge">' + escapeHtml(providerLabels[p.provider] || p.provider) + '</span></td>' +
+          '<td>' + escapeHtml(p.model) + '</td>' +
+          '<td class="api-key-masked">' + maskApiKey(p.api_key) + '</td>' +
+          (p.base_url ? '<td style="font-size:13px;color:#64748b">' + escapeHtml(p.base_url) + '</td>' : '') +
+          '<td class="col-actions">' +
+            (!isActive ? '<button class="btn-icon btn-select" data-idx="' + idx + '" aria-label="Seleccionar como activo" title="Seleccionar como activo"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></button>' : '') +
+            '<button class="btn-icon btn-delete" data-idx="' + idx + '" aria-label="Eliminar proveedor" title="Eliminar proveedor"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg></button>' +
+          '</td>';
+        html += '</tr>';
+      });
+
+      html += '</tbody></table></div>';
+      container.innerHTML = html;
+
+      // Wire up event delegation for action buttons
+      container.addEventListener('click', function(e) {
+        const selectBtn = e.target.closest('.btn-select');
+        if (selectBtn) {
+          const idx = parseInt(selectBtn.getAttribute('data-idx'), 10);
+          setActiveProvider(idx);
+          return;
+        }
+
+        const deleteBtn = e.target.closest('.btn-delete');
+        if (deleteBtn) {
+          const idx = parseInt(deleteBtn.getAttribute('data-idx'), 10);
+          deleteProvider(idx);
+        }
+      });
+    }
+
+    function setActiveProvider(idx) {
+      const providers = loadProviders();
+      if (!providers || !providers[idx]) return;
+
+      // Deactivate all, then activate the selected one
+      providers.forEach(p => p.active = false);
+      providers[idx].active = true;
+      saveProviders(providers);
+
+      renderActiveProvider();
+      renderProviderList();
+      showBanner('Proveedor "' + (providers[idx].model || 'config') + '" activado', 'success', true);
+    }
+
+    function deleteProvider(idx) {
+      const providers = loadProviders();
+      if (!providers || !providers[idx]) return;
+
+      const providerName = providers[idx].provider + '/' + providers[idx].model;
+      if (!confirm('¿Está seguro de que desea eliminar el proveedor "' + escapeHtml(providerName) + '"? Esta acción no se puede deshacer.')) return;
+
+      // If deleting the active one, deactivate it first
+      if (providers[idx].active) {
+        providers.forEach(p => p.active = false);
+      }
+
+      providers.splice(idx, 1);
+      saveProviders(providers);
+
+      renderActiveProvider();
+      renderProviderList();
+      showBanner('Proveedor "' + escapeHtml(providerName) + '" eliminado', 'success', true);
+    }
+
+    // ===== Add provider form =====
+
+    const providerTypeSelect = document.getElementById('provider-type');
+    const apiKeyInput = document.getElementById('api-key');
+    const modelNameInput = document.getElementById('model-name');
+    const baseUrlGroup = document.getElementById('base-url-group');
+    const baseUrlInput = document.getElementById('base-url');
+
+    // Show/hide base_url field based on provider type
+    providerTypeSelect.addEventListener('change', function() {
+      if (this.value === 'openrouter') {
+        baseUrlGroup.style.display = '';
+      } else {
+        baseUrlGroup.style.display = 'none';
+      }
+    });
+
+    document.getElementById('add-provider-form').addEventListener('submit', function(e) {
+      e.preventDefault();
+
+      const provider = providerTypeSelect.value;
+      const apiKey = apiKeyInput.value.trim();
+      const model = modelNameInput.value.trim();
+      let baseUrl = null;
+
+      if (!provider || !apiKey || !model) {
+        showBanner('Complete todos los campos obligatorios', 'error', false);
+        return;
+      }
+
+      if (provider === 'openrouter') {
+        baseUrl = baseUrlInput.value.trim() || 'https://openrouter.ai';
+      }
+
+      const providers = loadProviders();
+      if (!providers) {
+        // First provider — use defaults
+        const newProvider = { ...DEFAULT_PROVIDERS[0], id: generateId(), provider, api_key: apiKey, model, base_url: baseUrl };
+        saveProviders([newProvider]);
+      } else {
+        // Deactivate all existing providers (only one active at a time)
+        providers.forEach(p => p.active = false);
+
+        const newProvider = { id: generateId(), provider, api_key: apiKey, model, base_url: baseUrl, active: true };
+        providers.push(newProvider);
+      }
+
+      saveProviders(providers);
+
+      // Reset form
+      providerTypeSelect.value = '';
+      apiKeyInput.value = '';
+      modelNameInput.value = '';
+      baseUrlGroup.style.display = 'none';
+      baseUrlInput.value = 'https://openrouter.ai';
+
+      renderActiveProvider();
+      renderProviderList();
+      showBanner('Proveedor "' + provider + '/' + model + '" agregado exitosamente', 'success', true);
+    });
+
+    // ===== Initialize on load =====
+
+    function init() {
+      const existing = loadProviders();
+      if (!existing) {
+        saveProviders(DEFAULT_PROVIDERS);
+      }
+      renderActiveProvider();
+      renderProviderList();
+    }
+
+    init();
+  </script>
+</body>
+</html>
