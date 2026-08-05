@@ -3,7 +3,8 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from eth_pipeline.api.lifespan import lifespan
@@ -54,6 +55,12 @@ if STATIC_DIR.is_dir():
     )
 else:
     logger.warning("Static directory %s not found — UI will not be served at /ui", STATIC_DIR)
+
+
+# Explicit route for the providers page (StaticFiles with html=True would serve index.html instead).
+@app.get("/ui/providers")
+async def get_providers_page(request: Request) -> FileResponse:  # noqa: ARG001
+    return FileResponse(str(STATIC_DIR / "providers.html"))
 
 # =======================================================================
 # Include route modules via their routers
