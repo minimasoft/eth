@@ -47,6 +47,13 @@ app = FastAPI(
 # Serve the web UI from /ui (single-page static application)
 # The static directory lives at eth_pipeline/static/ — one level above the api/ package.
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
+
+# Explicit route for the providers page must come BEFORE the StaticFiles mount,
+# because Starlette matches routes in order and the mount would catch all /ui/* paths.
+@app.get("/ui/providers")
+async def get_providers_page(request: Request) -> FileResponse:  # noqa: ARG001
+    return FileResponse(str(STATIC_DIR / "providers.html"))
+
 if STATIC_DIR.is_dir():
     app.mount(
         "/ui",
@@ -55,12 +62,6 @@ if STATIC_DIR.is_dir():
     )
 else:
     logger.warning("Static directory %s not found — UI will not be served at /ui", STATIC_DIR)
-
-
-# Explicit route for the providers page (StaticFiles with html=True would serve index.html instead).
-@app.get("/ui/providers")
-async def get_providers_page(request: Request) -> FileResponse:  # noqa: ARG001
-    return FileResponse(str(STATIC_DIR / "providers.html"))
 
 # =======================================================================
 # Include route modules via their routers
