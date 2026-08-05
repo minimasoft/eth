@@ -414,23 +414,14 @@
       <h2>Agregar Proveedor</h2>
       <form id="add-provider-form" autocomplete="off">
         <div class="form-group">
-          <label for="provider-type">Tipo de proveedor</label>
-          <select id="provider-type" required>
-            <option value="">— Seleccionar —</option>
-            <option value="openrouter">OpenRouter</option>
-            <option value="anthropic">Anthropic</option>
-            <option value="openai">OpenAI</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label for="api-key">Clave API</label>
-          <input type="text" id="api-key" placeholder="sk-..." required />
-        </div>
-        <div class="form-group">
           <label for="model-name">Modelo</label>
           <input type="text" id="model-name" placeholder="deepseek/deepseek-v4-flash" required />
         </div>
-        <div class="form-group" id="base-url-group" style="display:none">
+        <div class="form-group">
+          <label for="api-key">Clave API (opcional)</label>
+          <input type="text" id="api-key" placeholder="sk-... o dejar vacío para proveedores locales" />
+        </div>
+        <div class="form-group">
           <label for="base-url">URL base</label>
           <input type="text" id="base-url" placeholder="https://openrouter.ai" value="https://openrouter.ai" />
         </div>
@@ -507,9 +498,8 @@
     const DEFAULT_PROVIDERS = [
       {
         id: generateId(),
-        provider: 'openrouter',
-        api_key: '',
         model: 'deepseek/deepseek-v4-flash',
+        api_key: '',
         base_url: 'https://openrouter.ai',
         active: true,
       },
@@ -532,13 +522,12 @@
         return;
       }
 
-      const providerLabels = { openrouter: 'OpenRouter', anthropic: 'Anthropic', openai: 'OpenAI' };
+      const apiKeyDisplay = active.api_key ? maskApiKey(active.api_key) : '—';
       document.getElementById('active-provider-content').innerHTML =
         '<div class="active-provider-info">' +
-          '<div class="info-item"><span class="label">Proveedor</span><span class="value">' + escapeHtml(providerLabels[active.provider] || active.provider) + '</span></div>' +
           '<div class="info-item"><span class="label">Modelo</span><span class="value">' + escapeHtml(active.model) + '</span></div>' +
-          '<div class="info-item"><span class="label">Clave API</span><span class="value api-key-masked">' + maskApiKey(active.api_key) + '</span></div>' +
-          (active.base_url ? '<div class="info-item"><span class="label">URL base</span><span class="value">' + escapeHtml(active.base_url) + '</span></div>' : '') +
+          '<div class="info-item"><span class="label">Clave API</span><span class="value api-key-masked">' + apiKeyDisplay + '</span></div>' +
+          '<div class="info-item"><span class="label">URL base</span><span class="value">' + escapeHtml(active.base_url) + '</span></div>' +
           '<button class="btn-outline" id="change-active-btn">Cambiar</button>' +
         '</div>';
 
@@ -560,26 +549,23 @@
         return;
       }
 
-      const providerLabels = { openrouter: 'OpenRouter', anthropic: 'Anthropic', openai: 'OpenAI' };
-
       let html = '<div class="table-container"><table class="providers-table">' +
         '<thead><tr>' +
           '<th>Estado</th>' +
-          '<th>Tipo</th>' +
           '<th>Modelo</th>' +
           '<th>Clave API</th>' +
-          (providers.some(p => p.base_url) ? '<th>URL base</th>' : '') +
+          '<th>URL base</th>' +
           '<th class="col-actions">Acciones</th>' +
         '</tr></thead><tbody>';
 
       providers.forEach((p, idx) => {
         const isActive = !!p.active;
+        const apiKeyDisplay = p.api_key ? maskApiKey(p.api_key) : '—';
         html += '<tr class="' + (isActive ? 'active-row' : '') + '">' +
           '<td>' + (isActive ? '<span style="color:#2563eb;font-weight:600">Activo</span>' : '<span style="color:#94a3b8">Inactivo</span>') + '</td>' +
-          '<td><span class="provider-type-badge">' + escapeHtml(providerLabels[p.provider] || p.provider) + '</span></td>' +
           '<td>' + escapeHtml(p.model) + '</td>' +
-          '<td class="api-key-masked">' + maskApiKey(p.api_key) + '</td>' +
-          (p.base_url ? '<td style="font-size:13px;color:#64748b">' + escapeHtml(p.base_url) + '</td>' : '') +
+          '<td class="api-key-masked">' + apiKeyDisplay + '</td>' +
+          '<td style="font-size:13px;color:#64748b">' + escapeHtml(p.base_url || '—') + '</td>' +
           '<td class="col-actions">' +
             (!isActive ? '<button class="btn-icon btn-select" data-idx="' + idx + '" aria-label="Seleccionar como activo" title="Seleccionar como activo"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></button>' : '') +
             '<button class="btn-icon btn-delete" data-idx="' + idx + '" aria-label="Eliminar proveedor" title="Eliminar proveedor"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg></button>' +
@@ -625,7 +611,7 @@
       const providers = loadProviders();
       if (!providers || !providers[idx]) return;
 
-      const providerName = providers[idx].provider + '/' + providers[idx].model;
+      const providerName = providers[idx].model;
       if (!confirm('¿Está seguro de que desea eliminar el proveedor "' + escapeHtml(providerName) + '"? Esta acción no se puede deshacer.')) return;
 
       // If deleting the active one, deactivate it first
@@ -643,63 +629,45 @@
 
     // ===== Add provider form =====
 
-    const providerTypeSelect = document.getElementById('provider-type');
     const apiKeyInput = document.getElementById('api-key');
     const modelNameInput = document.getElementById('model-name');
-    const baseUrlGroup = document.getElementById('base-url-group');
     const baseUrlInput = document.getElementById('base-url');
-
-    // Show/hide base_url field based on provider type
-    providerTypeSelect.addEventListener('change', function() {
-      if (this.value === 'openrouter') {
-        baseUrlGroup.style.display = '';
-      } else {
-        baseUrlGroup.style.display = 'none';
-      }
-    });
 
     document.getElementById('add-provider-form').addEventListener('submit', function(e) {
       e.preventDefault();
 
-      const provider = providerTypeSelect.value;
-      const apiKey = apiKeyInput.value.trim();
+      const apiKey = apiKeyInput.value.trim() || null;
       const model = modelNameInput.value.trim();
-      let baseUrl = null;
+      const baseUrl = baseUrlInput.value.trim() || 'https://openrouter.ai';
 
-      if (!provider || !apiKey || !model) {
-        showBanner('Complete todos los campos obligatorios', 'error', false);
+      if (!model) {
+        showBanner('Complete el campo de modelo', 'error', false);
         return;
-      }
-
-      if (provider === 'openrouter') {
-        baseUrl = baseUrlInput.value.trim() || 'https://openrouter.ai';
       }
 
       const providers = loadProviders();
       if (!providers) {
         // First provider — use defaults
-        const newProvider = { ...DEFAULT_PROVIDERS[0], id: generateId(), provider, api_key: apiKey, model, base_url: baseUrl };
+        const newProvider = { ...DEFAULT_PROVIDERS[0], id: generateId(), model, api_key: apiKey, base_url: baseUrl };
         saveProviders([newProvider]);
       } else {
         // Deactivate all existing providers (only one active at a time)
         providers.forEach(p => p.active = false);
 
-        const newProvider = { id: generateId(), provider, api_key: apiKey, model, base_url: baseUrl, active: true };
+        const newProvider = { id: generateId(), model, api_key: apiKey, base_url: baseUrl, active: true };
         providers.push(newProvider);
       }
 
       saveProviders(providers);
 
       // Reset form
-      providerTypeSelect.value = '';
       apiKeyInput.value = '';
       modelNameInput.value = '';
-      baseUrlGroup.style.display = 'none';
       baseUrlInput.value = 'https://openrouter.ai';
 
       renderActiveProvider();
       renderProviderList();
-      showBanner('Proveedor "' + provider + '/' + model + '" agregado exitosamente', 'success', true);
+      showBanner('Proveedor "' + model + '" agregado exitosamente', 'success', true);
     });
 
     // ===== Initialize on load =====
