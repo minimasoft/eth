@@ -1,6 +1,10 @@
 
 # ── GSD baseline (auto-generated) ──
 .gsd
+.qwen/
+.pi/
+.opencode/
+.agents/
 .gsd-id
 .mcp.json
 .bg-shell/
