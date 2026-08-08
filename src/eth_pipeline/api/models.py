@@ -18,6 +18,9 @@ class DocumentInput(BaseModel):
     mime_type: str | None = None
     """MIME type of the source (defaults to ``text/plain`` at creation)."""
 
+    provider_id: str | None = None
+    """Optional llm_provider id to process this document (defaults to env default)."""
+
 
 class DocumentCreated(BaseModel):
     """Response body for a successful ``POST /documents`` (HTTP 201)."""
@@ -75,6 +78,15 @@ class DocumentStatus(BaseModel):
     text_word_count: int = 0
     """Word count of the document's extracted text content."""
 
+    provider_id: str | None = None
+    """ID of the llm_provider used to process this document (None for legacy)."""
+
+    provider_name: str | None = None
+    """Display name of the provider used to process this document."""
+
+    model: str | None = None
+    """Model identifier used to process this document."""
+
 
 class DocumentListItem(BaseModel):
     """A single document entry in the paginated document list."""
@@ -126,6 +138,16 @@ class DocumentListItem(BaseModel):
 
     duration_ms: int = 0
     """Total wall-clock duration of all LLM calls for this document."""
+
+    # Per-document LLM provider attribution
+    provider_id: str | None = None
+    """ID of the llm_provider used to process this document (None for legacy)."""
+
+    provider_name: str | None = None
+    """Display name of the provider used to process this document."""
+
+    model: str | None = None
+    """Model identifier used to process this document."""
 
 
 class DocumentListResponse(BaseModel):
@@ -503,6 +525,50 @@ class APIInfo(BaseModel):
     endpoints: dict[str, str]
 
 
+# =======================================================================
+# LLM Provider models
+# =======================================================================
+
+
+class ProviderItem(BaseModel):
+    """A single LLM provider (API key redacted)."""
+
+    id: str
+    name: str
+    model: str
+    base_url: str
+    is_default: bool = False
+    api_key_masked: str | None = None
+    created_at: object | None = None
+
+
+class ProviderItemList(BaseModel):
+    """Response body for ``GET /api/providers``."""
+
+    items: list[ProviderItem]
+
+
+class ProviderCreate(BaseModel):
+    """Request body for ``POST /api/providers``."""
+
+    name: str
+    model: str
+    base_url: str | None = None
+    api_key: str | None = None
+
+
+class ProviderTestResult(BaseModel):
+    """Response body for ``POST /api/providers/{id}/test``."""
+
+    ok: bool
+    answer: str = ""
+    normalized: str = ""
+    expected: str = ""
+    model: str = ""
+    error: str | None = None
+    provider_id: str = ""
+
+
 # Re-export all models for convenience
 __all__ = [
     "APIInfo",
@@ -526,4 +592,9 @@ __all__ = [
     "LlmCallLogListResponse",
     "ProcessingLogListItem",
     "ProcessingLogListResponse",
+
+    "ProviderItem",
+    "ProviderItemList",
+    "ProviderCreate",
+    "ProviderTestResult",
 ]

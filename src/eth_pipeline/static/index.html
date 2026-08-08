@@ -32,6 +32,29 @@
       font-weight: 700;
       line-height: 1.2;
       color: #ffffff;
+      margin-right: auto;
+    }
+
+    header .header-actions {
+      margin-left: auto;
+      display: flex;
+      align-items: center;
+    }
+
+    .header-actions .btn-icon {
+      color: #ffffff;
+      background: rgba(255, 255, 255, 0.12);
+      border-radius: 6px;
+    }
+
+    .header-actions .btn-icon:hover {
+      color: #ffffff;
+      background: rgba(255, 255, 255, 0.24);
+    }
+
+    .header-actions .btn-icon svg {
+      width: 20px;
+      height: 20px;
     }
 
     nav {
@@ -278,6 +301,43 @@
 
     .file-status .check { color: #16a34a; font-weight: 700; }
     .file-status .cross { color: #dc2626; font-weight: 700; }
+
+    .provider-select {
+      margin: 12px 0 0;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+
+    .provider-select .provider-select-label {
+      font-size: 13px;
+      color: #64748b;
+      font-weight: 500;
+    }
+
+    .provider-select label {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+      color: #334155;
+      background: #f1f5f9;
+      border: 1px solid #e2e8f0;
+      border-radius: 20px;
+      padding: 5px 12px;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .provider-select label:hover {
+      background: #e2e8f0;
+    }
+
+    .provider-select label input {
+      accent-color: #2563eb;
+    }
 
     .banner {
       position: fixed;
@@ -1043,6 +1103,11 @@
 <body>
   <header>
     <h1>ETH — Espacio Tiempo Humanos</h1>
+    <div class="header-actions">
+      <button class="btn-icon" id="providers-gear-btn" aria-label="Proveedores LLM" title="Gestionar proveedores LLM">
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      </button>
+    </div>
   </header>
 
   <nav role="tablist" aria-label="Main navigation">
@@ -1050,7 +1115,6 @@
     <button role="tab" aria-selected="false" aria-controls="tab-documents" id="tab-btn-documents" data-tab="documents">Documentos</button>
     <button role="tab" aria-selected="false" aria-controls="tab-eventos" id="tab-btn-eventos" data-tab="eventos">Eventos</button>
     <button role="tab" aria-selected="false" aria-controls="tab-logs" id="tab-btn-logs" data-tab="logs" style="display:none">Registros</button>
-    <button role="tab" aria-selected="false" aria-controls="tab-providers" id="tab-btn-providers" data-tab="providers">LLM Configs</button>
   </nav>
 
   <main>
@@ -1063,6 +1127,7 @@
         <input type="file" id="file-input" multiple hidden />
         <button class="btn-outline" id="choose-files-btn" type="button">Elegir Archivos</button>
         <ul class="file-list" id="file-list" style="display:none"></ul>
+        <div id="provider-select" class="provider-select" style="display:none"></div>
         <div class="upload-actions" style="display:none" id="upload-actions">
           <button class="btn-primary" id="upload-btn" type="button">Subir</button>
         </div>
@@ -1104,6 +1169,7 @@
                 <th class="col-status">Estado</th>
                 <th class="col-events">Eventos</th>
                 <th class="col-words">Palabras</th>
+                <th class="col-model" title="Proveedor / modelo LLM">Modelo</th>
                 <th class="col-tokens" title="Tokens: entrada/salida/en caché">Tokens</th>
                 <th class="col-cost" title="Costo estimado en USD">Costo</th>
                 <th class="col-actions">Acciones</th>
@@ -1349,14 +1415,6 @@
       </div>
     </section>
 
-    <section id="tab-providers" role="tabpanel" aria-labelledby="tab-btn-providers" class="tab-content">
-      <div class="placeholder-card">
-        <div class="icon" aria-hidden="true">🤖</div>
-        <h2>LLM Configs</h2>
-        <p><a href="/ui/providers">Gestionar configuraciones de LLM →</a></p>
-      </div>
-    </section>
-
   </main>
   <script>
     // Deferred loading: only show loading spinner if fetch takes >200ms
@@ -1379,7 +1437,6 @@
       documents: document.getElementById('tab-documents'),
       eventos: document.getElementById('tab-eventos'),
       logs: document.getElementById('tab-logs'),
-      providers: document.getElementById('tab-providers'),
     };
 
     function switchTab(tabName) {
@@ -1416,11 +1473,6 @@
 
     function onTabClick(tabName) {
       if (tabName === 'logs' && !logsDocumentId) return;
-      // Providers tab navigates to standalone page, not inline content
-      if (tabName === 'providers') {
-        window.location.href = '/ui/providers';
-        return;
-      }
       switchTab(tabName);
       if (tabName === 'documents') fetchDocuments();
       if (tabName === 'logs') resumeLogPolling();
@@ -1437,8 +1489,17 @@
     const uploadBtn = document.getElementById('upload-btn');
     const uploadActions = document.getElementById('upload-actions');
     const bannerContainer = document.getElementById('banner-container');
+    const providerSelect = document.getElementById('provider-select');
+
+    const providersGearBtn = document.getElementById('providers-gear-btn');
+    if (providersGearBtn) {
+      providersGearBtn.addEventListener('click', () => {
+        window.location.href = '/ui/providers';
+      });
+    }
 
     let selectedFiles = [];
+    let uploadProviders = [];
 
     function formatSize(bytes) {
       if (bytes < 1024) return bytes + ' B';
@@ -1463,6 +1524,50 @@
       d.textContent = text;
       return d.innerHTML;
     }
+
+    function getSelectedProviderIds() {
+      const checked = providerSelect.querySelectorAll('input[name="provider_ids"]:checked');
+      return Array.from(checked).map(cb => cb.value).filter(Boolean);
+    }
+
+    function renderUploadProviders() {
+      providerSelect.innerHTML = '';
+      const nonDefault = uploadProviders.filter(p => !p.is_default);
+      if (!nonDefault.length) {
+        providerSelect.style.display = 'none';
+        return;
+      }
+      providerSelect.style.display = '';
+      const label = document.createElement('span');
+      label.className = 'provider-select-label';
+      label.textContent = 'Proveedores:';
+      providerSelect.appendChild(label);
+      nonDefault.forEach(p => {
+        const l = document.createElement('label');
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.name = 'provider_ids';
+        cb.value = String(p.id);
+        const text = document.createElement('span');
+        text.textContent = escapeHtml(p.name || ('Proveedor ' + p.id)) + (p.model ? ' (' + escapeHtml(String(p.model)) + ')' : '');
+        l.appendChild(cb);
+        l.appendChild(text);
+        providerSelect.appendChild(l);
+      });
+    }
+
+    async function loadUploadProviders() {
+      try {
+        const res = await fetch('/api/providers');
+        if (!res.ok) return;
+        const data = await res.json();
+        uploadProviders = (data && data.items) ? data.items : [];
+      } catch (err) {
+        uploadProviders = [];
+      }
+      renderUploadProviders();
+    }
+    loadUploadProviders();
 
     chooseBtn.addEventListener('click', () => fileInput.click());
 
@@ -1497,6 +1602,8 @@
 
         const formData = new FormData();
         formData.append('file', file);
+        const providerIds = getSelectedProviderIds();
+        providerIds.forEach(pid => formData.append('provider_ids', pid));
 
         try {
           const res = await fetch('/documents/upload', { method: 'POST', body: formData });
@@ -1596,6 +1703,16 @@
     function formatCost(item) {
       if (item == null || item.total_cost == null) return '\u2014';
       return '$' + Number(item.total_cost).toFixed(4);
+    }
+
+    function formatProviderModel(item) {
+      if (item == null) return '—';
+      var provider = item.provider_name ? String(item.provider_name) : '';
+      var model = item.model ? String(item.model) : '';
+      var out = provider || model;
+      if (!out) return '—';
+      if (provider && model && model !== provider) out = provider + ' · ' + model;
+      return out.length > 40 ? out.slice(0, 39) + '…' : out;
     }
 
     function entityTypeLabel(type) {
@@ -1717,6 +1834,7 @@
           '</td>' +
           '<td class="col-count">' + (item.event_count ?? '-') + '</td>' +
           '<td class="col-count">' + (item.text_word_count ?? '-') + '</td>' +
+          '<td class="col-model">' + formatProviderModel(item) + '</td>' +
           '<td class="col-tokens" title="' + formatTokenTitle(item) + '">' + formatTokens(item) + '</td>' +
           '<td class="col-cost"' + (item.total_cost != null ? '' : ' style="color:#94a3b8"') + '>' + formatCost(item) + '</td>' +
           '<td class="col-actions">' +

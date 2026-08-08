@@ -27,6 +27,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         async with pool.acquire() as conn:
             await conn.execute("SELECT 1")
         logger.info("PostgreSQL pool ready")
+
+        # Seed the env-backed read-only "default" provider (best-effort).
+        from eth_pipeline import providers as provider_svc
+
+        await provider_svc.seed_default_provider()
     except Exception as exc:
         logger.warning("PostgreSQL unreachable — running in degraded mode: %s", exc)
 

@@ -60,6 +60,7 @@ async def get_document_metadata_activity(document_id: str) -> dict:
                 "document_id": document_id,
                 "blob_format": doc.get("blob_format"),
                 "has_text_content": has_text_content,
+                "model": doc.get("model"),
             }
 
     except ConnectionError as exc:

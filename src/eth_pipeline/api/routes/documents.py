@@ -6,11 +6,14 @@ import io
 import logging
 import os
 import uuid
+from typing import Annotated
 
-from fastapi import APIRouter, File, HTTPException, Query, UploadFile
+from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
 
 from eth_pipeline.api import app
 from eth_pipeline.db import get_db
+
+from eth_pipeline import providers as provider_svc
 
 from eth_pipeline.api.models import (
     APIInfo,
@@ -38,6 +41,24 @@ router = APIRouter(tags=["Documents"])
 
 #: Maximum upload file size: 50 MB.
 MAX_UPLOAD_SIZE = 50 * 1024 * 1024
+
+
+async def _resolve_provider(provider_id: str | None) -> dict:
+    """Resolve a provider id to ``{provider_id, provider_name, model}``.
+
+    Falls back to the env-backed default provider when *provider_id* is None.
+    Raises HTTPException(404) if the requested provider does not exist.
+    """
+    if not provider_id:
+        provider_id = provider_svc.DEFAULT_PROVIDER_ID
+    provider = await provider_svc.resolve_provider(provider_id)
+    if provider is None:
+        raise HTTPException(status_code=404, detail=f"Provider {provider_id!r} not found.")
+    return {
+        "provider_id": provider["id"],
+        "provider_name": provider["name"],
+        "model": provider["model"],
+    }
 
 
 # =======================================================================
@@ -83,6 +104,34 @@ async def health() -> HealthResponse:
     return HealthResponse(status="ok")
 
 
+async def _start_workflow(doc_id: str) -> None:
+    """Best-effort start of the Temporal document workflow for *doc_id*."""
+    temporal = getattr(app.state, "temporal", None)
+    if temporal is not None:
+        try:
+            from eth_pipeline.workflows import DocumentProcessingV7Workflow
+
+            await temporal.start_workflow(
+                DocumentProcessingV7Workflow.run,
+                id=f"doc-{doc_id}",
+                task_queue="event-extraction",
+                args=[doc_id],
+                id_conflict_policy=1,  # USE_EXISTING
+            )
+            logger.info("Temporal workflow started for document %s", doc_id)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "Failed to start Temporal workflow for document %s: %s",
+                doc_id,
+                exc,
+            )
+    else:
+        logger.warning(
+            "Temporal not available — document %s stored but workflow not started",
+            doc_id,
+        )
+
+
 # =======================================================================
 # Create document endpoint
 # =======================================================================
@@ -102,13 +151,15 @@ async def create_document(input: DocumentInput) -> DocumentCreated:
     """
     doc_id = str(uuid.uuid4().hex)
 
+    provider = await _resolve_provider(input.provider_id)
+
     original_blob = base64.b64encode(input.text.encode("utf-8")).decode("ascii")
 
     try:
         async with get_db() as conn:
             await conn.execute(
-                "INSERT INTO document (id, text_content, original_blob, filename, mime_type, status, error_message) "
-                "VALUES ($1, $2, $3, $4, $5, $6, $7)",
+                "INSERT INTO document (id, text_content, original_blob, filename, mime_type, status, error_message, provider_id, model) "
+                "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
                 doc_id,
                 input.text,
                 original_blob,
@@ -116,6 +167,8 @@ async def create_document(input: DocumentInput) -> DocumentCreated:
                 input.mime_type or "text/plain",
                 "pending",
                 None,
+                provider["provider_id"],
+                provider["model"],
             )
     except Exception as exc:
         logger.error("Failed to create document in PostgreSQL: %s", exc)
@@ -125,36 +178,14 @@ async def create_document(input: DocumentInput) -> DocumentCreated:
         ) from exc
 
     logger.info(
-        "Created document %s (filename=%s, status=pending)",
+        "Created document %s (filename=%s, status=pending, model=%s)",
         doc_id,
         input.filename,
+        provider["model"],
     )
 
     # ---- Trigger Temporal workflow (best-effort) ----
-    temporal = getattr(app.state, "temporal", None)
-    if temporal is not None:
-        try:
-            from eth_pipeline.workflows import DocumentProcessingV7Workflow
-
-            await temporal.start_workflow(
-                DocumentProcessingV7Workflow.run,
-                id=f"doc-{doc_id}",
-                task_queue="event-extraction",
-                args=[doc_id],
-                id_conflict_policy=1,  # USE_EXISTING
-            )
-            logger.info("Temporal workflow started for document %s", doc_id)
-        except Exception as exc:
-            logger.warning(
-                "Failed to start Temporal workflow for document %s: %s",
-                doc_id,
-                exc,
-            )
-    else:
-        logger.warning(
-            "Temporal not available — document %s stored but workflow not started",
-            doc_id,
-        )
+    await _start_workflow(doc_id)
 
     return DocumentCreated(document_id=doc_id, status="pending")
 
@@ -165,14 +196,19 @@ async def create_document(input: DocumentInput) -> DocumentCreated:
 
 
 @router.post("/documents/upload", response_model=DocumentUploadCreated, status_code=201)
-async def upload_document(file: UploadFile = File(...)) -> DocumentUploadCreated:
+async def upload_document(
+    file: Annotated[UploadFile, File(...)],
+    provider_ids: Annotated[list[str], Form()] = [],  # noqa: B006 — FastAPI Form default
+) -> DocumentUploadCreated:
     """Upload a binary document file for processing.
 
     Accepts a multipart file upload, stores the binary blob in MinIO
     (with fallback to base64-encoded inline storage if MinIO is
-    unavailable), creates a PostgreSQL document record with
-    ``blob_format="minio"``, and triggers Temporal processing
-    (best-effort).
+    unavailable), creates one PostgreSQL document record per selected
+    provider (fan-out), and triggers Temporal processing (best-effort).
+
+    ``provider_ids`` may be repeated to send the file to multiple LLM
+    providers.  When empty, the env-backed default provider is used.
 
     Returns HTTP 201 with ``{document_id, status}`` on success.
     Returns HTTP 413 if the file exceeds 50 MB.
@@ -185,10 +221,19 @@ async def upload_document(file: UploadFile = File(...)) -> DocumentUploadCreated
             detail="Filename is required.",
         )
 
-    # 2. Generate document ID
+    # 2. Determine effective providers (fan-out list)
+    selected: list[dict]
+    if provider_ids:
+        selected = []
+        for pid in provider_ids:
+            selected.append(await _resolve_provider(pid))
+    else:
+        selected = [await _resolve_provider(None)]
+
+    # 3. Generate document ID
     doc_id = str(uuid.uuid4().hex)
 
-    # 3. Determine blob path
+    # 4. Determine blob path
     ext = ".bin"
     if "." in file.filename:
         _, ext_candidate = os.path.splitext(file.filename)
@@ -196,7 +241,7 @@ async def upload_document(file: UploadFile = File(...)) -> DocumentUploadCreated
             ext = ext_candidate
     blob_path = f"doc/{doc_id}{ext}"
 
-    # 4. Read file content with size guard
+    # 5. Read file content with size guard
     try:
         content = await file.read()
     except Exception as exc:
@@ -212,7 +257,7 @@ async def upload_document(file: UploadFile = File(...)) -> DocumentUploadCreated
             detail=f"File exceeds maximum size of {MAX_UPLOAD_SIZE // (1024 * 1024)} MB.",
         )
 
-    # 5. Try MinIO storage (degraded mode: fall back to base64 inline)
+    # 6. Try MinIO storage (degraded mode: fall back to base64 inline)
     minio_available = False
     try:
         async with get_storage_async() as minio_client:
@@ -243,7 +288,7 @@ async def upload_document(file: UploadFile = File(...)) -> DocumentUploadCreated
             exc,
         )
 
-    # 6. Prepare document record
+    # 7. Prepare document record(s). All fan-out rows share the same blob.
     if minio_available:
         original_blob = ""
         blob_format = "minio"
@@ -253,22 +298,28 @@ async def upload_document(file: UploadFile = File(...)) -> DocumentUploadCreated
         blob_format = None
         stored_blob_path = None
 
-    # 7. Create document record in PostgreSQL
+    inserted_ids: list[str] = []
     try:
         async with get_db() as conn:
-            await conn.execute(
-                "INSERT INTO document (id, text_content, original_blob, blob_format, blob_path, filename, mime_type, status, error_message) "
-                "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
-                doc_id,
-                None,
-                original_blob,
-                blob_format,
-                stored_blob_path,
-                file.filename or f"unnamed_{doc_id}",
-                file.content_type or "application/octet-stream",
-                "pending",
-                None,
-            )
+            for _provider in selected:
+                row_id = str(uuid.uuid4().hex)
+                inserted_ids.append(row_id)
+                await conn.execute(
+                    "INSERT INTO document (id, text_content, original_blob, blob_format, blob_path, "
+                    "filename, mime_type, status, error_message, provider_id, model) "
+                    "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)",
+                    row_id,
+                    None,
+                    original_blob,
+                    blob_format,
+                    stored_blob_path,
+                    file.filename or f"unnamed_{row_id}",
+                    file.content_type or "application/octet-stream",
+                    "pending",
+                    None,
+                    _provider["provider_id"],
+                    _provider["model"],
+                )
     except Exception as exc:
         logger.error("Failed to create document in PostgreSQL: %s", exc)
         # Clean up MinIO blob if database failed after storage
@@ -281,7 +332,7 @@ async def upload_document(file: UploadFile = File(...)) -> DocumentUploadCreated
                         blob_path,
                     )
                     logger.info("Cleaned up MinIO blob %s after DB failure", blob_path)
-            except Exception as cleanup_exc:
+            except Exception as cleanup_exc:  # noqa: BLE001
                 logger.warning(
                     "Failed to clean up MinIO blob %s: %s",
                     blob_path,
@@ -293,39 +344,19 @@ async def upload_document(file: UploadFile = File(...)) -> DocumentUploadCreated
         ) from exc
 
     logger.info(
-        "Created document %s (filename=%s, blob_format=%s, status=pending)",
-        doc_id,
+        "Created document (filename=%s, blob_format=%s, fanout=%d)",
         file.filename,
         blob_format,
+        len(inserted_ids),
     )
 
-    # 8. Trigger Temporal workflow (best-effort)
-    temporal = getattr(app.state, "temporal", None)
-    if temporal is not None:
-        try:
-            from eth_pipeline.workflows import DocumentProcessingV7Workflow
+    # 8. Trigger Temporal workflow per inserted row (best-effort). Fan-out
+    #    creates one document row per selected provider; each runs its own
+    #    workflow against its own row id.
+    for row_id in inserted_ids:
+        await _start_workflow(row_id)
 
-            await temporal.start_workflow(
-                DocumentProcessingV7Workflow.run,
-                id=f"doc-{doc_id}",
-                task_queue="event-extraction",
-                args=[doc_id],
-                id_conflict_policy=1,  # USE_EXISTING
-            )
-            logger.info("Temporal workflow started for document %s", doc_id)
-        except Exception as exc:
-            logger.warning(
-                "Failed to start Temporal workflow for document %s: %s",
-                doc_id,
-                exc,
-            )
-    else:
-        logger.warning(
-            "Temporal not available — document %s stored but workflow not started",
-            doc_id,
-        )
-
-    return DocumentUploadCreated(document_id=doc_id, status="pending")
+    return DocumentUploadCreated(document_id=inserted_ids[0], status="pending")
 
 
 # =======================================================================
@@ -350,7 +381,10 @@ async def get_document(document_id: str) -> DocumentStatus:
     try:
         async with get_db() as conn:
             row = await conn.fetchrow(
-                "SELECT * FROM document WHERE id = $1",
+                "SELECT d.*, p.name AS provider_name "
+                "FROM document d "
+                "LEFT JOIN llm_provider p ON p.id = d.provider_id "
+                "WHERE d.id = $1",
                 document_id,
             )
     except Exception as exc:
@@ -414,6 +448,9 @@ async def get_document(document_id: str) -> DocumentStatus:
         entity_count=ent_count,
         chunk_count=chunk_count,
         text_word_count=text_word_count,
+        provider_id=row.get("provider_id"),
+        provider_name=row.get("provider_name"),
+        model=row.get("model"),
     )
 
 
@@ -820,8 +857,11 @@ async def list_documents(
     try:
         async with get_db() as conn:
             rows = await conn.fetch(
-                f"SELECT * FROM document WHERE {where_clause} "
-                "ORDER BY created_at DESC LIMIT $1 OFFSET $2",
+                f"SELECT d.*, p.name AS provider_name "
+                f"FROM document d "
+                f"LEFT JOIN llm_provider p ON p.id = d.provider_id "
+                f"WHERE {where_clause} "
+                "ORDER BY d.created_at DESC LIMIT $1 OFFSET $2",
                 *data_params,
             )
     except Exception as exc:
@@ -920,6 +960,9 @@ async def list_documents(
             cached_tokens=token_data.get("cached_tokens") or 0 if token_data else 0,
             total_cost=token_data.get("total_cost") if token_data else None,
             duration_ms=token_data.get("duration_ms") or 0 if token_data else 0,
+            provider_id=record.get("provider_id"),
+            provider_name=record.get("provider_name"),
+            model=record.get("model"),
         ))
 
     logger.info(

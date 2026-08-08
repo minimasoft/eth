@@ -160,7 +160,7 @@ EVENT_EXTRACTION_V7_SYSTEM_PROMPT: str = (
 # Defaults
 # ---------------------------------------------------------------------------
 
-DEFAULT_MODEL = "deepseek/deepseek-v4-flash"
+DEFAULT_MODEL = "deepseek/deepseek-v4-flash-0731"
 OPENROUTER_BASE_URL = "https://openrouter.ai"
 
 # Target characters of document text per extraction chunk.  Each chunk is
@@ -483,6 +483,79 @@ class OpenRouterProvider:
             logger.error("LLM API response not valid JSON [content=%s]", content[:200])
             msg = f"Model returned non-JSON content: {content[:200]}"
             raise RuntimeError(msg) from exc
+
+
+# ---------------------------------------------------------------------------
+# Provider self-test (used by GET/POST providers test endpoints)
+# ---------------------------------------------------------------------------
+
+OPENROUTER_TEST_PROMPT = 'say "cuba soberana"'
+OPENROUTER_TEST_EXPECTED = "cuba soberana"
+
+
+async def test_provider(model: str, api_key: str | None, base_url: str = OPENROUTER_BASE_URL) -> dict:
+    """Send the ``cuba soberana`` echo prompt and verify the exact answer.
+
+    Returns a dict with ``ok``, ``answer``, ``normalized``, ``expected``,
+    ``model`` and ``error`` (when the call fails).  Raises ``ValueError`` if
+    *api_key* is missing.
+    """
+    if not api_key:
+        return {
+            "ok": False,
+            "error": "No API key configured for this provider.",
+            "model": model,
+        }
+
+    base = base_url.rstrip("/")
+    url = f"{base}/api/v1/chat/completions"
+
+    payload = {
+        "model": model,
+        "messages": [{"role": "user", "content": OPENROUTER_TEST_PROMPT}],
+        "max_tokens": 64,
+        "temperature": 0.0,
+    }
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(url, headers=headers, json=payload, timeout=60.0)
+            response.raise_for_status()
+            data = response.json()
+    except Exception as exc:  # noqa: BLE001 — surface as result, not exception
+        logger.warning("providers/test request failed [model=%s] [error=%s]", model, exc)
+        return {"ok": False, "error": f"Request failed: {exc}", "model": model}
+
+    content = ""
+    try:
+        choices = data.get("choices", [])
+        if choices:
+            content = choices[0].get("message", {}).get("content", "") or ""
+    except Exception:  # noqa: BLE001
+        content = ""
+
+    normalized = content.strip().strip('"').strip().lower()
+    expected = OPENROUTER_TEST_EXPECTED
+    ok = normalized == expected
+
+    logger.info(
+        "providers/test result [model=%s] [ok=%s] [answer=%r]",
+        model,
+        ok,
+        content[:200],
+    )
+    return {
+        "ok": ok,
+        "answer": content,
+        "normalized": normalized,
+        "expected": expected,
+        "model": data.get("model", model),
+        "error": None if ok else "La respuesta no es exacta.",
+    }
 
 
 

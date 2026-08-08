@@ -1,3 +1,17 @@
+-- llm_provider: provider registry (DB-backed).
+-- The environment seeds a read-only "default" provider (is_default=true) whose
+-- model/credential values always reflect the environment at runtime.
+CREATE TABLE IF NOT EXISTS llm_provider (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE,
+    model TEXT NOT NULL,
+    base_url TEXT NOT NULL,
+    api_key TEXT,
+    is_default BOOLEAN NOT NULL DEFAULT false,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 CREATE TABLE IF NOT EXISTS document (
     id TEXT PRIMARY KEY,
     original_blob TEXT NOT NULL DEFAULT '',
@@ -9,6 +23,8 @@ CREATE TABLE IF NOT EXISTS document (
     blob_path TEXT,
     _page_count INTEGER,
     error_message TEXT,
+    provider_id TEXT REFERENCES llm_provider(id) ON DELETE SET NULL,
+    model TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     CONSTRAINT valid_status CHECK (
@@ -171,6 +187,8 @@ CREATE TABLE IF NOT EXISTS llm_call_log (
 
 CREATE INDEX IF NOT EXISTS idx_llm_call_log_document ON llm_call_log(document);
 CREATE INDEX IF NOT EXISTS idx_llm_call_log_timestamp ON llm_call_log(timestamp);
+
+CREATE INDEX IF NOT EXISTS ix_document_provider_id ON document(provider_id);
 
 -- v6.1 Migration: add chunk_index column (missing from initial DDL — INSERT fails without it)
 ALTER TABLE llm_call_log ADD COLUMN IF NOT EXISTS chunk_index INTEGER NOT NULL DEFAULT 0 CHECK (chunk_index >= 0);

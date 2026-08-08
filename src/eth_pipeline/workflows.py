@@ -120,7 +120,7 @@ class DocumentProcessingV7Workflow:
                 # and fetches chunk_text from the document_chunk table internally.
                 extract_result = await workflow.execute_activity(
                     extract_events_v7_activity,
-                    args=[document_id, chunk_idx, prior_events, len(chunks)],
+                    args=[document_id, chunk_idx, prior_events, len(chunks), model],
                     start_to_close_timeout=timedelta(seconds=900),
                     retry_policy=RetryPolicy(
                         maximum_attempts=3,

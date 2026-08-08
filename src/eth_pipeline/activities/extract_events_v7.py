@@ -26,6 +26,7 @@ async def extract_events_v7_activity(
     chunk_index: int,
     prior_events: list[dict] | None = None,
     total_chunks: int = 0,
+    model: str | None = None,
 ) -> dict:
     api_key = os.environ.get("OPENROUTER_API_KEY")
     _log = ProcessingLogger(_db_params())
@@ -52,7 +53,7 @@ async def extract_events_v7_activity(
     chunk_text: str = row[0]["text"]
     chunk_progress = f"[chunk {chunk_index + 1}/{total_chunks}]" if total_chunks > 0 else f"[chunk {chunk_index}]"
 
-    model = os.environ.get("OPENROUTER_MODEL", DEFAULT_MODEL)
+    model = model or os.environ.get("OPENROUTER_MODEL", DEFAULT_MODEL)
     provider = OpenRouterProvider(api_key=api_key, model=model)
 
     activity.logger.info(

@@ -28,7 +28,7 @@
     }
 
     header h1 {
-      font-size: 28px;
+      font-size: 22px;
       font-weight: 700;
       line-height: 1.2;
       color: #ffffff;
@@ -102,6 +102,13 @@
       background: #eff6ff;
     }
 
+    .btn-outline:disabled {
+      color: #94a3b8;
+      border-color: #e2e8f0;
+      background: #f1f5f9;
+      cursor: not-allowed;
+    }
+
     .btn-primary {
       display: inline-block;
       font-family: inherit;
@@ -121,38 +128,56 @@
       background: #1d4ed8;
     }
 
-    .btn-icon {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      width: 32px;
-      height: 32px;
-      padding: 0;
-      border: none;
+    .btn-danger {
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 500;
+      line-height: 1.4;
+      color: #dc2626;
+      background: #ffffff;
+      border: 1px solid #dc2626;
       border-radius: 6px;
+      padding: 6px 12px;
       cursor: pointer;
-      background: transparent;
-      color: #94a3b8;
-      transition: color 0.15s, background 0.15s;
+      transition: background 0.15s;
     }
 
-    .btn-icon:hover {
-      color: #dc2626;
+    .btn-danger:hover {
       background: #fef2f2;
     }
 
-    .btn-icon.btn-select:hover {
-      color: #2563eb;
-      background: #eff6ff;
+    .btn-test {
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 500;
+      line-height: 1.4;
+      color: #16a34a;
+      background: #ffffff;
+      border: 1px solid #16a34a;
+      border-radius: 6px;
+      padding: 6px 12px;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    .btn-test:hover {
+      background: #f0fdf4;
+    }
+
+    .btn-test:disabled {
+      color: #94a3b8;
+      border-color: #e2e8f0;
+      background: #f1f5f9;
+      cursor: wait;
     }
 
     .col-actions {
-      width: 100px;
-      text-align: center;
+      text-align: right;
+      white-space: nowrap;
     }
 
     .col-actions button + button {
-      margin-left: 4px;
+      margin-left: 8px;
     }
 
     .table-container {
@@ -187,6 +212,7 @@
       padding: 10px 12px;
       border-bottom: 1px solid #e2e8f0;
       color: #1e293b;
+      vertical-align: middle;
     }
 
     .providers-table tbody tr:last-child td {
@@ -197,24 +223,18 @@
       background: #f8fafc;
     }
 
-    .providers-table tbody tr.active-row {
-      background: #eff6ff;
-    }
-
-    .providers-table tbody tr.active-row td:first-child::before {
-      content: "●";
-      color: #2563eb;
-      margin-right: 8px;
-      font-size: 10px;
-    }
-
     .provider-type-badge {
       display: inline-block;
-      font-size: 13px;
-      font-weight: 500;
+      font-size: 12px;
+      font-weight: 600;
       line-height: 1.4;
       padding: 2px 8px;
       border-radius: 4px;
+      background: #2563eb;
+      color: #ffffff;
+    }
+
+    .provider-type-badge.default-badge {
       background: #f1f5f9;
       color: #475569;
     }
@@ -223,6 +243,11 @@
       font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
       font-size: 13px;
       color: #64748b;
+    }
+
+    .model-cell {
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+      font-size: 13px;
     }
 
     .form-group {
@@ -237,8 +262,7 @@
       margin-bottom: 4px;
     }
 
-    .form-group input,
-    .form-group select {
+    .form-group input {
       width: 100%;
       font-family: inherit;
       font-size: 16px;
@@ -252,14 +276,19 @@
       transition: border-color 0.15s;
     }
 
-    .form-group input:focus,
-    .form-group select:focus {
+    .form-group input:focus {
       border-color: #2563eb;
       box-shadow: 0 0 0 2px rgba(37,99,235,0.15);
     }
 
     .form-group input::placeholder {
       color: #94a3b8;
+    }
+
+    .form-group .hint {
+      font-size: 12px;
+      color: #64748b;
+      margin-top: 4px;
     }
 
     .form-actions {
@@ -327,36 +356,6 @@
       background: rgba(0,0,0,0.05);
     }
 
-    .active-provider-info {
-      display: flex;
-      align-items: center;
-      gap: 24px;
-      padding: 16px;
-      background: #ffffff;
-      border: 1px solid #e2e8f0;
-      border-radius: 8px;
-    }
-
-    .active-provider-info .info-item {
-      display: flex;
-      flex-direction: column;
-      gap: 2px;
-    }
-
-    .active-provider-info .label {
-      font-size: 12px;
-      color: #64748b;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      font-weight: 600;
-    }
-
-    .active-provider-info .value {
-      font-size: 14px;
-      font-weight: 500;
-      color: #1e293b;
-    }
-
     .placeholder-card {
       background: #f8fafc;
       border-radius: 8px;
@@ -373,93 +372,108 @@
       margin-bottom: 8px;
     }
 
-    .warning-banner {
-      background: #fffbeb;
-      border: 1px solid #fde68a;
+    .placeholder-card p {
+      margin: 0;
+    }
+
+    .info-banner {
+      background: #eff6ff;
+      border: 1px solid #bfdbfe;
       border-radius: 8px;
       padding: 12px 16px;
       font-size: 13px;
-      color: #92400e;
+      color: #1e40af;
       margin-bottom: 24px;
     }
 
-    .warning-banner strong {
-      display: block;
-      margin-bottom: 4px;
+    .test-result {
+      margin-top: 8px;
+      font-size: 13px;
+      line-height: 1.5;
+      padding: 8px 12px;
+      border-radius: 6px;
+      border: 1px solid;
+    }
+
+    .test-result.ok {
+      background: #f0fdf4;
+      border-color: #bbf7d0;
+      color: #166534;
+    }
+
+    .test-result.fail {
+      background: #fef2f2;
+      border-color: #fecaca;
+      color: #991b1b;
+    }
+
+    .test-result code {
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+      word-break: break-all;
     }
   </style>
 </head>
 <body>
   <header>
-    <h1>ETH — Espacio Tiempo Humanos</h1>
-    <a href="/ui" class="back-link">&larr; Volver al panel principal</a>
+    <h1>ETH — Proveedores LLM</h1>
+    <a href="/ui" class="back-link">&larr; Volver al panel</a>
   </header>
 
   <main>
     <div id="banner-container"></div>
 
-    <div class="warning-banner">
-      <strong>⚠️ Advertencia de seguridad</strong>
-      Las claves API se almacenan en el almacenamiento local del navegador (localStorage). Cualquier persona con acceso a este navegador puede ver las claves. No use esta interfaz en equipos compartidos o públicos.
+    <div class="info-banner">
+      Las claves API se almacenan en la base de datos y <strong>nunca</strong> se muestran completas:
+      solo se revelan los primeros 4 caracteres. El proveedor <strong>default</strong> se configura
+      mediante variables de entorno y no se puede editar ni eliminar.
     </div>
 
-    <!-- Active Provider Card -->
-    <section class="card" id="active-provider-section">
-      <h2>Proveedor Activo</h2>
-      <div id="active-provider-content"></div>
+    <!-- Providers list -->
+    <section class="card">
+      <h2>Proveedores</h2>
+      <div id="providers-loading" style="padding:24px;text-align:center;color:#64748b">Cargando proveedores...</div>
+      <div id="providers-list" style="display:none"></div>
+      <div id="providers-empty" class="placeholder-card" style="display:none">
+        <h2>Sin proveedores</h2>
+        <p>Agregue un proveedor con el formulario de abajo.</p>
+      </div>
     </section>
 
-    <!-- Add Provider Form -->
+    <!-- Add provider form -->
     <section class="card">
       <h2>Agregar Proveedor</h2>
       <form id="add-provider-form" autocomplete="off">
         <div class="form-group">
-          <label for="model-name">Modelo</label>
-          <input type="text" id="model-name" placeholder="deepseek/deepseek-v4-flash" required />
+          <label for="provider-name">Nombre</label>
+          <input type="text" id="provider-name" placeholder="mi-proveedor" required />
         </div>
         <div class="form-group">
-          <label for="api-key">Clave API (opcional)</label>
-          <input type="text" id="api-key" placeholder="sk-... o dejar vacío para proveedores locales" />
+          <label for="model-name">Modelo</label>
+          <input type="text" id="model-name" placeholder="deepseek/deepseek-v4-flash-0731" required />
         </div>
         <div class="form-group">
           <label for="base-url">URL base</label>
           <input type="text" id="base-url" placeholder="https://openrouter.ai" value="https://openrouter.ai" />
         </div>
+        <div class="form-group">
+          <label for="api-key">Clave API</label>
+          <input type="password" id="api-key" placeholder="sk-..." />
+          <div class="hint">Se guarda cifrada en la base de datos y no se vuelve a mostrar.</div>
+        </div>
         <div class="form-actions">
-          <button type="submit" class="btn-primary">Agregar proveedor</button>
+          <button class="btn-primary" id="add-provider-btn" type="submit">Agregar</button>
         </div>
       </form>
-    </section>
-
-    <!-- Provider List -->
-    <section class="card">
-      <h2>Proveedores Guardados</h2>
-      <div id="providers-list-content"></div>
     </section>
   </main>
 
   <script>
-    // ===== Utility functions =====
+    const bannerContainer = document.getElementById('banner-container');
 
     function escapeHtml(text) {
       const d = document.createElement('div');
-      d.textContent = text;
+      d.textContent = text == null ? '' : String(text);
       return d.innerHTML;
-    }
-
-    function maskApiKey(key) {
-      if (!key || key.length === 0) return '—';
-      if (key.length <= 4) return key + '****';
-      return key.slice(0, 4) + '****' + key.slice(-2);
-    }
-
-    function generateId() {
-      try {
-        return crypto.randomUUID();
-      } catch (_e) {
-        // Fallback for older browsers: use Date.now + random
-        return (Date.now().toString(36) + Math.random().toString(36).slice(2, 9));
-      }
     }
 
     function showBanner(message, type, autoDismiss) {
@@ -467,221 +481,194 @@
       div.className = 'banner banner-' + type;
       div.innerHTML = '<span>' + escapeHtml(message) + '</span><button class="banner-close" aria-label="Descartar">&times;</button>';
       div.querySelector('.banner-close').addEventListener('click', () => div.remove());
-      document.getElementById('banner-container').appendChild(div);
+      bannerContainer.appendChild(div);
       if (autoDismiss) {
-        setTimeout(() => { if (div.parentNode) div.remove(); }, 5000);
+        setTimeout(() => { if (div.parentNode) div.remove(); }, 6000);
       }
     }
 
-    // ===== localStorage persistence =====
-
-    const STORAGE_KEY = 'llm_providers';
-
-    function loadProviders() {
-      try {
-        const raw = localStorage.getItem(STORAGE_KEY);
-        if (!raw) return null;
-        const data = JSON.parse(raw);
-        if (Array.isArray(data)) return data;
-        return null;
-      } catch (_e) {
-        return null;
+    async function loadProviders() {
+      const res = await fetch('/api/providers');
+      if (!res.ok) {
+        let detail = 'Error al cargar proveedores';
+        try { const d = await res.json(); if (d && d.detail) detail = d.detail; } catch (_e) {}
+        throw new Error(detail);
       }
+      const data = await res.json();
+      return data.items || [];
     }
 
-    function saveProviders(providers) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(providers));
-    }
-
-    // ===== Default config on first load =====
-
-    const DEFAULT_PROVIDERS = [
-      {
-        id: generateId(),
-        model: 'deepseek/deepseek-v4-flash',
-        api_key: '',
-        base_url: 'https://openrouter.ai',
-        active: true,
-      },
-    ];
-
-    // ===== Provider rendering =====
-
-    function renderActiveProvider() {
-      const providers = loadProviders();
-      if (!providers || providers.length === 0) {
-        document.getElementById('active-provider-content').innerHTML =
-          '<div class="placeholder-card"><h2>Sin proveedores configurados</h2><p>Agregue un proveedor usando el formulario de abajo.</p></div>';
-        return;
-      }
-
-      const active = providers.find(p => p.active);
-      if (!active) {
-        document.getElementById('active-provider-content').innerHTML =
-          '<div class="placeholder-card"><h2>Ningún proveedor activo</h2><p>Seleccione un proveedor como activo desde la lista de abajo.</p></div>';
-        return;
-      }
-
-      const apiKeyDisplay = active.api_key ? maskApiKey(active.api_key) : '—';
-      document.getElementById('active-provider-content').innerHTML =
-        '<div class="active-provider-info">' +
-          '<div class="info-item"><span class="label">Modelo</span><span class="value">' + escapeHtml(active.model) + '</span></div>' +
-          '<div class="info-item"><span class="label">Clave API</span><span class="value api-key-masked">' + apiKeyDisplay + '</span></div>' +
-          '<div class="info-item"><span class="label">URL base</span><span class="value">' + escapeHtml(active.base_url) + '</span></div>' +
-          '<button class="btn-outline" id="change-active-btn">Cambiar</button>' +
-        '</div>';
-
-      document.getElementById('change-active-btn').addEventListener('click', () => {
-        // Show the provider list and scroll to it so user can select a different one
-        const listSection = document.getElementById('providers-list-content');
-        if (listSection) {
-          listSection.scrollIntoView({ behavior: 'smooth' });
-        }
-      });
-    }
-
-    function renderProviderList() {
-      const providers = loadProviders();
-      const container = document.getElementById('providers-list-content');
+    function renderProviders(providers) {
+      document.getElementById('providers-loading').style.display = 'none';
+      const listEl = document.getElementById('providers-list');
+      const emptyEl = document.getElementById('providers-empty');
 
       if (!providers || providers.length === 0) {
-        container.innerHTML = '<div class="placeholder-card"><h2>Sin proveedores guardados</h2><p>Agregue un proveedor usando el formulario de arriba.</p></div>';
+        listEl.style.display = 'none';
+        emptyEl.style.display = 'block';
         return;
       }
 
-      let html = '<div class="table-container"><table class="providers-table">' +
-        '<thead><tr>' +
-          '<th>Estado</th>' +
-          '<th>Modelo</th>' +
-          '<th>Clave API</th>' +
-          '<th>URL base</th>' +
-          '<th class="col-actions">Acciones</th>' +
+      emptyEl.style.display = 'none';
+      listEl.style.display = '';
+
+      let html = '<div class="table-container"><table class="providers-table"><thead><tr>' +
+        '<th>Nombre</th><th>Modelo</th><th>URL base</th><th>Clave API</th><th class="col-actions">Acciones</th>' +
         '</tr></thead><tbody>';
 
-      providers.forEach((p, idx) => {
-        const isActive = !!p.active;
-        const apiKeyDisplay = p.api_key ? maskApiKey(p.api_key) : '—';
-        html += '<tr class="' + (isActive ? 'active-row' : '') + '">' +
-          '<td>' + (isActive ? '<span style="color:#2563eb;font-weight:600">Activo</span>' : '<span style="color:#94a3b8">Inactivo</span>') + '</td>' +
-          '<td>' + escapeHtml(p.model) + '</td>' +
-          '<td class="api-key-masked">' + apiKeyDisplay + '</td>' +
-          '<td style="font-size:13px;color:#64748b">' + escapeHtml(p.base_url || '—') + '</td>' +
-          '<td class="col-actions">' +
-            (!isActive ? '<button class="btn-icon btn-select" data-idx="' + idx + '" aria-label="Seleccionar como activo" title="Seleccionar como activo"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></button>' : '') +
-            '<button class="btn-icon btn-delete" data-idx="' + idx + '" aria-label="Eliminar proveedor" title="Eliminar proveedor"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg></button>' +
-          '</td>';
-        html += '</tr>';
+      providers.forEach(function(p) {
+        const isDefault = !!p.is_default;
+        const badge = isDefault
+          ? '<span class="provider-type-badge default-badge">default (env)</span>'
+          : '<span class="provider-type-badge">personalizado</span>';
+        const keyHtml = p.api_key_masked
+          ? '<span class="api-key-masked" title="La clave completa nunca se muestra">' + escapeHtml(p.api_key_masked) + '</span>'
+          : '<span style="color:#94a3b8">—</span>';
+
+        const actions =
+          '<button class="btn-test" data-id="' + escapeHtml(p.id) + '" data-name="' + escapeHtml(p.name) + '">Probar</button>' +
+          (!isDefault ? '<button class="btn-danger" data-id="' + escapeHtml(p.id) + '" data-name="' + escapeHtml(p.name) + '">Eliminar</button>' : '');
+
+        html += '<tr>' +
+          '<td>' + escapeHtml(p.name) + ' ' + badge + '</td>' +
+          '<td class="model-cell">' + escapeHtml(p.model) + '</td>' +
+          '<td style="font-size:13px;color:#64748b">' + escapeHtml(p.base_url) + '</td>' +
+          '<td>' + keyHtml + '</td>' +
+          '<td class="col-actions">' + actions + '</td>' +
+          '</tr>';
       });
 
       html += '</tbody></table></div>';
-      container.innerHTML = html;
+      listEl.innerHTML = html;
 
-      // Wire up event delegation for action buttons
-      container.addEventListener('click', function(e) {
-        const selectBtn = e.target.closest('.btn-select');
-        if (selectBtn) {
-          const idx = parseInt(selectBtn.getAttribute('data-idx'), 10);
-          setActiveProvider(idx);
-          return;
-        }
-
-        const deleteBtn = e.target.closest('.btn-delete');
-        if (deleteBtn) {
-          const idx = parseInt(deleteBtn.getAttribute('data-idx'), 10);
-          deleteProvider(idx);
-        }
+      // Wire up test + delete
+      listEl.querySelectorAll('.btn-test').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+          testProvider(btn.getAttribute('data-id'), btn.getAttribute('data-name'), btn);
+        });
+      });
+      listEl.querySelectorAll('.btn-danger').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+          deleteProvider(btn.getAttribute('data-id'), btn.getAttribute('data-name'));
+        });
       });
     }
 
-    function setActiveProvider(idx) {
-      const providers = loadProviders();
-      if (!providers || !providers[idx]) return;
+    async function testProvider(id, name, btn) {
+      const original = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = 'Probando...';
 
-      // Deactivate all, then activate the selected one
-      providers.forEach(p => p.active = false);
-      providers[idx].active = true;
-      saveProviders(providers);
+      // Remove any previous result cell
+      closeResult(btn);
 
-      renderActiveProvider();
-      renderProviderList();
-      showBanner('Proveedor "' + (providers[idx].model || 'config') + '" activado', 'success', true);
-    }
-
-    function deleteProvider(idx) {
-      const providers = loadProviders();
-      if (!providers || !providers[idx]) return;
-
-      const providerName = providers[idx].model;
-      if (!confirm('¿Está seguro de que desea eliminar el proveedor "' + escapeHtml(providerName) + '"? Esta acción no se puede deshacer.')) return;
-
-      // If deleting the active one, deactivate it first
-      if (providers[idx].active) {
-        providers.forEach(p => p.active = false);
+      try {
+        const res = await fetch('/api/providers/' + encodeURIComponent(id) + '/test', { method: 'POST' });
+        let data = {};
+        try { data = await res.json(); } catch (_e) {}
+        if (!res.ok) {
+          throw new Error(data.detail || 'Error al probar el proveedor');
+        }
+        showTestResult(btn, data);
+        if (data.ok) {
+          showBanner('Proveedor "' + name + '" respondió correctamente: "cuba soberana"', 'success', true);
+        } else {
+          showBanner('Proveedor "' + name + '" falló la prueba: ' + (data.error || 'respuesta no exacta'), 'error', false);
+        }
+      } catch (err) {
+        showTestResult(btn, { ok: false, error: err.message });
+        showBanner('Error al probar "' + name + '": ' + err.message, 'error', false);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = original;
       }
-
-      providers.splice(idx, 1);
-      saveProviders(providers);
-
-      renderActiveProvider();
-      renderProviderList();
-      showBanner('Proveedor "' + escapeHtml(providerName) + '" eliminado', 'success', true);
     }
 
-    // ===== Add provider form =====
+    function closeResult(btn) {
+      const row = btn.closest('tr');
+      if (!row) return;
+      const existing = row.querySelector('.test-result');
+      if (existing) existing.remove();
+    }
 
-    const apiKeyInput = document.getElementById('api-key');
-    const modelNameInput = document.getElementById('model-name');
-    const baseUrlInput = document.getElementById('base-url');
+    function showTestResult(btn, data) {
+      const row = btn.closest('tr');
+      if (!row) return;
+      const tds = row.querySelectorAll('td');
+      const td = tds[tds.length - 1];
+      const el = document.createElement('div');
+      el.className = 'test-result ' + (data.ok ? 'ok' : 'fail');
+      const answer = data.answer ? 'Respuesta: <code>' + escapeHtml(data.answer) + '</code>' : '';
+      const detail = data.error ? '<br>' + escapeHtml(data.error) : '';
+      el.innerHTML = (data.ok ? '✓ Correcto' : '✗ Falló') + ' — ' + (answer || '') + detail;
+      td.appendChild(el);
+    }
 
-    document.getElementById('add-provider-form').addEventListener('submit', function(e) {
+    async function deleteProvider(id, name) {
+      if (!confirm('¿Eliminar el proveedor "' + name + '"? Esta acción no se puede deshacer.')) return;
+      try {
+        const res = await fetch('/api/providers/' + encodeURIComponent(id), { method: 'DELETE' });
+        if (!res.ok) {
+          let detail = 'Error al eliminar';
+          try { const d = await res.json(); if (d && d.detail) detail = d.detail; } catch (_e) {}
+          throw new Error(detail);
+        }
+        showBanner('Proveedor "' + name + '" eliminado', 'success', true);
+        refresh();
+      } catch (err) {
+        showBanner('Error al eliminar "' + name + '": ' + err.message, 'error', false);
+      }
+    }
+
+    async function refresh() {
+      try {
+        const providers = await loadProviders();
+        renderProviders(providers);
+      } catch (err) {
+        document.getElementById('providers-loading').style.display = 'none';
+        const listEl = document.getElementById('providers-list');
+        listEl.style.display = 'block';
+        listEl.innerHTML = '<div class="placeholder-card"><h2>Error</h2><p>' + escapeHtml(err.message) + '</p></div>';
+        showBanner('Error al cargar proveedores: ' + err.message, 'error', false);
+      }
+    }
+
+    // Add provider form
+    document.getElementById('add-provider-form').addEventListener('submit', async function(e) {
       e.preventDefault();
+      const name = document.getElementById('provider-name').value.trim();
+      const model = document.getElementById('model-name').value.trim();
+      const baseUrl = document.getElementById('base-url').value.trim();
+      const apiKey = document.getElementById('api-key').value.trim();
 
-      const apiKey = apiKeyInput.value.trim() || null;
-      const model = modelNameInput.value.trim();
-      const baseUrl = baseUrlInput.value.trim() || 'https://openrouter.ai';
+      const submitBtn = document.getElementById('add-provider-btn');
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Guardando...';
 
-      if (!model) {
-        showBanner('Complete el campo de modelo', 'error', false);
-        return;
+      try {
+        const res = await fetch('/api/providers', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: name, model: model, base_url: baseUrl || null, api_key: apiKey || null }),
+        });
+        let data = {};
+        try { data = await res.json(); } catch (_e) {}
+        if (!res.ok) {
+          throw new Error(data.detail || 'Error al agregar el proveedor');
+        }
+        showBanner('Proveedor "' + data.name + '" agregado', 'success', true);
+        document.getElementById('add-provider-form').reset();
+        document.getElementById('base-url').value = 'https://openrouter.ai';
+        refresh();
+      } catch (err) {
+        showBanner('Error: ' + err.message, 'error', false);
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Agregar';
       }
-
-      const providers = loadProviders();
-      if (!providers) {
-        // First provider — use defaults
-        const newProvider = { ...DEFAULT_PROVIDERS[0], id: generateId(), model, api_key: apiKey, base_url: baseUrl };
-        saveProviders([newProvider]);
-      } else {
-        // Deactivate all existing providers (only one active at a time)
-        providers.forEach(p => p.active = false);
-
-        const newProvider = { id: generateId(), model, api_key: apiKey, base_url: baseUrl, active: true };
-        providers.push(newProvider);
-      }
-
-      saveProviders(providers);
-
-      // Reset form
-      apiKeyInput.value = '';
-      modelNameInput.value = '';
-      baseUrlInput.value = 'https://openrouter.ai';
-
-      renderActiveProvider();
-      renderProviderList();
-      showBanner('Proveedor "' + model + '" agregado exitosamente', 'success', true);
     });
 
-    // ===== Initialize on load =====
-
-    function init() {
-      const existing = loadProviders();
-      if (!existing) {
-        saveProviders(DEFAULT_PROVIDERS);
-      }
-      renderActiveProvider();
-      renderProviderList();
-    }
-
-    init();
+    refresh();
   </script>
 </body>
 </html>
