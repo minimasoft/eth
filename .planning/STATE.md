@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-06-08)
 Phase: 38
 Plan: Not started
 Status: Executing Phase 38
-Last activity: 2026-08-03 - Completed quick task 260803-v1g: Create a new one-file UI for adding/removing LLM provider configurations
+Last activity: 2026-08-08 - Completed quick task 260808-ii4: Complete index.html provider/model frontend
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -105,6 +105,7 @@ None yet.
 | 260611-icn | Rewrite README.md focusing on simplicity | 2026-06-11 | 77fd110
 | 260611-kch | Add visible click affordance to Eventos tab event list rows | 2026-06-11 | d4c1c19 | [260611-kch-in-the-eventos-tab-add-a-visible-click-a](./quick/260611-kch-in-the-eventos-tab-add-a-visible-click-a/) |
 | 260803-v1g | Create a new one-file UI for adding/removing LLM provider configurations | 2026-08-03 | 1a851a7 | [260803-v1g-create-a-new-one-file-ui-for-adding-remo](./quick/260803-v1g-create-a-new-one-file-ui-for-adding-remo/) |
+| 260808-ii4 | Complete index.html provider/model frontend: gears button to /ui/providers, remove LLM Configs tab, upload provider_ids fan-out, Modelo column | 2026-08-08 | 6e82a2e | [260808-ii4-complete-the-index-html-frontend-for-the](./quick/260808-ii4-complete-the-index-html-frontend-for-the/) |
 
 ## Deferred Items
 
