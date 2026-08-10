@@ -34,7 +34,7 @@ class TestMigrationLifecycle:
     @pytest.mark.asyncio
     async def test_migration_current(self, db_connection: asyncpg.Connection) -> None:
         version = await db_connection.fetchval("SELECT version_num FROM alembic_version")
-        assert version == "0002", f"Expected alembic_version=0002, got {version}"
+        assert version == "0003", f"Expected alembic_version=0003, got {version}"
 
     @pytest.mark.asyncio
     async def test_fk_on_delete_cascade(self, db_connection: asyncpg.Connection) -> None:
