@@ -7,23 +7,40 @@ Built 100% by Deepseek v4 Flash via opencode + opengsd.
 ## Quickstart
 
 ```bash
-cp .env.example .env        # set OPENROUTER_API_KEY
-docker compose up -d        # starts all services
-http :1985/health            # {"status": "ok"}
+cp .env.example .env        # set OPENROUTER_API_KEY (TUNNEL_TOKEN optional, see below)
+./run.sh                    # starts the full dev stack via docker compose
+http :18001/health          # {"status": "ok"}
 ```
 
-That's it. Submit a document, and the pipeline runs automatically.
+That's it. Submit a document, and the pipeline runs automatically. Stop everything with `./stop.sh`.
 
-### Services (all in one `docker compose up`)
+> **Docker only (one exception):** all tooling (pytest, alembic, uv, npm) runs via the scripts
+> below or `docker compose run` — never ad-hoc on the host. The single exception is dependency-free
+> unit tests: `./test.sh --unit` runs them on the host without containers (see [Tests](#tests)).
+
+### Dev scripts
+
+| Script | What it does |
+|--------|--------------|
+| `./run.sh` | `docker compose up -d` of the full stack. Starts `cloudflared` **only** when `TUNNEL_TOKEN` is set in `.env` (it lives in the `tunnel` compose profile). Pass-through args, e.g. `./run.sh --build`. |
+| `./stop.sh` | `docker compose down` — data volumes are **preserved**. `./stop.sh -v` wipes them. |
+| `./test.sh` | Python test suite in an **isolated, disposable** stack: separate compose project (`eth-test`), separate volumes, no host ports, `down -v` before *and* after every run → always a **fresh clean database**, never touches the dev stack. |
+| `./test.sh tests/test_schema.py -q` | Same, for selected files / pytest args. |
+| `./test.sh --unit` | Only tests with **no dependencies and no state** (auto-marked `integration` if they use a DB fixture) — runs on the host with `uv`, no containers, sub-second feedback. |
+| `RUN_SLOW_TESTS=1 ./test.sh` | Also run slow spike/migration tests (skipped by default). |
+| `KEEP_TEST_ENV=1 ./test.sh` | Leave the test stack up afterwards for debugging (`docker compose -p eth-test ... ` to inspect). |
+
+### Services (all in one `./run.sh`)
 
 | Service | Purpose | Port |
 |---------|---------|------|
-| **PostgreSQL** (+PostGIS) | Event storage, geospatial queries | 5432 |
-| **MinIO** | PDF blob storage | 9000 |
-| **Temporal** | Durable workflow engine | 7233 |
-| **Temporal UI** | Workflow dashboard | 8080 |
-| **API** | FastAPI — document ingestion + queries | 1985 |
+| **PostgreSQL** (+PostGIS) | Event storage, geospatial queries | 15432 |
+| **MinIO** | PDF blob storage | 19000 |
+| **Temporal** | Durable workflow engine | 17233 |
+| **Temporal UI** | Workflow dashboard | 18080 |
+| **API** | FastAPI — document ingestion + queries | 18001 |
 | **Worker** | Temporal worker — runs extraction activities | — |
+| **Cloudflared** | Public tunnel (`tunnel` profile, needs `TUNNEL_TOKEN`) | — |
 
 ## How It Works
 
@@ -65,19 +82,19 @@ Every verbatim mention (person name, place, date) is stored as a reference with 
 
 ```bash
 # List events (paginated, filterable by document)
-http GET :1985/events
+http GET :18001/events
 
 # Event detail with locations, participants, and references
-http GET :1985/events/{id}
+http GET :18001/events/{id}
 
 # Get processing logs for a document
-http GET :1985/documents/{id}/logs
+http GET :18001/documents/{id}/logs
 
 # Submit a plain-text document
-http POST :1985/documents text="El día 15 de marzo..." filename="decl.txt"
+http POST :18001/documents text="El día 15 de marzo..." filename="decl.txt"
 
 # Upload a PDF
-http POST :1985/documents/upload @file.pdf
+http POST :18001/documents/upload @file.pdf
 ```
 
 There's also a web UI at `/ui` — no build step, vanilla HTML/CSS/JS served by FastAPI.
@@ -87,7 +104,7 @@ There's also a web UI at `/ui` — no build step, vanilla HTML/CSS/JS served by 
 ```mermaid
 graph LR
     User[HTTP Client]
-    API[FastAPI :1985]
+    API[FastAPI :18001]
     PG[(PostgreSQL + PostGIS)]
     MinIO[(MinIO Blob)]
     LLM[OpenRouter LLM]
@@ -139,7 +156,72 @@ Copy `.env.example` → `.env`. Key variables:
 
 ## Tests
 
+Use `./test.sh` — it runs the suite in an isolated compose project (`eth-test`) with its own
+volumes and no host ports, torn down (`down -v`) before and after every run. Tests therefore
+**always run against a fresh database** and never collide with (or pollute) the dev stack.
+
 ```bash
-docker compose run --rm integration-tests   # TypeScript test suite
-uv run pytest                                 # Python tests
+./test.sh                          # full Python suite, fresh env, ~10s after first build
+./test.sh tests/test_schema.py -q  # selected files / any pytest args
+./test.sh --unit                   # ONLY dependency-free unit tests, on the host, no containers
+RUN_SLOW_TESTS=1 ./test.sh         # include slow tests (LLM corpus spike, migration round-trips)
+KEEP_TEST_ENV=1 ./test.sh          # keep the eth-test stack up afterwards for debugging
 ```
+
+**The unit-test rule:** tests that need PostgreSQL or any external state are auto-marked
+`integration` (by fixture usage, in `tests/conftest.py`) and are excluded from `--unit`. Only
+unit tests that mock all I/O run on the host — they touch no containers and leave no state,
+so they are the fast inner loop for development. Anything else must run through `./test.sh`.
+
+Do **not** run `pytest`, `alembic`, `uv`, or `npm` ad-hoc on the host outside these scripts —
+it risks mutating your local environment or writing to the wrong database.
+
+TypeScript integration tests hit the **running dev stack** (start it first with `./run.sh`):
+
+```bash
+docker compose run --rm integration-tests
+```
+
+`python-tests` bind-mounts `./src`, `./tests`, `./test_data`, and `alembic.ini` into the image, so
+it always tests your working tree — no rebuild needed (`test.sh` passes `--build` so image changes
+to `scripts/` or dependencies are picked up). It waits for a healthy Postgres and a completed
+`schema-init`, and caches Python dependencies in a `uv-cache` volume.
+
+## Database & Migrations
+
+The database is Postgres + PostGIS, only ever reached through the compose network (or `localhost:15432`
+for inspection). Schema management has two parts:
+
+1. **Fresh databases** — the one-shot `schema-init` service (runs on every `docker compose up`)
+   detects an unversioned database, applies `src/eth_pipeline/schema.sql` as the **v6 baseline**,
+   then runs `alembic upgrade head` (0001 v7 tables → 0002 drop v6 tables → 0003 llm_provider).
+   On a database already under Alembic control it is a **no-op** (it never re-applies the baseline).
+2. **Schema changes after that** — regular Alembic migrations in `src/eth_pipeline/alembic/versions/`
+   (`0001` → `0003` and onward). All Alembic commands run inside the container:
+
+```bash
+docker compose run --rm api uv run alembic current              # where is the DB?
+docker compose run --rm api uv run alembic upgrade head         # apply pending migrations
+docker compose run --rm api uv run alembic downgrade -1         # roll back one
+
+# Autogenerate a new revision against the current DB (source mounted so the
+# new file lands in ./src/eth_pipeline/alembic/versions/ on the host)
+docker compose run --rm -v "$PWD/src:/app/src" api \
+  uv run alembic revision --autogenerate -m "describe change"
+docker compose run --rm -v "$PWD/src:/app/src" api uv run alembic upgrade head
+```
+
+Connection settings come from `PGUSER/PGPASSWORD/PGHOST/PGPORT/PGDATABASE` env vars (set to the
+compose service names inside containers by `docker-compose.yml`), consumed by `alembic.ini`.
+
+To start over from a clean database:
+
+```bash
+docker compose down -v    # DELETES the postgres + minio volumes
+docker compose up -d      # schema-init recreates the baseline schema
+```
+
+Note: `schema.sql` is the **baseline only** — anything created by a migration (e.g. `llm_provider`,
+`document.provider_id/model`) must NOT appear in it. If you change the schema, add an Alembic
+revision; touch `schema.sql` only for baseline objects. For a clean slate use `./test.sh`
+(already fresh) or `./stop.sh -v && ./run.sh` for the dev stack.

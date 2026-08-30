@@ -1,0 +1,18 @@
+# Isolated test stack — used by ./test.sh with compose project "-p eth-test".
+#
+# Gives tests their OWN network and volumes (docker prefixes them with
+# eth-test_) and removes every host port binding, so tests can run at the
+# same time as the dev stack from ./run.sh without any collision.
+#
+# Never use this file for the dev stack, and never share its volumes.
+services:
+  postgres:
+    ports: !reset []
+  minio:
+    ports: !reset []
+  temporal-server:
+    ports: !reset []
+  temporal-ui:
+    ports: !reset []
+  api:
+    ports: !reset []

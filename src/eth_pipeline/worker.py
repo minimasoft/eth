@@ -1,7 +1,7 @@
 """
 Temporal Worker entrypoint for the eth-pipeline.
 
-Connects to Temporal Server (localhost:7233, namespace ``default``),
+Connects to Temporal Server (localhost:17233, namespace ``default``),
 registers the ``event-extraction`` task queue with the workflow and
 activity definitions, and runs until a graceful shutdown signal arrives.
 """
@@ -20,7 +20,7 @@ from eth_pipeline import activities, workflows
 
 logger = logging.getLogger(__name__)
 
-TARGET_HOST = os.environ.get("TEMPORAL_URL", "localhost:7233")
+TARGET_HOST = os.environ.get("TEMPORAL_URL", "localhost:17233")
 NAMESPACE = "default"
 TASK_QUEUE = "event-extraction"
 

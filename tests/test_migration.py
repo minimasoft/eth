@@ -105,6 +105,27 @@ class TestMigrationLifecycle:
         assert version == "0002" or version == "0001", f"Expected alembic_version=0002 after re-upgrade, got {version}"
 
     @pytest.mark.asyncio
+    async def test_document_provider_columns_and_fk(self, db_connection: asyncpg.Connection) -> None:
+        cols = await db_connection.fetch(
+            "SELECT column_name FROM information_schema.columns "
+            "WHERE table_name = 'document' AND column_name IN ('model', 'provider_id')"
+        )
+        assert {r["column_name"] for r in cols} == {"model", "provider_id"}
+
+        row = await db_connection.fetchrow(
+            "SELECT rc.delete_rule "
+            "FROM information_schema.table_constraints tc "
+            "JOIN information_schema.referential_constraints rc "
+            "  ON tc.constraint_name = rc.constraint_name "
+            " AND tc.constraint_schema = rc.constraint_schema "
+            "WHERE tc.constraint_name = 'fk_document_provider_id'",
+        )
+        assert row is not None, "FK fk_document_provider_id missing on document"
+        assert row["delete_rule"] == "SET NULL", (
+            f"Expected delete_rule 'SET NULL', got '{row['delete_rule']}'"
+        )
+
+    @pytest.mark.asyncio
     async def test_schema_version_default(self, db_connection: asyncpg.Connection) -> None:
         col_default = await db_connection.fetchval(
             "SELECT column_default FROM information_schema.columns "

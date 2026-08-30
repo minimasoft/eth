@@ -33,7 +33,7 @@ from eth_pipeline.workflows import (
 
 async def main():
     # Connect to Temporal server
-    temporal_url = os.environ.get("TEMPORAL_URL", "localhost:7233")
+    temporal_url = os.environ.get("TEMPORAL_URL", "localhost:17233")
     client = await Client.connect(
         temporal_url,
         namespace="default",

@@ -12,6 +12,7 @@ import os
 
 from temporalio import activity
 
+from eth_pipeline import providers as provider_svc
 from eth_pipeline.activities._common import _db_params, _extract_query_results
 from eth_pipeline.db import get_db
 from eth_pipeline.llm import DEFAULT_MODEL, OpenRouterProvider
@@ -26,7 +27,6 @@ async def extract_events_v7_activity(
     chunk_index: int,
     prior_events: list[dict] | None = None,
     total_chunks: int = 0,
-    model: str | None = None,
 ) -> dict:
     api_key = os.environ.get("OPENROUTER_API_KEY")
     _log = ProcessingLogger(_db_params())
@@ -46,6 +46,12 @@ async def extract_events_v7_activity(
                 chunk_index,
             )
         )
+        doc_row = _extract_query_results(
+            await conn.fetch(
+                "SELECT provider_id, model FROM document WHERE id = $1",
+                document_id,
+            )
+        )
     if not row:
         raise ValueError(
             f"Chunk {chunk_index} not found for document {document_id}"
@@ -53,20 +59,35 @@ async def extract_events_v7_activity(
     chunk_text: str = row[0]["text"]
     chunk_progress = f"[chunk {chunk_index + 1}/{total_chunks}]" if total_chunks > 0 else f"[chunk {chunk_index}]"
 
-    model = model or os.environ.get("OPENROUTER_MODEL", DEFAULT_MODEL)
-    provider = OpenRouterProvider(api_key=api_key, model=model)
+    doc = doc_row[0] if doc_row else {}
+    provider_id = doc.get("provider_id")
+    provider_cfg = None
+    if provider_id:
+        provider_cfg = await provider_svc.resolve_provider(provider_id)
+    api_key = (provider_cfg or {}).get("api_key") or api_key
+    model = (
+        doc.get("model")
+        or (provider_cfg or {}).get("model")
+        or os.environ.get("OPENROUTER_MODEL", DEFAULT_MODEL)
+    )
+    provider_kwargs: dict = {"api_key": api_key, "model": model}
+    if provider_cfg and provider_cfg.get("base_url"):
+        provider_kwargs["base_url"] = provider_cfg["base_url"]
+    provider = OpenRouterProvider(**provider_kwargs)
 
     activity.logger.info(
-        "extract_events_v7_activity called %s [document_id=%s] [chunk_index=%d] [text_length=%d] [model=%s]",
+        "extract_events_v7_activity called %s [document_id=%s] [chunk_index=%d] [text_length=%d] [model=%s] [provider_id=%s]",
         chunk_progress,
         document_id,
         chunk_index,
         len(chunk_text),
         model,
+        provider_id,
     )
     await _log.log(document_id, "extract_events_v7", "info",
                    f"Starting v7 event extraction {chunk_progress}, {len(chunk_text)} chars",
-                   {"chunk_index": chunk_index, "total_chunks": total_chunks, "text_length": len(chunk_text), "model": model})
+                   {"chunk_index": chunk_index, "total_chunks": total_chunks, "text_length": len(chunk_text),
+                    "model": model, "provider_id": provider_id})
 
     activity.logger.info(
         "Sending prompt to LLM for v7 extraction %s [document_id=%s]",

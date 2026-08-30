@@ -2,7 +2,7 @@ services:
   postgres:
     image: postgis/postgis:17-3.4-alpine
     ports:
-    - 5432:5432
+    - 15432:5432
     volumes:
     - postgres_data:/var/lib/postgresql/data
     environment:
@@ -24,8 +24,8 @@ services:
     image: minio/minio:latest
     command: server /data --console-address ":9001"
     ports:
-    - 9000:9000
-    - 9001:9001
+    - 19000:9000
+    - 19001:9001
     volumes:
     - minio_data:/data
     environment:
@@ -46,8 +46,8 @@ services:
     image: temporalio/temporal:latest
     command: server start-dev --ip 0.0.0.0
     ports:
-    - 7233:7233
-    - 8233:8233
+    - 17233:7233
+    - 18233:8233
     environment:
     - TEMPORAL_ADDRESS=temporal-server:7233
     healthcheck:
@@ -67,7 +67,7 @@ services:
   temporal-ui:
     image: temporalio/ui:latest
     ports:
-    - 8080:8080
+    - 18080:8080
     environment:
       TEMPORAL_ADDRESS: temporal-server:7233
     depends_on:
@@ -112,7 +112,7 @@ services:
     build: .
     command: uv run python scripts/run_api.py
     ports:
-    - 1985:8001
+    - 18001:8001
     env_file: .env
     environment:
       PGUSER: eth
@@ -158,6 +158,31 @@ services:
     restart: unless-stopped
     networks:
     - eth-pipeline
+  python-tests:
+    profiles: ["test"]
+    build: .
+    command: uv run pytest
+    env_file: .env
+    environment:
+      PGUSER: eth
+      PGPASSWORD: eth
+      PGHOST: postgres
+      PGPORT: "5432"
+      PGDATABASE: eth
+    volumes:
+      - ./src:/app/src
+      - ./tests:/app/tests
+      - ./test_data:/app/test_data:ro
+      - ./alembic.ini:/app/alembic.ini:ro
+      - uv-cache:/root/.cache/uv
+    depends_on:
+      postgres:
+        condition: service_healthy
+      schema-init:
+        condition: service_completed_successfully
+    restart: "no"
+    networks:
+      - eth-pipeline
   integration-tests:
     profiles: ["test"]
     image: node:22-slim
@@ -180,6 +205,7 @@ services:
     networks:
       - eth-pipeline
   cloudflared:
+    profiles: ["tunnel"]
     image: cloudflare/cloudflared:latest
     command: tunnel --no-autoupdate run --token $TUNNEL_TOKEN
     environment:
@@ -190,6 +216,7 @@ services:
 volumes:
   postgres_data:
   minio_data:
+  uv-cache:
 networks:
   eth-pipeline:
     driver: bridge

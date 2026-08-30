@@ -221,14 +221,11 @@ async def upload_document(
             detail="Filename is required.",
         )
 
-    # 2. Determine effective providers (fan-out list)
-    selected: list[dict]
-    if provider_ids:
-        selected = []
-        for pid in provider_ids:
-            selected.append(await _resolve_provider(pid))
-    else:
-        selected = [await _resolve_provider(None)]
+    # 2. Determine effective providers (fan-out list). Resolve before any
+    #    blob write so a bad provider id costs nothing, and de-duplicate
+    #    repeated ids while preserving order.
+    unique_ids = list(dict.fromkeys(provider_ids)) if provider_ids else [None]
+    selected = [await _resolve_provider(pid) for pid in unique_ids]
 
     # 3. Generate document ID
     doc_id = str(uuid.uuid4().hex)

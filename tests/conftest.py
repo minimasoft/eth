@@ -9,6 +9,7 @@ from collections.abc import AsyncIterator
 from datetime import datetime, timezone
 
 import asyncpg
+import pytest
 import pytest_asyncio
 
 logger = logging.getLogger(__name__)
@@ -16,6 +17,25 @@ logger = logging.getLogger(__name__)
 
 def pytest_configure(config):
     config.addinivalue_line("markers", "slow: marks tests as slow (skip unless RUN_SLOW_TESTS=1)")
+    config.addinivalue_line("markers", "integration: requires PostgreSQL or other external state")
+
+
+#: Fixtures that touch real external state; any test using them cannot run
+#: without containers (see ./test.sh --unit vs ./test.sh in AGENTS.md).
+_STATEFUL_FIXTURES = frozenset(
+    {"db_connection", "db_dsn", "v7_test_document", "v7_test_event", "v7_test_chunk"}
+)
+
+
+def pytest_collection_modifyitems(config, items):
+    for item in items:
+        if _STATEFUL_FIXTURES & set(item.fixturenames):
+            item.add_marker(pytest.mark.integration)
+    if not os.environ.get("RUN_SLOW_TESTS"):
+        skip_slow = pytest.mark.skip(reason="set RUN_SLOW_TESTS=1 to run slow tests")
+        for item in items:
+            if "slow" in item.keywords:
+                item.add_marker(skip_slow)
 
 
 @pytest_asyncio.fixture

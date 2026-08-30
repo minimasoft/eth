@@ -5,7 +5,7 @@ Run with::
 
     uv run python scripts/run_api.py
 
-The server listens on all interfaces at port 8001 (host-mapped to 1985 in docker-compose.yml).
+The server listens on all interfaces at port 8001 (host-mapped to 18001 in docker-compose.yml).
 """
 
 from __future__ import annotations

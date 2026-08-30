@@ -176,3 +176,135 @@ class TestV7WorkflowIntegration:
         assert _inspect.isclass(DocumentProcessingV7Workflow)
         assert hasattr(DocumentProcessingV7Workflow, "run")
         assert callable(DocumentProcessingV7Workflow.run)
+
+    @pytest.mark.asyncio
+    async def test_workflow_run_executes_extract_activity(self) -> None:
+        """Execute run() with patched execute_activity — must not raise NameError.
+
+        Regression test for the undefined `model` name in the extract activity
+        args, which failed every v7 document on the first chunk. Also asserts
+        no LLM config travels through Temporal-visible activity args.
+        """
+        from eth_pipeline.workflows import DocumentProcessingV7Workflow
+
+        returns = {
+            "get_document_metadata_activity": {"has_text_content": True},
+            "get_document_chunks_activity": {"chunks": ["chunk text"]},
+            "get_prior_events_activity": {"prior_events": []},
+            "extract_events_v7_activity": {"events": []},
+            "store_events_v7_activity": {"events_stored": 0},
+            "resolve_references_v7_activity": {"resolved": 0},
+        }
+        calls: list[tuple[str, list]] = []
+
+        async def fake_execute_activity(activity_fn, **kwargs):
+            name = getattr(activity_fn, "__name__", str(activity_fn))
+            calls.append((name, list(kwargs.get("args", []))))
+            return returns.get(name, {})
+
+        with patch("temporalio.workflow.execute_activity", fake_execute_activity):
+            result = await DocumentProcessingV7Workflow().run("doc-repro-1")
+
+        assert result["status"] == "processed"
+        extract_calls = [c for c in calls if c[0] == "extract_events_v7_activity"]
+        assert len(extract_calls) == 1
+        assert extract_calls[0][1] == ["doc-repro-1", 0, [], 1]
+
+    @pytest.mark.asyncio
+    async def test_get_document_metadata_returns_model(
+        self, db_connection: asyncpg.Connection, _clean_pool: None
+    ) -> None:
+        """Regression for B2: metadata activity must return document.model."""
+        from eth_pipeline.activities.get_document_metadata import (
+            get_document_metadata_activity,
+        )
+
+        doc_id = uuid.uuid4().hex
+        prov_id = uuid.uuid4().hex
+        try:
+            await db_connection.execute(
+                "INSERT INTO llm_provider (id, name, model, base_url, is_default) "
+                "VALUES ($1, $2, $3, $4, FALSE)",
+                prov_id, f"meta-{prov_id}", "meta/model-Z", "https://meta.example",
+            )
+            await db_connection.execute(
+                "INSERT INTO document (id, mime_type, status, provider_id, model) "
+                "VALUES ($1, 'text/plain', 'pending', $2, $3)",
+                doc_id, prov_id, "row/model-B",
+            )
+
+            result = await get_document_metadata_activity(doc_id)
+            assert result.get("model") == "row/model-B"
+        finally:
+            await db_connection.execute("DELETE FROM document WHERE id = $1", doc_id)
+            await db_connection.execute("DELETE FROM llm_provider WHERE id = $1", prov_id)
+
+    @pytest.mark.asyncio
+    async def test_fanout_creates_two_documents_with_distinct_models(
+        self, db_connection: asyncpg.Connection, _clean_pool: None
+    ) -> None:
+        """One upload with two providers yields two rows sharing one blob, distinct models.
+
+        A repeated provider id is de-duplicated at the API boundary.
+        """
+        import httpx
+
+        from eth_pipeline.api import app
+
+        p1, p2 = uuid.uuid4().hex, uuid.uuid4().hex
+        m1, m2 = "fan/model-one", "fan/model-two"
+        try:
+            for pid, name, model in (
+                (p1, f"fan-a-{p1[:8]}", m1),
+                (p2, f"fan-b-{p2[:8]}", m2),
+            ):
+                await db_connection.execute(
+                    "INSERT INTO llm_provider (id, name, model, base_url, is_default) "
+                    "VALUES ($1, $2, $3, $4, FALSE)",
+                    pid, name, model, "https://fan.example",
+                )
+
+            boundary = "----fanoutboundary1234"
+            file_bytes = b"El Sr. Juan Perez firmo el contrato en Buenos Aires."
+
+            def field(name: str, value: str) -> str:
+                return (
+                    f"--{boundary}\r\n"
+                    f'Content-Disposition: form-data; name="{name}"\r\n\r\n'
+                    f"{value}\r\n"
+                )
+
+            body = (
+                field("provider_ids", p1)
+                + field("provider_ids", p1)
+                + field("provider_ids", p2)
+                + f"--{boundary}\r\n"
+                'Content-Disposition: form-data; name="file"; filename="fan.txt"\r\n'
+                "Content-Type: text/plain\r\n\r\n"
+            ).encode() + file_bytes + f"\r\n--{boundary}--\r\n".encode()
+
+            async with httpx.AsyncClient(
+                transport=httpx.ASGITransport(app=app), base_url="http://testserver"
+            ) as client:
+                resp = await client.post(
+                    "/documents/upload",
+                    content=body,
+                    headers={"content-type": f"multipart/form-data; boundary={boundary}"},
+                )
+            assert resp.status_code == 201, resp.text
+
+            rows = await db_connection.fetch(
+                "SELECT id, provider_id, model, blob_path FROM document "
+                "WHERE provider_id = ANY($1::text[])",
+                [p1, p2],
+            )
+            assert len(rows) == 2, "duplicate provider id must be de-duplicated"
+            assert {r["model"] for r in rows} == {m1, m2}
+            assert len({r["blob_path"] for r in rows}) == 1, "fan-out rows must share one blob"
+        finally:
+            await db_connection.execute(
+                "DELETE FROM document WHERE provider_id = ANY($1::text[])", [p1, p2]
+            )
+            await db_connection.execute(
+                "DELETE FROM llm_provider WHERE id = ANY($1::text[])", [p1, p2]
+            )

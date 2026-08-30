@@ -35,7 +35,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     except Exception as exc:
         logger.warning("PostgreSQL unreachable — running in degraded mode: %s", exc)
 
-    temporal_url = os.environ.get("TEMPORAL_URL", "localhost:7233")
+    temporal_url = os.environ.get("TEMPORAL_URL", "localhost:17233")
     temporal_namespace = os.environ.get("TEMPORAL_NAMESPACE", "default")
 
     logger.info("Connecting to Temporal at %s (namespace=%s)", temporal_url, temporal_namespace)

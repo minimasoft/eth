@@ -16,6 +16,17 @@ DEFAULT_DSN = (
 )
 
 
+async def _alembic_version(conn) -> str | None:
+    """Return the stamped alembic revision, or None if DB is not versioned."""
+    versioned = await conn.fetchval(
+        "SELECT EXISTS(SELECT 1 FROM information_schema.tables "
+        "WHERE table_name = 'alembic_version' AND table_schema = 'public')"
+    )
+    if not versioned:
+        return None
+    return await conn.fetchval("SELECT version_num FROM alembic_version LIMIT 1")
+
+
 async def apply_schema(schema_path: Path, dsn: str | None = None) -> None:
     import asyncpg
 
@@ -34,6 +45,12 @@ async def apply_schema(schema_path: Path, dsn: str | None = None) -> None:
     try:
         await conn.execute("SELECT 1")
         print("→ Connected to PostgreSQL")
+
+        current = await _alembic_version(conn)
+        if current is not None:
+            print(f"✔ Database already under Alembic version control ({current}) — no-op.")
+            return
+        print("→ Fresh database: applying v6 baseline schema, then Alembic migrations")
         print()
 
         statements = [s.strip() for s in sql.split(";") if s.strip()]
@@ -49,9 +66,20 @@ async def apply_schema(schema_path: Path, dsn: str | None = None) -> None:
                 sys.exit(1)
 
         print()
-        print(f"✔ Applied {len(statements)} statements successfully.")
+        print(f"✔ Applied {len(statements)} baseline statements. Running alembic upgrade head...")
     finally:
         await conn.close()
+
+    result = subprocess.run(
+        ["uv", "run", "alembic", "upgrade", "head"],
+        capture_output=True, text=True, timeout=180,
+    )
+    if result.returncode != 0:
+        print("❌ alembic upgrade head failed:", file=sys.stderr)
+        print(result.stdout, file=sys.stderr)
+        print(result.stderr, file=sys.stderr)
+        sys.exit(1)
+    print("✔ Alembic upgraded to head (v7 schema applied).")
 
 
 async def check_connectivity(dsn: str | None = None) -> bool:
@@ -90,22 +118,6 @@ async def main() -> None:
         sys.exit(1)
 
     await apply_schema(schema_path=args.schema, dsn=dsn)
-
-    try:
-        result = subprocess.run(
-            ["uv", "run", "alembic", "stamp", "head"],
-            capture_output=True, text=True, timeout=30,
-        )
-        if result.returncode != 0:
-            print(f"⚠  Alembic stamp failed: {result.stderr.strip()}")
-            print("   Schema applied — manual `alembic stamp head` may be needed.")
-        else:
-            version = result.stdout.strip()
-            print(f"✔ Alembic stamped at head: {version}")
-    except FileNotFoundError:
-        print("⚠  alembic CLI not found — skipping Alembic stamp (schema applied).")
-    except subprocess.TimeoutExpired:
-        print("⚠  Alembic stamp timed out — skipping (schema applied).")
 
 
 if __name__ == "__main__":

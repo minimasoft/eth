@@ -28,6 +28,18 @@ def mock_db():
 
 class TestExtractionV7:
 
+    @staticmethod
+    def _db_returning(*fetch_results):
+        """Patch activity get_db so each conn.fetch() call returns the next list."""
+        mock_conn = AsyncMock()
+        mock_conn.fetch.side_effect = list(fetch_results)
+
+        @asynccontextmanager
+        async def _mock_db(**kwargs):
+            yield mock_conn
+
+        return patch("eth_pipeline.activities.extract_events_v7.get_db", _mock_db)
+
     @pytest.mark.asyncio
     async def test_missing_api_key_returns_degraded(self) -> None:
         """Activity returns degraded result when OPENROUTER_API_KEY is not set."""
@@ -186,6 +198,100 @@ class TestExtractionV7:
         mock_record_call_log.assert_called_once()
         log_kwargs = mock_record_call_log.call_args.kwargs
         assert log_kwargs["activity_type"] == "extract_events_v7"
+
+    @pytest.mark.asyncio
+    async def test_uses_document_model_over_env(self) -> None:
+        """document.model takes precedence over OPENROUTER_MODEL when building the provider."""
+        from eth_pipeline.activities.extract_events_v7 import extract_events_v7_activity
+
+        mock_provider = AsyncMock()
+        mock_provider.extract_events_v7.return_value = ({"events": []}, None)
+
+        with patch.dict(os.environ, {"OPENROUTER_API_KEY": "sk-env", "OPENROUTER_MODEL": "env/model"}):
+            with self._db_returning(
+                [{"text": "chunk"}],
+                [{"provider_id": None, "model": "row/model-A"}],
+            ):
+                with patch(
+                    "eth_pipeline.activities.extract_events_v7.OpenRouterProvider",
+                    return_value=mock_provider,
+                ) as mock_orp:
+                    await extract_events_v7_activity("doc-model-1", 0, None, 1)
+
+        assert mock_orp.call_args.kwargs["model"] == "row/model-A"
+
+    @pytest.mark.asyncio
+    async def test_resolves_provider_credentials_from_db(self) -> None:
+        """provider_id on the document row resolves api_key/base_url from llm_provider."""
+        from eth_pipeline.activities.extract_events_v7 import extract_events_v7_activity
+
+        mock_provider = AsyncMock()
+        mock_provider.extract_events_v7.return_value = ({"events": []}, None)
+
+        provider_conn = AsyncMock()
+        provider_conn.fetchrow.return_value = {
+            "id": "prov-2",
+            "name": "Provider Two",
+            "model": "prov/model-B",
+            "base_url": "https://override.example",
+            "api_key": "sk-db",
+            "is_default": False,
+        }
+
+        @asynccontextmanager
+        async def _provider_db(**kwargs):
+            yield provider_conn
+
+        with patch.dict(os.environ, {"OPENROUTER_API_KEY": "sk-env", "OPENROUTER_MODEL": "env/model"}):
+            with self._db_returning(
+                [{"text": "chunk"}],
+                [{"provider_id": "prov-2", "model": None}],
+            ):
+                with patch("eth_pipeline.providers.get_db", _provider_db):
+                    with patch(
+                        "eth_pipeline.activities.extract_events_v7.OpenRouterProvider",
+                        return_value=mock_provider,
+                    ) as mock_orp:
+                        await extract_events_v7_activity("doc-model-2", 0, None, 1)
+
+        kwargs = mock_orp.call_args.kwargs
+        assert kwargs["api_key"] == "sk-db"
+        assert kwargs["base_url"] == "https://override.example"
+        assert kwargs["model"] == "prov/model-B"
+
+    @pytest.mark.asyncio
+    async def test_activity_signature_has_no_config_params(self) -> None:
+        """No api_key/base_url/model may travel through Temporal activity args."""
+        import inspect
+
+        from eth_pipeline.activities.extract_events_v7 import extract_events_v7_activity
+
+        params = list(inspect.signature(extract_events_v7_activity).parameters)
+        assert params == ["document_id", "chunk_index", "prior_events", "total_chunks"]
+
+    @pytest.mark.asyncio
+    async def test_no_provider_row_falls_back_to_env(self) -> None:
+        """Legacy NULL provider_id/model rows keep the env-only behaviour."""
+        from eth_pipeline.activities.extract_events_v7 import extract_events_v7_activity
+
+        mock_provider = AsyncMock()
+        mock_provider.extract_events_v7.return_value = ({"events": []}, None)
+
+        with patch.dict(os.environ, {"OPENROUTER_API_KEY": "sk-env", "OPENROUTER_MODEL": "env/model"}):
+            with self._db_returning(
+                [{"text": "chunk"}],
+                [{"provider_id": None, "model": None}],
+            ):
+                with patch(
+                    "eth_pipeline.activities.extract_events_v7.OpenRouterProvider",
+                    return_value=mock_provider,
+                ) as mock_orp:
+                    await extract_events_v7_activity("doc-model-3", 0, None, 1)
+
+        kwargs = mock_orp.call_args.kwargs
+        assert kwargs["api_key"] == "sk-env"
+        assert kwargs["model"] == "env/model"
+        assert "base_url" not in kwargs
 
     @pytest.mark.slow
     @pytest.mark.asyncio

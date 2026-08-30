@@ -25,7 +25,7 @@ async def get_document_metadata_activity(document_id: str) -> dict:
         async with get_db(**params) as conn:
             rows = _extract_query_results(
                 await conn.fetch(
-                    "SELECT blob_format, text_content, filename, mime_type "
+                    "SELECT blob_format, text_content, filename, mime_type, model "
                     "FROM document WHERE id = $1",
                     document_id,
                 )
@@ -45,16 +45,18 @@ async def get_document_metadata_activity(document_id: str) -> dict:
 
             activity.logger.info(
                 "get_document_metadata_activity completed "
-                "[document_id=%s] [blob_format=%s] [has_text_content=%s]",
+                "[document_id=%s] [blob_format=%s] [has_text_content=%s] [model=%s]",
                 document_id,
                 doc.get("blob_format"),
                 has_text_content,
+                doc.get("model"),
             )
             await _log.log(document_id, "get_document_metadata", "info",
                            f"Metadata retrieved: blob_format={doc.get('blob_format')}, "
-                           f"has_text_content={has_text_content}",
+                           f"has_text_content={has_text_content}, model={doc.get('model')}",
                            {"blob_format": doc.get("blob_format"),
-                            "has_text_content": has_text_content})
+                            "has_text_content": has_text_content,
+                            "model": doc.get("model")})
 
             return {
                 "document_id": document_id,

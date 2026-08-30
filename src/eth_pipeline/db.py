@@ -53,6 +53,18 @@ async def _init_conn(conn: asyncpg.Connection) -> None:
 
 async def get_pool(**kwargs) -> asyncpg.Pool:
     global _pool
+    if _pool is not None:
+        pool_loop = getattr(_pool, "_loop", None)
+        current_loop = asyncio.get_running_loop()
+        if pool_loop is not None and (
+            pool_loop is not current_loop or pool_loop.is_closed()
+        ):
+            logger.warning(
+                "Discarding PostgreSQL pool bound to a stale event loop"
+            )
+            _pool = None
+            global _lock
+            _lock = asyncio.Lock()
     if _pool is None:
         async with _lock:
             if _pool is None:
@@ -70,9 +82,13 @@ async def get_pool(**kwargs) -> asyncpg.Pool:
 async def close_pool() -> None:
     global _pool
     if _pool is not None:
-        await _pool.close()
-        _pool = None
-        logger.info("PostgreSQL pool closed")
+        pool, _pool = _pool, None
+        try:
+            await pool.close()
+        except RuntimeError as exc:
+            logger.warning("Failed to close PostgreSQL pool cleanly: %s", exc)
+        else:
+            logger.info("PostgreSQL pool closed")
 
 
 @contextlib.asynccontextmanager
