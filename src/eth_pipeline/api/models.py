@@ -703,6 +703,61 @@ class ComparisonResponse(BaseModel):
     """All events across every model run of this source."""
 
 
+# =======================================================================
+# Map / geo models
+# =======================================================================
+
+
+class GeoEventItem(BaseModel):
+    """A single geolocated event-location pair for the map view."""
+
+    event_id: str
+    """Unique identifier of the event."""
+
+    title: str
+    """Event title from the structured event object."""
+
+    time_start: str | None = None
+    """Earliest temporal bound as ISO-8601 datetime (may be null for open intervals)."""
+
+    time_end: str | None = None
+    """Latest temporal bound as ISO-8601 datetime (may be null for open intervals)."""
+
+    time_precision: str | None = None
+    """Precision label for the time window (hour, day, month, year)."""
+
+    lat: float
+    """WGS84 latitude of the location (always present — only geolocated rows are returned)."""
+
+    lon: float
+    """WGS84 longitude of the location (always present — only geolocated rows are returned)."""
+
+    location_id: str
+    """Unique identifier of the event_location row."""
+
+    location_name: str
+    """Location name as extracted from the document."""
+
+    location_type: str | None = None
+    """Type of location (place, region, etc.)."""
+
+    document_id: str | None = None
+    """ID of the source document."""
+
+    document_filename: str | None = None
+    """Filename of the source document."""
+
+
+class GeoEventsResponse(BaseModel):
+    """Response body for ``GET /geo/events``."""
+
+    total: int
+    """Number of items returned (already capped by the limit parameter)."""
+
+    items: list[GeoEventItem]
+    """List of geolocated event-location pairs."""
+
+
 # Re-export all models for convenience
 __all__ = [
     "APIInfo",
@@ -724,6 +779,8 @@ __all__ = [
     "EventRefDetail",
     "EventV2DetailResponse",
     "EventV2ListItem",
+    "GeoEventItem",
+    "GeoEventsResponse",
 
     "LlmCallLogListItem",
     "LlmCallLogListResponse",
