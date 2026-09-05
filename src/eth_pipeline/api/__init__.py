@@ -13,6 +13,9 @@ from eth_pipeline.api.lifespan import lifespan
 from eth_pipeline.api.models import (  # noqa: F401 — intentional re-export
     APIInfo,
     ChunkTextResponse,
+    ComparisonDocument,
+    ComparisonEvent,
+    ComparisonResponse,
     DocumentCreated,
     DocumentDeleted,
     DocumentInput,
@@ -70,10 +73,12 @@ else:
 # Import routers AFTER app is created to avoid circular imports.
 # Each route module imports `app` from this package, which is now available.
 
+from eth_pipeline.api.routes.comparisons import router as comparisons_router  # noqa: E402
 from eth_pipeline.api.routes.documents import router as documents_router  # noqa: E402
 from eth_pipeline.api.routes.events_v2 import router as events_v2_router  # noqa: E402
 from eth_pipeline.api.routes.providers import router as providers_router  # noqa: E402
 
 app.include_router(documents_router)
 app.include_router(events_v2_router)
+app.include_router(comparisons_router)
 app.include_router(providers_router)

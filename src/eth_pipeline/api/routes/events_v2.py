@@ -26,6 +26,8 @@ async def list_events_v2(
     per_page: int = Query(20, ge=1, le=100),
     search: str | None = Query(None),
     document: str | None = Query(None),
+    source: str | None = Query(None),
+    model: str | None = Query(None),
     sort: str | None = Query("time_start"),
     order: str | None = Query("desc"),
 ) -> EventListV2Response:
@@ -43,9 +45,19 @@ async def list_events_v2(
         where_parts.append(f"ev.document_id = ${len(params) + 1}")
         params.append(document)
 
+    if source:
+        where_parts.append(
+            f"ev.document_id IN (SELECT id FROM document WHERE source_id = ${len(params) + 1})"
+        )
+        params.append(source)
+
+    if model:
+        where_parts.append(f"ev.model = ${len(params) + 1}")
+        params.append(model)
+
     where_clause = " AND ".join(where_parts)
 
-    allowed_sorts = {"time_start", "time_end", "created_at", "title"}
+    allowed_sorts = {"time_start", "time_end", "created_at", "title", "model"}
     sort_col = sort if sort in allowed_sorts else "time_start"
     sort_order = "DESC" if (order or "desc").lower().startswith("desc") else "ASC"
 
@@ -59,11 +71,13 @@ async def list_events_v2(
                 data_sql = (
                     f"SELECT ev.*, "
                     f"d.id AS doc_id, d.filename AS doc_filename, "
+                    f"prov.name AS provider_name, "
                     f"el.name AS location_name, "
                     f"(SELECT COUNT(*) FROM event_participant_v2 ep WHERE ep.event_id = ev.id) AS participant_count, "
                     f"(SELECT COUNT(*) FROM event_ref er WHERE er.event_id = ev.id) AS reference_count "
                     f"FROM event_v2 ev "
                     f"LEFT JOIN document d ON d.id = ev.document_id "
+                    f"LEFT JOIN llm_provider prov ON prov.id = ev.provider_id "
                     f"LEFT JOIN event_location el ON el.event_id = ev.id "
                     f"WHERE {where_clause} "
                     f"ORDER BY ev.{sort_col} {sort_order} "
@@ -101,6 +115,9 @@ async def list_events_v2(
             document_id=str(r["doc_id"]) if r.get("doc_id") else None,
             document_filename=r.get("doc_filename"),
             extraction_confidence=float(r.get("extraction_confidence", 1.0)),
+            provider_id=r.get("provider_id"),
+            provider_name=r.get("provider_name"),
+            model=r.get("model"),
             created_at=r["created_at"].isoformat() if r.get("created_at") else None,
         ))
 
@@ -125,9 +142,11 @@ async def get_event_v2_detail(event_id: str) -> EventV2DetailResponse:
     try:
         async with get_db() as conn:
             event_row = await conn.fetchrow(
-                "SELECT ev.*, d.id AS doc_id, d.filename AS doc_filename "
+                "SELECT ev.*, d.id AS doc_id, d.filename AS doc_filename, "
+                "prov.name AS provider_name "
                 "FROM event_v2 ev "
                 "LEFT JOIN document d ON d.id = ev.document_id "
+                "LEFT JOIN llm_provider prov ON prov.id = ev.provider_id "
                 "WHERE ev.id = $1",
                 event_id,
             )
@@ -140,7 +159,7 @@ async def get_event_v2_detail(event_id: str) -> EventV2DetailResponse:
                 )
 
             locations = await conn.fetch(
-                "SELECT id, name, location_type, geom "
+                "SELECT id, name, location_type, geom, lat, lon "
                 "FROM event_location "
                 "WHERE event_id = $1 "
                 "ORDER BY id",
@@ -184,6 +203,9 @@ async def get_event_v2_detail(event_id: str) -> EventV2DetailResponse:
         time_end=event_row["time_end"].isoformat() if event_row.get("time_end") else None,
         time_precision=event_row.get("time_precision"),
         extraction_confidence=float(event_row.get("extraction_confidence", 1.0)),
+        provider_id=event_row.get("provider_id"),
+        provider_name=event_row.get("provider_name"),
+        model=event_row.get("model"),
         document_id=str(event_row["doc_id"]) if event_row.get("doc_id") else None,
         document_filename=event_row.get("doc_filename"),
         locations=[
@@ -192,6 +214,8 @@ async def get_event_v2_detail(event_id: str) -> EventV2DetailResponse:
                 name=loc["name"],
                 location_type=loc.get("location_type"),
                 geom=loc.get("geom"),
+                lat=float(loc["lat"]) if loc.get("lat") is not None else None,
+                lon=float(loc["lon"]) if loc.get("lon") is not None else None,
             )
             for loc in locations
         ],

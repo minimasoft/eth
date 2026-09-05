@@ -77,14 +77,15 @@ async def root() -> APIInfo:
             "/": "This information",
             "/health": "Liveness check",
             "/documents": "List documents (GET) or submit for processing (POST)",
-            "/documents/upload": "Upload a binary document file (POST, multipart)",
-            "/documents/{document_id}": "Get document status (GET)",
-            "/documents/{document_id}/events": "Clear extraction results (DELETE)",
+            "/documents/upload": "Upload a binary document file (POST, multipart, fan-out via repeated provider_ids)",
+            "/documents/{document_id}": "Get document status (GET) or delete cascade (DELETE)",
             "/documents/{document_id}/logs": "Get processing log entries for a document (GET)",
-            "/entities": "List canonical entities with pagination, search, and type filter (GET)",
-            "/entities/merge": "Merge two canonical entities of the same type (POST)",
-            "/entities/{entity_type}/{entity_id}/split": "Partition references across new canonical entities (POST)",
-            "/references": "List references with pagination, search, and type filter (GET)",
+            "/documents/{document_id}/llm-calls": "Get LLM call log entries for a document (GET)",
+            "/documents/{document_id}/tokens": "Get aggregated token usage for a document (GET)",
+            "/events": "List extracted events with model provenance (GET; filters: search, document, source, model)",
+            "/events/{event_id}": "Get event detail with locations, participants, references (GET)",
+            "/comparisons/{source_id}": "Cross-model comparison of events extracted from one source document (GET)",
+            "/api/providers": "Manage LLM providers (GET/POST/DELETE)",
         },
     )
 
@@ -158,8 +159,8 @@ async def create_document(input: DocumentInput) -> DocumentCreated:
     try:
         async with get_db() as conn:
             await conn.execute(
-                "INSERT INTO document (id, text_content, original_blob, filename, mime_type, status, error_message, provider_id, model) "
-                "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
+                "INSERT INTO document (id, text_content, original_blob, filename, mime_type, status, error_message, provider_id, model, source_id) "
+                "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)",
                 doc_id,
                 input.text,
                 original_blob,
@@ -169,6 +170,7 @@ async def create_document(input: DocumentInput) -> DocumentCreated:
                 None,
                 provider["provider_id"],
                 provider["model"],
+                doc_id,
             )
     except Exception as exc:
         logger.error("Failed to create document in PostgreSQL: %s", exc)
@@ -187,7 +189,7 @@ async def create_document(input: DocumentInput) -> DocumentCreated:
     # ---- Trigger Temporal workflow (best-effort) ----
     await _start_workflow(doc_id)
 
-    return DocumentCreated(document_id=doc_id, status="pending")
+    return DocumentCreated(document_id=doc_id, status="pending", source_id=doc_id)
 
 
 # =======================================================================
@@ -296,6 +298,7 @@ async def upload_document(
         stored_blob_path = None
 
     inserted_ids: list[str] = []
+    source_id = str(uuid.uuid4().hex)
     try:
         async with get_db() as conn:
             for _provider in selected:
@@ -303,8 +306,8 @@ async def upload_document(
                 inserted_ids.append(row_id)
                 await conn.execute(
                     "INSERT INTO document (id, text_content, original_blob, blob_format, blob_path, "
-                    "filename, mime_type, status, error_message, provider_id, model) "
-                    "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)",
+                    "filename, mime_type, status, error_message, provider_id, model, source_id) "
+                    "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)",
                     row_id,
                     None,
                     original_blob,
@@ -316,6 +319,7 @@ async def upload_document(
                     None,
                     _provider["provider_id"],
                     _provider["model"],
+                    source_id,
                 )
     except Exception as exc:
         logger.error("Failed to create document in PostgreSQL: %s", exc)
@@ -353,7 +357,12 @@ async def upload_document(
     for row_id in inserted_ids:
         await _start_workflow(row_id)
 
-    return DocumentUploadCreated(document_id=inserted_ids[0], status="pending")
+    return DocumentUploadCreated(
+        document_id=inserted_ids[0],
+        status="pending",
+        document_ids=inserted_ids,
+        source_id=source_id,
+    )
 
 
 # =======================================================================
@@ -448,6 +457,7 @@ async def get_document(document_id: str) -> DocumentStatus:
         provider_id=row.get("provider_id"),
         provider_name=row.get("provider_name"),
         model=row.get("model"),
+        source_id=row.get("source_id"),
     )
 
 
@@ -899,6 +909,27 @@ async def list_documents(
         except Exception as exc:
             logger.warning("Failed to query batched token data: %s", exc)
 
+    source_ids: list[str] = []
+    for record in rows:
+        src_val = record.get("source_id")
+        if isinstance(src_val, str) and src_val not in source_ids:
+            source_ids.append(src_val)
+
+    source_count_map: dict[str, int] = {}
+    if source_ids:
+        try:
+            async with get_db() as conn:
+                count_rows = await conn.fetch(
+                    "SELECT source_id, COUNT(*) AS n FROM document "
+                    "WHERE source_id = ANY($1::text[]) "
+                    "GROUP BY source_id",
+                    source_ids,
+                )
+                for count_row in count_rows:
+                    source_count_map[str(count_row["source_id"])] = int(count_row["n"])
+        except Exception as exc:
+            logger.warning("Failed to query batched source counts: %s", exc)
+
     items: list[DocumentListItem] = []
     for record in rows:
         doc_id = record.get("id", "")
@@ -960,6 +991,11 @@ async def list_documents(
             provider_id=record.get("provider_id"),
             provider_name=record.get("provider_name"),
             model=record.get("model"),
+            source_id=record.get("source_id"),
+            model_count=(
+                source_count_map.get(record.get("source_id"), 1)
+                if record.get("source_id") else 1
+            ),
         ))
 
     logger.info(

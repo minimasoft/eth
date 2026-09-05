@@ -34,7 +34,7 @@ class TestMigrationLifecycle:
     @pytest.mark.asyncio
     async def test_migration_current(self, db_connection: asyncpg.Connection) -> None:
         version = await db_connection.fetchval("SELECT version_num FROM alembic_version")
-        assert version == "0003", f"Expected alembic_version=0003, got {version}"
+        assert version == "0004", f"Expected alembic_version=0004, got {version}"
 
     @pytest.mark.asyncio
     async def test_fk_on_delete_cascade(self, db_connection: asyncpg.Connection) -> None:
@@ -72,8 +72,8 @@ class TestMigrationLifecycle:
         }
 
         result = subprocess.run(
-            ["uv", "run", "alembic", "downgrade", "-1"],
-            capture_output=True, text=True, timeout=30,
+            ["uv", "run", "alembic", "downgrade", "base"],
+            capture_output=True, text=True, timeout=60,
             env=pg_env,
         )
         assert result.returncode == 0, f"downgrade failed: {result.stderr}"
@@ -88,7 +88,7 @@ class TestMigrationLifecycle:
 
         result = subprocess.run(
             ["uv", "run", "alembic", "upgrade", "head"],
-            capture_output=True, text=True, timeout=30,
+            capture_output=True, text=True, timeout=60,
             env=pg_env,
         )
         assert result.returncode == 0, f"re-upgrade failed: {result.stderr}"
@@ -102,7 +102,7 @@ class TestMigrationLifecycle:
             assert exists is True, f"Table '{table}' missing after re-upgrade"
 
         version = await db_connection.fetchval("SELECT version_num FROM alembic_version")
-        assert version == "0002" or version == "0001", f"Expected alembic_version=0002 after re-upgrade, got {version}"
+        assert version == "0004", f"Expected alembic_version=0004 after re-upgrade, got {version}"
 
     @pytest.mark.asyncio
     async def test_document_provider_columns_and_fk(self, db_connection: asyncpg.Connection) -> None:
@@ -135,3 +135,25 @@ class TestMigrationLifecycle:
         assert "'v6'" in col_default, (
             f"Expected default containing 'v6', got: {col_default}"
         )
+
+    @pytest.mark.asyncio
+    async def test_event_provenance_and_source_columns(
+        self, db_connection: asyncpg.Connection
+    ) -> None:
+        event_cols = await db_connection.fetch(
+            "SELECT column_name FROM information_schema.columns "
+            "WHERE table_name = 'event_v2' AND column_name IN ('model', 'provider_id')"
+        )
+        assert {r["column_name"] for r in event_cols} == {"model", "provider_id"}
+
+        doc_cols = await db_connection.fetch(
+            "SELECT column_name FROM information_schema.columns "
+            "WHERE table_name = 'document' AND column_name = 'source_id'"
+        )
+        assert {r["column_name"] for r in doc_cols} == {"source_id"}
+
+        loc_cols = await db_connection.fetch(
+            "SELECT column_name FROM information_schema.columns "
+            "WHERE table_name = 'event_location' AND column_name IN ('lat', 'lon')"
+        )
+        assert {r["column_name"] for r in loc_cols} == {"lat", "lon"}

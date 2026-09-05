@@ -1098,6 +1098,126 @@
       padding: 48px; color: #64748b;
     }
 
+    /* ---- Model provenance chips ---- */
+
+    .model-chip {
+      display: inline-flex; align-items: center; gap: 6px;
+      font-size: 12px; font-weight: 500; line-height: 1.4;
+      padding: 2px 8px 2px 6px; border-radius: 12px;
+      border: 1px solid; white-space: nowrap; max-width: 280px;
+      vertical-align: middle;
+    }
+    .model-chip .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+    .model-chip .txt { overflow: hidden; text-overflow: ellipsis; }
+
+    .src-chip {
+      display: inline-flex; align-items: center; gap: 3px;
+      font-size: 11px; font-weight: 600; line-height: 1.4;
+      padding: 1px 7px; border-radius: 10px; cursor: pointer;
+      color: #7c3aed; background: #f5f3ff; border: 1px solid #ddd6fe;
+      white-space: nowrap; vertical-align: middle; margin-left: 6px;
+    }
+    .src-chip:hover { background: #ede9fe; }
+
+    /* ---- View toggle (tabla / cronología) ---- */
+
+    .view-toggle {
+      display: inline-flex; border: 1px solid #e2e8f0;
+      border-radius: 8px; overflow: hidden; flex-shrink: 0;
+    }
+    .view-toggle button {
+      font-family: inherit; font-size: 14px; font-weight: 500;
+      color: #64748b; background: #ffffff; border: none;
+      padding: 8px 14px; cursor: pointer;
+    }
+    .view-toggle button + button { border-left: 1px solid #e2e8f0; }
+    .view-toggle button.active { background: #eff6ff; color: #2563eb; font-weight: 600; }
+
+    /* ---- Timeline view ---- */
+
+    .tl-note { font-size: 13px; color: #64748b; margin-bottom: 12px; }
+    .tl-legend { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 16px; }
+    .tl-row { display: flex; align-items: center; margin-bottom: 10px; }
+    .tl-lane-label {
+      width: 240px; flex-shrink: 0; padding-right: 12px;
+      display: flex; align-items: center; justify-content: flex-end; gap: 6px;
+    }
+    .tl-lane-count { font-size: 12px; color: #64748b; font-variant-numeric: tabular-nums; }
+    .tl-lane {
+      position: relative; flex: 1; height: 40px; min-width: 0;
+      background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px;
+    }
+    .tl-dot {
+      position: absolute; top: 50%; width: 14px; height: 14px;
+      margin: -7px 0 0 -7px; border-radius: 50%;
+      border: 2px solid #ffffff; box-shadow: 0 0 0 1px rgba(0,0,0,0.18);
+      cursor: pointer; transition: transform 0.1s;
+    }
+    .tl-dot:hover { transform: scale(1.4); z-index: 2; }
+    .tl-axis {
+      display: flex; justify-content: space-between; margin-left: 240px;
+      font-size: 12px; color: #64748b; padding-top: 2px;
+      font-variant-numeric: tabular-nums;
+    }
+    .tl-undated { margin-top: 20px; }
+    .tl-undated h3 { font-size: 14px; font-weight: 600; color: #1e293b; margin: 0 0 8px 0; }
+    .tl-undated-item {
+      display: inline-flex; align-items: center; gap: 6px;
+      font-size: 13px; color: #334155; background: #f8fafc;
+      border: 1px solid #e2e8f0; border-radius: 6px;
+      padding: 4px 10px; margin: 0 8px 8px 0; cursor: pointer;
+    }
+    .tl-undated-item:hover { background: #f1f5f9; }
+    .tl-undated-item .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+
+    /* ---- Comparison view ---- */
+
+    .cmp-meta {
+      display: flex; gap: 20px; flex-wrap: wrap; align-items: center;
+      margin-bottom: 16px; padding: 16px;
+      background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px;
+    }
+    .cmp-meta-item { display: flex; flex-direction: column; gap: 4px; }
+    .cmp-meta-item .label {
+      font-size: 12px; color: #64748b; text-transform: uppercase;
+      letter-spacing: 0.5px; font-weight: 600;
+    }
+    .cmp-agree-badge {
+      display: inline-block; font-size: 12px; font-weight: 600;
+      padding: 2px 8px; border-radius: 4px; border: 1px solid; white-space: nowrap;
+    }
+    .cmp-agree-all { background: #f0fdf4; border-color: #bbf7d0; color: #166534; }
+    .cmp-agree-some { background: #fffbeb; border-color: #fde68a; color: #b45309; }
+    .cmp-agree-one { background: #fef2f2; border-color: #fecaca; color: #991b1b; }
+    .cmp-table {
+      width: 100%; border-collapse: separate; border-spacing: 0;
+      border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden;
+      font-size: 13px; table-layout: fixed;
+    }
+    .cmp-table th {
+      text-align: left; padding: 10px 12px; font-weight: 600; color: #1e293b;
+      border-bottom: 1px solid #e2e8f0; background: #f8fafc; vertical-align: top;
+    }
+    .cmp-table td {
+      padding: 8px; border-bottom: 1px solid #e2e8f0;
+      vertical-align: top; border-right: 1px solid #f1f5f9;
+    }
+    .cmp-table th:first-child, .cmp-table td:first-child { width: 110px; }
+    .cmp-table tr:last-child td { border-bottom: none; }
+    .cmp-row-agree-all td:first-child { box-shadow: inset 3px 0 0 #16a34a; }
+    .cmp-row-agree-some td:first-child { box-shadow: inset 3px 0 0 #f59e0b; }
+    .cmp-row-agree-one td:first-child { box-shadow: inset 3px 0 0 #dc2626; }
+    .cmp-cell-empty { color: #cbd5e1; text-align: center; padding: 8px 0; }
+    .cmp-event-card {
+      background: #ffffff; border: 1px solid #e2e8f0; border-left-width: 4px;
+      border-radius: 6px; padding: 8px 10px; cursor: pointer; margin-bottom: 6px;
+    }
+    .cmp-event-card:last-child { margin-bottom: 0; }
+    .cmp-event-card:hover { background: #f8fafc; }
+    .cmp-event-title { font-weight: 600; color: #1e293b; margin-bottom: 2px; }
+    .cmp-event-sub { font-size: 12px; color: #64748b; }
+    .cmp-order { color: #64748b; font-size: 12px; font-variant-numeric: tabular-nums; }
+
   </style>
 </head>
 <body>
@@ -1114,6 +1234,7 @@
     <button role="tab" aria-selected="true" aria-controls="tab-upload" id="tab-btn-upload" data-tab="upload">Cargar</button>
     <button role="tab" aria-selected="false" aria-controls="tab-documents" id="tab-btn-documents" data-tab="documents">Documentos</button>
     <button role="tab" aria-selected="false" aria-controls="tab-eventos" id="tab-btn-eventos" data-tab="eventos">Eventos</button>
+    <button role="tab" aria-selected="false" aria-controls="tab-compare" id="tab-btn-compare" data-tab="compare" style="display:none">Comparación</button>
     <button role="tab" aria-selected="false" aria-controls="tab-logs" id="tab-btn-logs" data-tab="logs" style="display:none">Registros</button>
   </nav>
 
@@ -1203,6 +1324,10 @@
           <select id="eventos-doc-filter" class="status-filter" aria-label="Filtrar por documento">
             <option value="">Todos los documentos</option>
           </select>
+          <div class="view-toggle" id="eventos-view-toggle" role="group" aria-label="Modo de vista">
+            <button type="button" data-mode="table" class="active">Tabla</button>
+            <button type="button" data-mode="timeline">Cronología</button>
+          </div>
           <button class="btn-icon btn-refresh" id="eventos-refresh-btn" aria-label="Actualizar eventos" title="Actualizar eventos">
             <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
           </button>
@@ -1214,6 +1339,7 @@
               <tr>
                 <th class="col-id">ID</th>
                 <th class="col-time">Tiempo</th>
+                <th class="col-model" title="Proveedor / modelo que extrajo el evento">Modelo</th>
                 <th>Título</th>
                 <th class="col-location">Lugar</th>
                 <th class="col-participants">Particip.</th>
@@ -1224,6 +1350,7 @@
             <tbody id="eventos-tbody"></tbody>
           </table>
         </div>
+        <div id="eventos-timeline" style="display:none"></div>
         <div id="eventos-empty" class="placeholder-card" style="display:none">
           <h2>No se encontraron eventos</h2>
           <p>Los eventos aparecerán aquí después de procesar los documentos</p>
@@ -1247,6 +1374,10 @@
           <div class="event-detail-meta-item">
             <span class="label">Documento</span>
             <span class="value" id="event-detail-document"></span>
+          </div>
+          <div class="event-detail-meta-item">
+            <span class="label">Modelo</span>
+            <span class="value" id="event-detail-model"></span>
           </div>
           <div class="event-detail-meta-item">
             <span class="label">Confianza</span>
@@ -1320,6 +1451,26 @@
           </div>
         </div>
       </div>
+    </section>
+
+    <section id="tab-compare" role="tabpanel" aria-labelledby="tab-btn-compare" class="tab-content">
+      <div class="documents-header">
+        <h2>Comparación entre Modelos</h2>
+      </div>
+      <div class="documents-toolbar">
+        <button class="btn-outline" id="cmp-back-btn" type="button">&larr; Volver</button>
+        <div class="search-wrapper" style="flex:1"></div>
+        <button class="btn-icon btn-refresh" id="cmp-refresh-btn" aria-label="Actualizar comparación" title="Actualizar comparación">
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+        </button>
+      </div>
+      <div id="cmp-meta" class="cmp-meta" style="display:none"></div>
+      <div id="cmp-loading" class="documents-loading" style="display:none">Cargando comparación...</div>
+      <div id="cmp-empty" class="placeholder-card" style="display:none">
+        <h2>Sin datos de comparación</h2>
+        <p></p>
+      </div>
+      <div id="cmp-table-container" class="table-container" style="display:none"></div>
     </section>
 
     <section id="tab-logs" role="tabpanel" aria-labelledby="tab-btn-logs" class="tab-content">
@@ -1436,6 +1587,7 @@
       upload: document.getElementById('tab-upload'),
       documents: document.getElementById('tab-documents'),
       eventos: document.getElementById('tab-eventos'),
+      compare: document.getElementById('tab-compare'),
       logs: document.getElementById('tab-logs'),
     };
 
@@ -1715,6 +1867,43 @@
       return out.length > 40 ? out.slice(0, 39) + '…' : out;
     }
 
+    var MODEL_PALETTE = [
+      { c: '#2563eb', bg: '#eff6ff', bd: '#bfdbfe' },
+      { c: '#16a34a', bg: '#f0fdf4', bd: '#bbf7d0' },
+      { c: '#9333ea', bg: '#faf5ff', bd: '#e9d5ff' },
+      { c: '#ea580c', bg: '#fff7ed', bd: '#fed7aa' },
+      { c: '#0891b2', bg: '#ecfeff', bd: '#a5f3fc' },
+      { c: '#db2777', bg: '#fdf2f8', bd: '#fbcfe8' },
+      { c: '#ca8a04', bg: '#fefce8', bd: '#fde047' },
+      { c: '#4f46e5', bg: '#eef2ff', bd: '#c7d2fe' }
+    ];
+
+    function modelKey(item) {
+      if (!item) return '';
+      var provider = item.provider_name ? String(item.provider_name) : '';
+      var model = item.model ? String(item.model) : '';
+      var parts = [];
+      if (provider) parts.push(provider);
+      if (model && model !== provider) parts.push(model);
+      return parts.join(' \u00b7 ');
+    }
+
+    function modelPalette(key) {
+      var h = 0;
+      for (var i = 0; i < key.length; i++) h = ((h << 5) - h + key.charCodeAt(i)) >>> 0;
+      return MODEL_PALETTE[h % MODEL_PALETTE.length];
+    }
+
+    function modelChip(item) {
+      var key = modelKey(item);
+      if (!key) return '<span style="color:#94a3b8">\u2014</span>';
+      var p = modelPalette(key);
+      return '<span class="model-chip" style="color:' + p.c + ';background:' + p.bg +
+        ';border-color:' + p.bd + '" title="' + escapeHtml(key) + '">' +
+        '<span class="dot" style="background:' + p.c + '"></span>' +
+        '<span class="txt">' + escapeHtml(key) + '</span></span>';
+    }
+
     function entityTypeLabel(type) {
       if (!type) return '';
       var translated = {
@@ -1834,10 +2023,18 @@
           '</td>' +
           '<td class="col-count">' + (item.event_count ?? '-') + '</td>' +
           '<td class="col-count">' + (item.text_word_count ?? '-') + '</td>' +
-          '<td class="col-model">' + formatProviderModel(item) + '</td>' +
+          '<td class="col-model">' + escapeHtml(formatProviderModel(item)) +
+          (item.model_count > 1 && item.source_id
+            ? '<span class="src-chip" data-source-id="' + escapeHtml(item.source_id) + '" title="El mismo documento analizado por ' + item.model_count + ' modelos \u2014 clic para comparar">&#8644; ' + item.model_count + '</span>'
+            : '') + '</td>' +
           '<td class="col-tokens" title="' + formatTokenTitle(item) + '">' + formatTokens(item) + '</td>' +
           '<td class="col-cost"' + (item.total_cost != null ? '' : ' style="color:#94a3b8"') + '>' + formatCost(item) + '</td>' +
           '<td class="col-actions">' +
+          (item.model_count > 1 && item.source_id
+            ? '<button class="btn-icon btn-compare" data-source-id="' + escapeHtml(item.source_id) + '" aria-label="Comparar modelos" title="Comparar eventos entre modelos sobre el mismo documento">' +
+            '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>' +
+            '</button>'
+            : '') +
           '<button class="btn-icon btn-logs" data-document-id="' + escapeHtml(item.document_id) + '" data-filename="' + escapeHtml(item.filename || '') + '" aria-label="Ver registros" title="Ver registros de procesamiento">' +
           '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>' +
           '</button>' +
@@ -2402,6 +2599,14 @@
       openLogEntry(documentId, filename);
     });
 
+    // Wire up cross-model comparison buttons (event delegation on doc tbody)
+    docTbody.addEventListener('click', function(e) {
+      var btn = e.target.closest('.btn-compare, .src-chip');
+      if (!btn) return;
+      var sourceId = btn.getAttribute('data-source-id');
+      if (sourceId) openComparison(sourceId, 'documents');
+    });
+
     // Stop polling when switching away from logs — override switchTab to clean up
     var _origSwitchTab = switchTab;
     switchTab = function(tabName) {
@@ -2465,7 +2670,7 @@
 
       const params = new URLSearchParams();
       params.set('page', String(eventosCurrentPage));
-      params.set('per_page', '20');
+      params.set('per_page', eventosViewMode === 'timeline' ? '100' : '20');
       params.set('sort', 'time_start');
       params.set('order', 'asc');
       if (eventosSearchTerm) params.set('search', eventosSearchTerm);
@@ -2482,8 +2687,9 @@
           throw new Error(detail);
         }
         const data = await res.json();
-        renderEventos(data);
         eventosData = data;
+        if (eventosViewMode === 'timeline') renderEventosTimeline(data);
+        else renderEventos(data);
       } catch (err) {
         console.error('fetchEventos error:', err);
         loader.done();
@@ -2500,6 +2706,8 @@
     function renderEventos(data) {
       var loader = deferredLoaders['eventos'];
       if (loader) { clearTimeout(loader); hideEventosLoading(); }
+
+      document.getElementById('eventos-timeline').style.display = 'none';
 
       if (!data || !data.items || data.items.length === 0) {
         eventosTableContainer.style.display = 'none';
@@ -2532,6 +2740,7 @@
         tr.innerHTML =
           '<td class="col-id">' + escapeHtml((item.event_id || '').slice(0, 8)) + '</td>' +
           '<td class="col-time"><span class="event-time">' + escapeHtml(formatEventDate(item.time_start)) + '</span></td>' +
+          '<td class="col-model">' + modelChip(item) + '</td>' +
           '<td>' + escapeHtml(item.title || '') + '</td>' +
           '<td class="col-location">' + escapeHtml(item.location_name || '—') + '</td>' +
           '<td class="col-participants">' + escapeHtml(String(item.participant_count || 0)) + '</td>' +
@@ -2546,6 +2755,108 @@
       eventosPrevBtn.disabled = page <= 1;
       eventosNextBtn.disabled = page >= pages;
     }
+
+    // ===== Eventos timeline view =====
+
+    var eventosViewMode = 'table';
+
+    function renderEventosTimeline(data) {
+      var loader = deferredLoaders['eventos'];
+      if (loader) { clearTimeout(loader); hideEventosLoading(); }
+
+      var tlEl = document.getElementById('eventos-timeline');
+      eventosTableContainer.style.display = 'none';
+      eventosPagination.style.display = 'none';
+      eventosEmpty.style.display = 'none';
+
+      var items = (data && data.items) || [];
+      if (!items.length) {
+        tlEl.innerHTML = '<div class="placeholder-card"><h2>No se encontraron eventos</h2>' +
+          '<p>' + (eventosSearchTerm || eventosDocumentFilter
+            ? 'Ningún evento coincide con los criterios de búsqueda'
+            : 'Los eventos aparecerán aquí después de procesar los documentos') + '</p></div>';
+        tlEl.style.display = 'block';
+        return;
+      }
+
+      var lanes = {};
+      var laneOrder = [];
+      var dated = [];
+      var undated = [];
+      items.forEach(function(item) {
+        var key = modelKey(item) || '(sin modelo)';
+        if (!lanes[key]) { lanes[key] = []; laneOrder.push(key); }
+        lanes[key].push(item);
+        var t = item.time_start ? Date.parse(item.time_start) : NaN;
+        if (isNaN(t)) undated.push(item); else dated.push({ item: item, t: t });
+      });
+
+      var min = Infinity, max = -Infinity;
+      dated.forEach(function(d) {
+        if (d.t < min) min = d.t;
+        if (d.t > max) max = d.t;
+      });
+
+      var html = '<div class="tl-note">Una línea por modelo. Cada punto es un evento posicionado por su fecha de inicio ' +
+        '(página actual: ' + items.length + ' de ' + (data.total || items.length) + ').</div>';
+
+      laneOrder.forEach(function(k) {
+        var laneItems = lanes[k];
+        var rep = laneItems[0];
+        var pal = modelPalette(modelKey(rep));
+        html += '<div class="tl-row"><div class="tl-lane-label">' + modelChip(rep) +
+          '<span class="tl-lane-count">' + laneItems.length + '</span></div><div class="tl-lane">';
+        laneItems.forEach(function(item) {
+          var t = item.time_start ? Date.parse(item.time_start) : NaN;
+          if (isNaN(t)) return;
+          var pct = max > min ? ((t - min) / (max - min)) * 100 : 50;
+          if (pct < 1.5) pct = 1.5;
+          if (pct > 98.5) pct = 98.5;
+          var tip = formatEventDate(item.time_start) + ' — ' + (item.title || '(sin título)');
+          html += '<span class="tl-dot" data-event-id="' + escapeHtml(item.event_id) +
+            '" style="left:' + pct.toFixed(2) + '%;background:' + pal.c + '" title="' + escapeHtml(tip) + '"></span>';
+        });
+        html += '</div></div>';
+      });
+
+      if (dated.length) {
+        html += '<div class="tl-axis"><span>' + escapeHtml(formatEventDate(new Date(min).toISOString())) +
+          '</span><span>' + escapeHtml(formatEventDate(new Date(max).toISOString())) + '</span></div>';
+      }
+
+      if (undated.length) {
+        html += '<div class="tl-undated"><h3>Sin fecha (' + undated.length + ')</h3>';
+        undated.forEach(function(item) {
+          var pal = modelPalette(modelKey(item));
+          html += '<span class="tl-undated-item" data-event-id="' + escapeHtml(item.event_id) + '">' +
+            '<span class="dot" style="background:' + pal.c + '"></span>' +
+            escapeHtml(truncateText(item.title || '(sin título)', 60)) + '</span>';
+        });
+        html += '</div>';
+      }
+
+      tlEl.innerHTML = html;
+      tlEl.style.display = 'block';
+    }
+
+    document.getElementById('eventos-timeline').addEventListener('click', function(e) {
+      var el = e.target.closest('[data-event-id]');
+      if (!el) return;
+      showEventDetail(el.getAttribute('data-event-id'));
+    });
+
+    document.getElementById('eventos-view-toggle').addEventListener('click', function(e) {
+      var btn = e.target.closest('button[data-mode]');
+      if (!btn) return;
+      var mode = btn.getAttribute('data-mode');
+      if (mode === eventosViewMode) return;
+      eventosViewMode = mode;
+      this.querySelectorAll('button[data-mode]').forEach(function(b) {
+        b.classList.toggle('active', b === btn);
+      });
+      eventosCurrentPage = 1;
+      fetchEventos();
+    });
 
     // Search with debounce
     eventosSearch.addEventListener('input', function() {
@@ -2581,7 +2892,10 @@
           var opt = document.createElement('option');
           opt.value = doc.document_id;
           var shortId = (doc.document_id || '').slice(0, 8);
-          opt.textContent = shortId + ' — ' + (doc.filename || '(sin nombre)');
+          var pm = doc.provider_name ? String(doc.provider_name) : '';
+          if (doc.model && doc.model !== pm) pm = (pm ? pm + ' · ' : '') + doc.model;
+          opt.textContent = shortId + ' — ' + (doc.filename || '(sin nombre)') +
+            (pm ? ' (' + pm + ')' : '');
           select.appendChild(opt);
         });
         select.value = currentVal;
@@ -2624,6 +2938,7 @@
     const eventDetailTitle = document.getElementById('event-detail-title');
     const eventDetailTime = document.getElementById('event-detail-time');
     const eventDetailDocument = document.getElementById('event-detail-document');
+    const eventDetailModel = document.getElementById('event-detail-model');
     const eventDetailConfidence = document.getElementById('event-detail-confidence');
     const eventDetailId = document.getElementById('event-detail-id');
     const eventDetailDescription = document.getElementById('event-detail-description');
@@ -2677,6 +2992,7 @@
       eventDetailTime.textContent = timeStr || '—';
 
       eventDetailDocument.textContent = data.document_filename || '—';
+      eventDetailModel.innerHTML = modelChip(data);
       eventDetailConfidence.textContent = data.extraction_confidence != null
         ? Math.round(data.extraction_confidence * 100) + '%'
         : '—';
@@ -2757,6 +3073,230 @@
     }
 
     eventDetailBackBtn.addEventListener('click', hideEventDetail);
+
+    // ===== Cross-model comparison view =====
+
+    var cmpSourceId = null;
+    var cmpReturnTab = 'documents';
+    var cmpData = null;
+
+    function openComparison(sourceId, fromTab) {
+      if (!sourceId) return;
+      cmpSourceId = sourceId;
+      cmpReturnTab = fromTab || 'documents';
+      var btn = document.getElementById('tab-btn-compare');
+      if (btn) btn.style.display = '';
+      switchTab('compare');
+      fetchComparison();
+    }
+
+    async function fetchComparison() {
+      if (!cmpSourceId) return;
+      var loading = document.getElementById('cmp-loading');
+      var emptyEl = document.getElementById('cmp-empty');
+      var tableC = document.getElementById('cmp-table-container');
+      var metaEl = document.getElementById('cmp-meta');
+      loading.style.display = 'flex';
+      emptyEl.style.display = 'none';
+      tableC.style.display = 'none';
+      metaEl.style.display = 'none';
+
+      try {
+        var res = await fetch('/comparisons/' + encodeURIComponent(cmpSourceId));
+        if (!res.ok) {
+          var detail = 'Error al cargar la comparación';
+          try {
+            var errData = await res.json();
+            if (errData && errData.detail) detail = errData.detail;
+          } catch (_pe) { /* ignore parse error */ }
+          throw new Error(detail);
+        }
+        var data = await res.json();
+        cmpData = data;
+        renderComparison(data);
+      } catch (err) {
+        console.error('fetchComparison error:', err);
+        loading.style.display = 'none';
+        emptyEl.style.display = 'block';
+        emptyEl.querySelector('p').textContent = 'Error: ' + err.message;
+        showBanner('Error al cargar la comparación: ' + err.message, 'error', false);
+      }
+    }
+
+    function cmpSortKey(ev) {
+      var chunk = ev.chunk_index == null ? 999999 : ev.chunk_index;
+      var span = ev.span_start == null ? 999999999 : ev.span_start;
+      return String(chunk).padStart(6, '0') + '|' +
+        String(span).padStart(10, '0') + '|' + (ev.time_start || '9999') + '|' + (ev.event_id || '');
+    }
+
+    function cmpSpanOverlap(a, b) {
+      if (a.chunk_index == null || b.chunk_index == null) return 0;
+      if (a.chunk_index !== b.chunk_index) return 0;
+      if (a.span_start == null || b.span_start == null) return 0;
+      if (a.span_end == null || b.span_end == null) return 0;
+      var ov = Math.min(a.span_end, b.span_end) - Math.max(a.span_start, b.span_start);
+      if (ov <= 0) return 0;
+      var la = Math.max(1, a.span_end - a.span_start);
+      var lb = Math.max(1, b.span_end - b.span_start);
+      return ov / Math.min(la, lb);
+    }
+
+    function clusterComparisonEvents(events) {
+      var n = events.length;
+      var parent = [];
+      var i, j;
+      for (i = 0; i < n; i++) parent.push(i);
+      function find(x) {
+        while (parent[x] !== x) { parent[x] = parent[parent[x]]; x = parent[x]; }
+        return x;
+      }
+      for (i = 0; i < n; i++) {
+        for (j = i + 1; j < n; j++) {
+          if (events[i].document_id === events[j].document_id) continue;
+          if (cmpSpanOverlap(events[i], events[j]) >= 0.5) {
+            var ri = find(i), rj = find(j);
+            if (ri !== rj) parent[rj] = ri;
+          }
+        }
+      }
+      var groups = {};
+      for (i = 0; i < n; i++) {
+        var r = find(i);
+        if (!groups[r]) groups[r] = [];
+        groups[r].push(events[i]);
+      }
+      var clusters = Object.keys(groups).map(function(k) { return groups[k]; });
+      clusters.sort(function(a, b) {
+        var ka = cmpSortKey(a[0]), kb = cmpSortKey(b[0]);
+        return ka < kb ? -1 : (ka > kb ? 1 : 0);
+      });
+      return clusters;
+    }
+
+    function renderComparison(data) {
+      var loading = document.getElementById('cmp-loading');
+      var emptyEl = document.getElementById('cmp-empty');
+      var tableC = document.getElementById('cmp-table-container');
+      var metaEl = document.getElementById('cmp-meta');
+      loading.style.display = 'none';
+
+      var docs = (data && data.documents) || [];
+      var events = (data && data.events) || [];
+
+      if (!docs.length) {
+        metaEl.style.display = 'none';
+        tableC.style.display = 'none';
+        emptyEl.style.display = 'block';
+        emptyEl.querySelector('p').textContent = 'No hay documentos para esta fuente';
+        return;
+      }
+
+      var allCount = docs.length;
+      var clusters = clusterComparisonEvents(events);
+      var agreeAll = 0, agreeSome = 0, uniqueOnly = 0;
+      clusters.forEach(function(c) {
+        var seen = {};
+        c.forEach(function(ev) { seen[ev.document_id] = true; });
+        var k = Object.keys(seen).length;
+        if (k === allCount) agreeAll++;
+        else if (k > 1) agreeSome++;
+        else uniqueOnly++;
+      });
+
+      var metaHtml =
+        '<div class="cmp-meta-item"><span class="label">Documento</span><span>' +
+          escapeHtml(data.filename || '—') + '</span></div>' +
+        '<div class="cmp-meta-item"><span class="label">Fuente</span><span style="font-family:monospace;font-size:13px">' +
+          escapeHtml((data.source_id || '').slice(0, 8)) + '</span></div>';
+      docs.forEach(function(d) {
+        metaHtml += '<div class="cmp-meta-item"><span class="label">Modelo</span>' +
+          '<span>' + modelChip(d) + ' <span class="' + statusClass(d.status) + '">' +
+          escapeHtml(statusLabel(d.status)) + '</span></span>' +
+          '<span style="font-size:12px;color:#64748b">' + d.event_count + ' eventos</span></div>';
+      });
+      metaHtml += '<div class="cmp-meta-item"><span class="label">Acuerdos</span><span style="display:flex;gap:6px;flex-wrap:wrap">' +
+        '<span class="cmp-agree-badge cmp-agree-all" title="Eventos encontrados por todos los modelos">' + agreeAll + ' coinciden</span>' +
+        (agreeSome ? '<span class="cmp-agree-badge cmp-agree-some" title="Eventos encontrados por algunos modelos">' + agreeSome + ' parcial</span>' : '') +
+        '<span class="cmp-agree-badge cmp-agree-one" title="Eventos encontrados por un solo modelo">' + uniqueOnly + ' \u00fanico</span>' +
+        '</span></div>';
+      metaEl.innerHTML = metaHtml;
+      metaEl.style.display = 'flex';
+
+      if (!events.length) {
+        tableC.style.display = 'none';
+        emptyEl.style.display = 'block';
+        emptyEl.querySelector('h2').textContent = 'Sin eventos aún';
+        emptyEl.querySelector('p').textContent = 'Ningún modelo ha producido eventos para este documento';
+        return;
+      }
+      emptyEl.style.display = 'none';
+
+      var html = '<table class="cmp-table"><thead><tr><th>Orden</th>';
+      docs.forEach(function(d) {
+        html += '<th>' + modelChip(d) + '<div class="cmp-event-sub">' + d.event_count + ' eventos</div></th>';
+      });
+      html += '</tr></thead><tbody>';
+
+      clusters.forEach(function(cluster, idx) {
+        var byDoc = {};
+        cluster.forEach(function(ev) {
+          if (!byDoc[ev.document_id]) byDoc[ev.document_id] = [];
+          byDoc[ev.document_id].push(ev);
+        });
+        var coverage = Object.keys(byDoc).length;
+        var rowCls, badgeCls;
+        if (coverage === allCount) { rowCls = 'cmp-row-agree-all'; badgeCls = 'cmp-agree-all'; }
+        else if (coverage > 1) { rowCls = 'cmp-row-agree-some'; badgeCls = 'cmp-agree-some'; }
+        else { rowCls = 'cmp-row-agree-one'; badgeCls = 'cmp-agree-one'; }
+
+        html += '<tr class="' + rowCls + '"><td><div class="cmp-order">#' + (idx + 1) + '</div>' +
+          '<span class="cmp-agree-badge ' + badgeCls + '">' + coverage + '/' + allCount + '</span></td>';
+        docs.forEach(function(d) {
+          var cellEvents = byDoc[d.document_id];
+          if (!cellEvents || !cellEvents.length) {
+            html += '<td><div class="cmp-cell-empty">—</div></td>';
+            return;
+          }
+          var pal = modelPalette(modelKey(d));
+          html += '<td>';
+          cellEvents.forEach(function(ev) {
+            var sub = [];
+            if (ev.time_start) sub.push(formatEventDate(ev.time_start));
+            if (ev.location_name) sub.push(ev.location_name);
+            if (ev.chunk_index != null) sub.push('parte ' + ev.chunk_index);
+            html += '<div class="cmp-event-card" data-event-id="' + escapeHtml(ev.event_id) +
+              '" style="border-left-color:' + pal.c + '">' +
+              '<div class="cmp-event-title">' + escapeHtml(truncateText(ev.title || '(sin título)', 90)) + '</div>' +
+              (sub.length ? '<div class="cmp-event-sub">' + escapeHtml(sub.join(' · ')) + '</div>' : '') +
+              '</div>';
+          });
+          html += '</td>';
+        });
+        html += '</tr>';
+      });
+      html += '</tbody></table>';
+      tableC.innerHTML = html;
+      tableC.style.display = '';
+    }
+
+    document.getElementById('cmp-table-container').addEventListener('click', function(e) {
+      var card = e.target.closest('.cmp-event-card');
+      if (!card) return;
+      switchTab('eventos');
+      showEventDetail(card.getAttribute('data-event-id'));
+    });
+
+    document.getElementById('cmp-back-btn').addEventListener('click', function() {
+      var btn = document.getElementById('tab-btn-compare');
+      if (btn) btn.style.display = 'none';
+      cmpSourceId = null;
+      cmpData = null;
+      switchTab(cmpReturnTab);
+      if (cmpReturnTab === 'documents') fetchDocuments();
+    });
+
+    document.getElementById('cmp-refresh-btn').addEventListener('click', fetchComparison);
 
     // ===== Document viewer =====
 

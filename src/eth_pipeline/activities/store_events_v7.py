@@ -90,6 +90,14 @@ async def store_events_v7_activity(
     try:
         async with get_db(**params) as conn:
             async with conn.transaction():
+                doc_row = await conn.fetchrow(
+                    "SELECT provider_id, model FROM document WHERE id = $1",
+                    document_id,
+                )
+                doc = dict(doc_row) if doc_row else {}
+                event_provider_id = doc.get("provider_id")
+                event_model = doc.get("model")
+
                 await conn.execute(
                     "DELETE FROM event_v2 WHERE id IN ("
                     "SELECT event_id FROM event_document "
@@ -113,8 +121,8 @@ async def store_events_v7_activity(
                         "INSERT INTO event_v2 "
                         "(id, document_id, title, description, "
                         "time_start, time_end, time_precision, "
-                        "extraction_confidence) "
-                        "VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+                        "extraction_confidence, provider_id, model) "
+                        "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)",
                         event_id,
                         document_id,
                         ev.get("title", ""),
@@ -123,6 +131,8 @@ async def store_events_v7_activity(
                         parsed_end,
                         ev.get("time_precision"),
                         1.0,
+                        event_provider_id,
+                        event_model,
                     )
 
                     loc = ev.get("location")

@@ -365,3 +365,49 @@ class TestStoreEventsV7:
                     doc_id,
                 )
                 await db_connection.execute("DELETE FROM document WHERE id = $1", doc_id)
+
+    @pytest.mark.asyncio
+    async def test_model_provenance_stamped_on_events(
+        self, db_connection: asyncpg.Connection, _clean_pool: None
+    ) -> None:
+        """Events store the provider/model of the document row that produced them."""
+        from eth_pipeline.activities.store_events_v7 import store_events_v7_activity
+
+        doc_id = uuid.uuid4().hex
+        prov_id = "prov-" + uuid.uuid4().hex[:8]
+        with patch("eth_pipeline.activities.store_events_v7.ProcessingLogger") as mock_logger:
+            mock_logger.return_value.log = AsyncMock()
+            try:
+                await db_connection.execute(
+                    "INSERT INTO llm_provider (id, name, model, base_url) "
+                    "VALUES ($1, $2, 'model-omega', 'http://example.invalid/v1')",
+                    prov_id, prov_id,
+                )
+                await db_connection.execute(
+                    "INSERT INTO document (id, mime_type, status, provider_id, model, source_id) "
+                    "VALUES ($1, 'text/plain', 'pending', $2, 'model-omega', 'src-0001')",
+                    doc_id, prov_id,
+                )
+
+                events = [
+                    {"title": "Prov A", "description": "a", "references": []},
+                    {"title": "Prov B", "description": "b", "references": []},
+                ]
+                result = await store_events_v7_activity(doc_id, 0, events)
+                assert result["events_stored"] == 2
+
+                rows = await db_connection.fetch(
+                    "SELECT model, provider_id FROM event_v2 WHERE document_id = $1",
+                    doc_id,
+                )
+                assert len(rows) == 2
+                for row in rows:
+                    assert row["model"] == "model-omega"
+                    assert row["provider_id"] == prov_id
+            finally:
+                await db_connection.execute(
+                    "DELETE FROM event_v2 WHERE id IN (SELECT event_id FROM event_document WHERE document_id = $1)",
+                    doc_id,
+                )
+                await db_connection.execute("DELETE FROM document WHERE id = $1", doc_id)
+                await db_connection.execute("DELETE FROM llm_provider WHERE id = $1", prov_id)

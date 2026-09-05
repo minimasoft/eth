@@ -30,6 +30,8 @@ class EventV2(Base):
     time_end = Column(DateTime(timezone=True), nullable=True)
     time_precision = Column(String, nullable=True)
     extraction_confidence = Column(Float, default=1.0)
+    provider_id = Column(String, nullable=True)
+    model = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now())
 
@@ -47,6 +49,8 @@ class EventLocation(Base):
     name = Column(String, nullable=False)
     location_type = Column(String, nullable=True)
     geom = Column(String, nullable=True)
+    lat = Column(Float, nullable=True)
+    lon = Column(Float, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     event = relationship("EventV2", back_populates="locations")

@@ -31,15 +31,24 @@ class DocumentCreated(BaseModel):
     status: str = "pending"
     """Initial lifecycle status of the document."""
 
+    source_id: str | None = None
+    """Source group this document belongs to (single-document uploads own theirs)."""
+
 
 class DocumentUploadCreated(BaseModel):
     """Response body for a successful ``POST /documents/upload`` (HTTP 201)."""
 
     document_id: str
-    """Unique identifier for the created document."""
+    """Unique identifier of the first created document row."""
 
     status: str = "pending"
-    """Initial lifecycle status of the document."""
+    """Initial lifecycle status of the document rows."""
+
+    document_ids: list[str] = []
+    """All document rows created by the provider fan-out."""
+
+    source_id: str | None = None
+    """Shared source group id linking every fan-out sibling row."""
 
 
 class DocumentStatus(BaseModel):
@@ -86,6 +95,9 @@ class DocumentStatus(BaseModel):
 
     model: str | None = None
     """Model identifier used to process this document."""
+
+    source_id: str | None = None
+    """Source group shared by fan-out siblings of the same upload."""
 
 
 class DocumentListItem(BaseModel):
@@ -148,6 +160,12 @@ class DocumentListItem(BaseModel):
 
     model: str | None = None
     """Model identifier used to process this document."""
+
+    source_id: str | None = None
+    """Source group shared by fan-out siblings of the same upload."""
+
+    model_count: int = 1
+    """Number of document rows (models) sharing this source group."""
 
 
 class DocumentListResponse(BaseModel):
@@ -262,6 +280,15 @@ class EventV2ListItem(BaseModel):
     extraction_confidence: float = 1.0
     """LLM extraction confidence score."""
 
+    provider_id: str | None = None
+    """ID of the llm_provider that extracted this event."""
+
+    provider_name: str | None = None
+    """Display name of the provider that extracted this event."""
+
+    model: str | None = None
+    """Model identifier that extracted this event."""
+
     created_at: str | None = None
     """ISO-8601 timestamp of event creation."""
 
@@ -299,6 +326,12 @@ class EventLocationDetail(BaseModel):
 
     geom: str | None = None
     """EWKT geometry string for PostGIS display."""
+
+    lat: float | None = None
+    """WGS84 latitude anchor for the map view (set by geocoding)."""
+
+    lon: float | None = None
+    """WGS84 longitude anchor for the map view (set by geocoding)."""
 
 
 class EventParticipantDetail(BaseModel):
@@ -362,6 +395,15 @@ class EventV2DetailResponse(BaseModel):
 
     extraction_confidence: float = 1.0
     """LLM extraction confidence score."""
+
+    provider_id: str | None = None
+    """ID of the llm_provider that extracted this event."""
+
+    provider_name: str | None = None
+    """Display name of the provider that extracted this event."""
+
+    model: str | None = None
+    """Model identifier that extracted this event."""
 
     document_id: str | None = None
     """ID of the source document."""
@@ -569,9 +611,104 @@ class ProviderTestResult(BaseModel):
     provider_id: str = ""
 
 
+# =======================================================================
+# Cross-model comparison models
+# =======================================================================
+
+
+class ComparisonDocument(BaseModel):
+    """A document row participating in a cross-model comparison."""
+
+    document_id: str
+    """Unique identifier of the document row."""
+
+    filename: str
+    """Original filename of the document."""
+
+    status: str
+    """Processing status of the document row."""
+
+    provider_id: str | None = None
+    """ID of the provider assigned to this row."""
+
+    provider_name: str | None = None
+    """Display name of the provider assigned to this row."""
+
+    model: str | None = None
+    """Model assigned to this row."""
+
+    event_count: int = 0
+    """Number of events extracted by this row's model."""
+
+
+class ComparisonEvent(BaseModel):
+    """An event entry in a cross-model comparison, with source footprint."""
+
+    event_id: str
+    """Unique identifier of the event."""
+
+    document_id: str
+    """Document row (model run) this event came from."""
+
+    model: str | None = None
+    """Model that extracted this event."""
+
+    provider_name: str | None = None
+    """Display name of the provider that extracted this event."""
+
+    title: str
+    """Event title."""
+
+    description: str = ""
+    """Event description."""
+
+    time_start: str | None = None
+    """Earliest temporal bound as ISO-8601 datetime."""
+
+    time_end: str | None = None
+    """Latest temporal bound as ISO-8601 datetime."""
+
+    location_name: str | None = None
+    """Primary location name."""
+
+    participant_count: int = 0
+    """Number of participants."""
+
+    reference_count: int = 0
+    """Number of verbatim references."""
+
+    chunk_index: int | None = None
+    """Primary source chunk this event was extracted from."""
+
+    span_start: int | None = None
+    """Document-absolute start of the event's reference footprint."""
+
+    span_end: int | None = None
+    """Document-absolute end of the event's reference footprint."""
+
+
+class ComparisonResponse(BaseModel):
+    """Response body for ``GET /comparisons/{source_id}``."""
+
+    source_id: str
+    """The compared source group."""
+
+    filename: str | None = None
+    """Filename of the underlying uploaded document."""
+
+    documents: list[ComparisonDocument]
+    """One entry per model run (document row) of this source."""
+
+    events: list[ComparisonEvent]
+    """All events across every model run of this source."""
+
+
 # Re-export all models for convenience
 __all__ = [
     "APIInfo",
+    "ComparisonDocument",
+    "ComparisonEvent",
+    "ComparisonResponse",
     "DocumentCreated",
     "DocumentDeleted",
     "DocumentInput",
