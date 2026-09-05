@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-06-08)
 Phase: 38
 Plan: Not started
 Status: Executing Phase 38
-Last activity: 2026-09-05 - Completed quick task 260905-jsy: Reduce chunk sizing to ~50% with configurable CHUNK_SIZE_TARGET and call-site audit
+Last activity: 2026-09-05 - Completed quick task 260905-sk4: Instruct-mode toggle for LLM extraction (migration 0005, '[I]' tracking suffix, UI Modo select)
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -109,6 +109,7 @@ None yet.
 | 260905-55d | Implement OpenStreetMap event map view: GET /geo/events bbox geo-query endpoint, Nominatim geocoder with DB-as-cache backfill CLI, Mapa tab with Leaflet OSM tiles (additive only) | 2026-09-05 | 4d0d2cc, 5145a56, 1aa0924 | [260905-55d-implement-openstreetmap-event-map-view-w](./quick/260905-55d-implement-openstreetmap-event-map-view-w/) |
 | 260905-hss | Raise LLM extraction activity timeout 15→30 min, AST regression test guarding the floor | 2026-09-05 | f2069c5, d924d67 | [260905-hss-review-that-activity-timeout-for-llm-tas](./quick/260905-hss-review-that-activity-timeout-for-llm-tas/) |
 | 260905-jsy | Reduce chunk sizing ~50% (524288→262144 chars, ~100k→~50-65k input tokens per LLM call) to avoid provider timeouts; CHUNK_SIZE_TARGET is the only knob; dead EXTRACTION_CHUNK_SIZE removed; call-site audit clean | 2026-09-05 | ffc74e8, 24750ce | [260905-jsy-reduce-chunk-sizing-to-50-of-current-100](./quick/260905-jsy-reduce-chunk-sizing-to-50-of-current-100/) |
+| 260905-sk4 | Instruct-mode toggle: document.llm_mode, per-provider instruct sampling columns (migration 0005), '[I]' tracking suffix in llm_usage/llm_call_log/event_v2.model, UI Modo select + Documentos navigation | 2026-09-05 | 729ce81, bef5cba, 706bc58, cde8950 | [260905-sk4-add-instruct-mode-toggle-for-llms-with-o](./quick/260905-sk4-add-instruct-mode-toggle-for-llms-with-o/) |
 
 ## Deferred Items
 
