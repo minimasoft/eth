@@ -581,6 +581,12 @@ class ProviderItem(BaseModel):
     base_url: str
     is_default: bool = False
     api_key_masked: str | None = None
+    instruct_temperature: float | None = None
+    """Instruct-mode sampling temperature override (None = module default)."""
+    instruct_top_p: float | None = None
+    """Instruct-mode top_p override (None = module default)."""
+    instruct_top_k: int | None = None
+    """Instruct-mode top_k override (None = module default)."""
     created_at: object | None = None
 
 
@@ -597,6 +603,12 @@ class ProviderCreate(BaseModel):
     model: str
     base_url: str | None = None
     api_key: str | None = None
+    instruct_temperature: float | None = None
+    """Optional instruct-mode sampling temperature (0–2; blank = module default)."""
+    instruct_top_p: float | None = None
+    """Optional instruct-mode top_p (0–1; blank = module default)."""
+    instruct_top_k: int | None = None
+    """Optional instruct-mode top_k (>= 1; blank = module default)."""
 
 
 class ProviderTestResult(BaseModel):

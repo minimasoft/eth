@@ -43,6 +43,9 @@ async def create_provider(input: ProviderCreate) -> ProviderItem:
             model=input.model,
             base_url=input.base_url or None,  # type: ignore[arg-type]
             api_key=input.api_key,
+            instruct_temperature=input.instruct_temperature,
+            instruct_top_p=input.instruct_top_p,
+            instruct_top_k=input.instruct_top_k,
         )
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc

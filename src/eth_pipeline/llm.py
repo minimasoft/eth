@@ -164,6 +164,58 @@ EVENT_EXTRACTION_V7_SYSTEM_PROMPT: str = (
 DEFAULT_MODEL = "deepseek/deepseek-v4-flash-0731"
 OPENROUTER_BASE_URL = "https://openrouter.ai"
 
+# ---------------------------------------------------------------------------
+# Instruct mode (per-send toggle stored on document.llm_mode)
+# ---------------------------------------------------------------------------
+
+# Module-default instruct sampling params (used when the provider row has
+# NULL in the corresponding instruct_* column).
+INSTRUCT_TEMPERATURE = 0.7
+INSTRUCT_TOP_P = 0.9
+INSTRUCT_TOP_K = 40
+
+
+def resolve_sampling(mode: str, provider_cfg: dict | None) -> dict | None:
+    """Resolve sampling params for an LLM mode.
+
+    Returns ``None`` for ``"thinking"`` (use the provider's current hardcoded
+    payload params).  For ``"instruct"`` returns a dict with
+    ``temperature``/``top_p``/``top_k`` taking per-provider values from
+    *provider_cfg* keys ``instruct_temperature``/``instruct_top_p``/
+    ``instruct_top_k`` when not None, else the module constants above.
+
+    Raises ``ValueError`` for any other mode.  *mode* is matched
+    case-insensitively after stripping whitespace.
+    """
+    normalized = (mode or "").strip().lower()
+    if normalized == "thinking":
+        return None
+    if normalized == "instruct":
+        cfg = provider_cfg or {}
+        return {
+            "temperature": cfg.get("instruct_temperature")
+            if cfg.get("instruct_temperature") is not None
+            else INSTRUCT_TEMPERATURE,
+            "top_p": cfg.get("instruct_top_p")
+            if cfg.get("instruct_top_p") is not None
+            else INSTRUCT_TOP_P,
+            "top_k": cfg.get("instruct_top_k")
+            if cfg.get("instruct_top_k") is not None
+            else INSTRUCT_TOP_K,
+        }
+    raise ValueError(f"Unknown LLM mode: {mode!r} (expected 'thinking' or 'instruct')")
+
+
+def tracking_model_name(model: str, mode: str) -> str:
+    """Return the tracking model string for usage/call-log/event records.
+
+    Appends ``" [I]"`` only when *mode* is ``"instruct"`` (case-insensitive);
+    otherwise returns *model* unchanged.
+    """
+    if (mode or "").strip().lower() == "instruct":
+        return f"{model} [I]"
+    return model
+
 
 def chat_completions_url(base_url: str) -> str:
     """Build the chat-completions endpoint for a provider base URL.
@@ -214,6 +266,7 @@ class OpenRouterProvider:
         api_key: str | None = None,
         model: str = DEFAULT_MODEL,
         base_url: str = OPENROUTER_BASE_URL,
+        sampling: dict | None = None,
     ) -> None:
         resolved_key = api_key or os.environ.get("OPENROUTER_API_KEY")
         if not resolved_key:
@@ -226,6 +279,8 @@ class OpenRouterProvider:
         self._api_key: str = resolved_key
         self._model: str = model
         self._base_url: str = base_url.rstrip("/")
+        # Optional sampling overrides (instruct mode). None = thinking defaults.
+        self._sampling: dict | None = sampling
 
     # ------------------------------------------------------------------
     # Public API
@@ -382,6 +437,9 @@ class OpenRouterProvider:
         )
         user_parts.append(f"{text}")
         user_content = "\n".join(user_parts)
+        # Instruct mode overrides sampling params; when self._sampling is
+        # None the payload is byte-identical to the pre-instruct behavior.
+        sampling = self._sampling or {}
         return {
             "model": self._model,
             "messages": [
@@ -398,9 +456,9 @@ class OpenRouterProvider:
                 "type": "json_object",
             },
             "max_tokens": 60000,
-            "temperature": 1.0,
-            "top_p": 0.95,
-            "top_k": 20,
+            "temperature": sampling.get("temperature", 1.0),
+            "top_p": sampling.get("top_p", 0.95),
+            "top_k": sampling.get("top_k", 20),
             "presence_penalty": 0.0,
         }
 

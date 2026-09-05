@@ -90,6 +90,9 @@ async def _row_to_public(row: dict) -> dict:
         "base_url": row["base_url"],
         "is_default": bool(row["is_default"]),
         "api_key_masked": mask_api_key(row.get("api_key")),
+        "instruct_temperature": row.get("instruct_temperature"),
+        "instruct_top_p": row.get("instruct_top_p"),
+        "instruct_top_k": row.get("instruct_top_k"),
         "created_at": row.get("created_at"),
     }
 
@@ -97,7 +100,8 @@ async def _row_to_public(row: dict) -> dict:
 async def list_providers() -> list[dict]:
     async with get_db() as conn:
         rows = await conn.fetch(
-            "SELECT id, name, model, base_url, api_key, is_default, created_at "
+            "SELECT id, name, model, base_url, api_key, is_default, "
+            "instruct_temperature, instruct_top_p, instruct_top_k, created_at "
             "FROM llm_provider ORDER BY is_default DESC, name ASC"
         )
     return [await _row_to_public(dict(r)) for r in rows]
@@ -106,7 +110,8 @@ async def list_providers() -> list[dict]:
 async def get_provider(provider_id: str) -> dict | None:
     async with get_db() as conn:
         row = await conn.fetchrow(
-            "SELECT id, name, model, base_url, api_key, is_default, created_at "
+            "SELECT id, name, model, base_url, api_key, is_default, "
+            "instruct_temperature, instruct_top_p, instruct_top_k, created_at "
             "FROM llm_provider WHERE id = $1",
             provider_id,
         )
@@ -122,7 +127,8 @@ async def resolve_provider(provider_id: str) -> dict | None:
     """
     async with get_db() as conn:
         row = await conn.fetchrow(
-            "SELECT id, name, model, base_url, api_key, is_default FROM llm_provider WHERE id = $1",
+            "SELECT id, name, model, base_url, api_key, is_default, "
+            "instruct_temperature, instruct_top_p, instruct_top_k FROM llm_provider WHERE id = $1",
             provider_id,
         )
     if row is None:
@@ -133,7 +139,8 @@ async def resolve_provider(provider_id: str) -> dict | None:
 async def resolve_provider_by_name(name: str) -> dict | None:
     async with get_db() as conn:
         row = await conn.fetchrow(
-            "SELECT id, name, model, base_url, api_key, is_default FROM llm_provider WHERE name = $1",
+            "SELECT id, name, model, base_url, api_key, is_default, "
+            "instruct_temperature, instruct_top_p, instruct_top_k FROM llm_provider WHERE name = $1",
             name,
         )
     if row is None:
@@ -141,7 +148,15 @@ async def resolve_provider_by_name(name: str) -> dict | None:
     return await _effective_provider(dict(row))
 
 
-async def add_provider(name: str, model: str, base_url: str, api_key: str | None = None) -> dict:
+async def add_provider(
+    name: str,
+    model: str,
+    base_url: str,
+    api_key: str | None = None,
+    instruct_temperature: float | None = None,
+    instruct_top_p: float | None = None,
+    instruct_top_k: int | None = None,
+) -> dict:
     name = (name or "").strip()
     model = (model or "").strip()
     base_url = (base_url or OPENROUTER_BASE_URL).strip()
@@ -151,6 +166,15 @@ async def add_provider(name: str, model: str, base_url: str, api_key: str | None
     if not model:
         raise ValueError("model is required.")
 
+    # Instruct sampling validation (T-SK4-02): range-check client-supplied
+    # values before they reach the DB. None = use module defaults.
+    if instruct_temperature is not None and not (0 <= instruct_temperature <= 2):
+        raise ValueError("instruct_temperature must be between 0 and 2.")
+    if instruct_top_p is not None and not (0 <= instruct_top_p <= 1):
+        raise ValueError("instruct_top_p must be between 0 and 1.")
+    if instruct_top_k is not None and instruct_top_k < 1:
+        raise ValueError("instruct_top_k must be >= 1.")
+
     provider_id = str(uuid.uuid4().hex)
     async with get_db() as conn:
         existing = await conn.fetchrow(
@@ -159,13 +183,17 @@ async def add_provider(name: str, model: str, base_url: str, api_key: str | None
         if existing:
             raise ValueError(f"A provider named '{name}' already exists.")
         await conn.execute(
-            "INSERT INTO llm_provider (id, name, model, base_url, api_key, is_default) "
-            "VALUES ($1, $2, $3, $4, $5, FALSE)",
+            "INSERT INTO llm_provider (id, name, model, base_url, api_key, is_default, "
+            "instruct_temperature, instruct_top_p, instruct_top_k) "
+            "VALUES ($1, $2, $3, $4, $5, FALSE, $6, $7, $8)",
             provider_id,
             name,
             model,
             base_url,
             (api_key or "").strip() or None,
+            instruct_temperature,
+            instruct_top_p,
+            instruct_top_k,
         )
     return await get_provider(provider_id)  # type: ignore[return-value]
 
