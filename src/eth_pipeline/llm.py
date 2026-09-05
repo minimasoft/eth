@@ -266,7 +266,7 @@ class OpenRouterProvider:
                     url,
                     headers=headers,
                     json=payload,
-                    timeout=1440.0,
+                    timeout=1800.0,
                 )
                 if not response.is_success:
                     logger.warning(
@@ -396,8 +396,11 @@ class OpenRouterProvider:
             "response_format": {
                 "type": "json_object",
             },
-            "max_tokens": 64000,
-            "temperature": 0.0,
+            "max_tokens": 60000,
+            "temperature": 0.8,
+            "top_p": 0.95,
+            "top_k": 20,
+            "presence_penalty": 0.0,
         }
 
     # Reference: ~4 chars per token for Spanish text.
