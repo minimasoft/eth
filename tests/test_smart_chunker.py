@@ -61,6 +61,38 @@ class TestBalancedDistribution:
         assert len(groups) == 2, f"Expected 2 groups, got {len(groups)}"
         assert groups == [[0, 1], [2, 3]], f"Unexpected groups: {groups}"
 
+    def test_small_tail_merge_does_not_collapse_to_one_chunk(self) -> None:
+        """1x < total <= 1.5x target must yield 2 chunks, not 1 oversized.
+
+        Regression: greedy gave ~target + small tail, the tail merge folded
+        the tail back in, producing a single chunk up to 1.5x target —
+        defeating CHUNK_SIZE_TARGET for mid-size documents.
+        """
+        n_sents = 13  # 13 x 100 = 1300 chars, target 1000 (1.3x)
+        groups = distribute_balanced(
+            ["x" * 100] * n_sents, [100] * n_sents, target_size=1000
+        )
+        assert len(groups) == 2, f"Expected 2 chunks, got {len(groups)}"
+        for group in groups:
+            size = sum(100 for _ in group)
+            assert size <= 1000, f"Chunk size {size} exceeds target 1000"
+
+    def test_user_reported_336k_document_splits(self) -> None:
+        """Reproduces the eth.hil.ar failure: 336,672 chars vs 262,144 target
+        produced a single 336k chunk and one giant LLM call."""
+        n_sents = 3367  # 336,700 chars
+        groups = distribute_balanced(
+            ["x" * 100] * n_sents, [100] * n_sents, target_size=262144
+        )
+        assert len(groups) == 2, f"Expected 2 chunks, got {len(groups)}"
+        for group in groups:
+            assert len(group) * 100 <= 262144, "Chunk exceeds target"
+
+    def test_single_sentence_over_target_stays_single(self) -> None:
+        """A single sentence longer than target cannot be split — keep 1 chunk."""
+        groups = distribute_balanced(["x" * 5000], [5000], target_size=1000)
+        assert groups == [[0]]
+
 
 # ---------------------------------------------------------------------------
 # CHK-02: Sentence Boundaries

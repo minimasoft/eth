@@ -7,6 +7,7 @@ balanced chunks using NLTK Punkt tokenizer for Spanish.
 
 from __future__ import annotations
 
+import math
 import os
 from dataclasses import dataclass
 from typing import ClassVar
@@ -46,6 +47,10 @@ def distribute_balanced(
     1. First pass — greedy fill each chunk up to *target_size*.
     2. If the last chunk is below ``target_size * min_chunk_ratio``, merge it
        into the second-to-last chunk.
+    3. Pre-check: if that merge collapses everything back into a single
+       oversized chunk (total between 1x and ~1.5x target), re-split into
+       two balanced chunks at ~51% of the total size so no chunk ever
+       exceeds the target.
 
     Parameters
     ----------
@@ -70,12 +75,37 @@ def distribute_balanced(
     if total_len <= target_size:
         return [list(range(n))]
 
+    chunks = _greedy_fill_with_merge(sentence_lengths, target_size, min_chunk_ratio)
+
+    # Pre-check: the merge above can collapse the document back into a
+    # single oversized chunk when total sits between 1x and ~1.5x target
+    # (e.g. a 336k-char doc with a 262k target). Force 2 balanced chunks
+    # by re-splitting at ~51% of the total size; each half stays under
+    # the original target because the collapse zone caps total at 1.5x.
+    if len(chunks) == 1 and n > 1:
+        chunks = _greedy_fill_with_merge(
+            sentence_lengths, math.ceil(total_len * 0.51), min_chunk_ratio
+        )
+
+    return chunks
+
+
+def _greedy_fill_with_merge(
+    sentence_lengths: list[int],
+    target_size: int,
+    min_chunk_ratio: float,
+) -> list[list[int]]:
+    """Greedy-fill sentences into chunks, then merge an undersized tail.
+
+    Never returns a single chunk when ``sum(sentence_lengths) > target_size``:
+    with the re-split target at ~0.51x total, the second chunk is at least
+    ~0.49x total, far above the merge threshold (~0.26x total).
+    """
     chunks: list[list[int]] = []
     current_chunk: list[int] = []
     current_len = 0
 
-    for i in range(n):
-        sent_len = sentence_lengths[i]
+    for i, sent_len in enumerate(sentence_lengths):
         if current_len + sent_len > target_size and current_chunk:
             chunks.append(current_chunk)
             current_chunk = [i]
