@@ -5,8 +5,8 @@ Temporal's sandbox import semantics, and importing it at test time would
 require a running Temporal environment).
 
 Guards: the LLM-calling activity (extract_events_v7_activity) must have a
-start_to_close_timeout of at least 30 minutes — LLM extraction via OpenRouter
-can legitimately take longer than the previously configured 15 minutes.
+start_to_close_timeout of at least 60 minutes — LLM extraction via OpenRouter
+can legitimately take longer than the previously configured 30 minutes.
 """
 
 import ast
@@ -18,7 +18,7 @@ import pytest
 WORKFLOWS_PATH = pathlib.Path(__file__).resolve().parent.parent / "src" / "eth_pipeline" / "workflows.py"
 
 LLM_ACTIVITY_NAME = "extract_events_v7_activity"
-MIN_TIMEOUT_SECONDS = 1800  # 30 minutes
+MIN_TIMEOUT_SECONDS = 3600  # 60 minutes
 
 
 def _resolve_name(node: ast.expr) -> str | None:
@@ -91,17 +91,17 @@ def test_llm_activity_call_sites_exist():
     )
 
 
-def test_llm_activity_timeout_at_least_30_minutes():
-    """Every LLM activity call site must have start_to_close_timeout >= 30 minutes."""
+def test_llm_activity_timeout_at_least_60_minutes():
+    """Every LLM activity call site must have start_to_close_timeout >= 60 minutes."""
     found = _find_llm_activity_calls()
     offending = [(line, secs) for line, secs in found if secs < MIN_TIMEOUT_SECONDS]
     minimum = min((secs for _, secs in found), default=None)
     assert not offending, (
         f"{LLM_ACTIVITY_NAME} is invoked with start_to_close_timeout below "
-        f"{MIN_TIMEOUT_SECONDS}s (30 minutes). Offending call site(s) "
+        f"{MIN_TIMEOUT_SECONDS}s (60 minutes). Offending call site(s) "
         f"{WORKFLOWS_PATH.relative_to(WORKFLOWS_PATH.parent.parent)}: "
         + ", ".join(f"line {line} = {timedelta(seconds=secs)} ({secs}s)" for line, secs in offending)
         + f". Minimum found: {minimum}s. LLM extraction calls can legitimately "
-        "take longer than 15 minutes; a too-short timeout causes spurious "
+        "take longer than 30 minutes; a too-short timeout causes spurious "
         "activity failures and wasteful retries."
     )

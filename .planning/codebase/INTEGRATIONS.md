@@ -9,7 +9,7 @@
   - SDK/Client: `httpx.AsyncClient` (direct HTTP calls, no dedicated SDK)
   - Auth: `OPENROUTER_API_KEY` env var → Bearer token in request headers
   - Endpoint: `https://openrouter.ai/api/v1/chat/completions` (`src/eth_pipeline/llm.py`)
-  - Model: Configurable via `OPENROUTER_MODEL` (default: `deepseek/deepseek-v4-flash`; example in `.env.example`: `openai/gpt-4o-mini`)
+  - Model: Configurable via `OPENROUTER_MODEL` (default: `deepseek/deepseek-v4-flash-0731`; example in `.env.example`: `openai/gpt-4o-mini`)
   - Response format: JSON Schema constrained decoding via `response_format.type = "json_object"` with v7 extraction schema (`EVENT_EXTRACTION_SCHEMA_V7`)
   - Usage tracking: Captures prompt_tokens, completion_tokens, cached_tokens, cost from OpenRouter response → stored in PostgreSQL `llm_usage` and `llm_call_log` tables
 
@@ -95,7 +95,7 @@
 | `MINIO_BUCKET` | MinIO bucket name | `eth-documents` |
 | `MINIO_SECURE` | Use TLS for MinIO | `false` |
 | `OPENROUTER_API_KEY` | OpenRouter API key | Required (no default) |
-| `OPENROUTER_MODEL` | LLM model identifier | `deepseek/deepseek-v4-flash` |
+| `OPENROUTER_MODEL` | LLM model identifier | `deepseek/deepseek-v4-flash-0731` |
 | `TEMPORAL_URL` | Temporal server address | `localhost:7233` |
 | `TEMPORAL_NAMESPACE` | Temporal namespace | `default` |
 | `CHUNK_SIZE_TARGET` | Target chunk size in chars | `524288` (512KB) |

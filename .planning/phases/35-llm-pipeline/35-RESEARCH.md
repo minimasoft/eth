@@ -413,7 +413,7 @@ async def resolve_references_v7_activity(document_id: str) -> dict:
 ### Pitfall 3: Prompt Exceeds Token Limit with Prior Context
 **What goes wrong:** The compact prior-event context (capped at 10 events) plus the chunk text plus the system prompt plus the extraction schema exceeds the model's context window, causing truncation or errors.
 **Why it happens:** Some models have small context windows (e.g., 8K tokens). Even "compact" prior events add tokens. Large chunk text (~512KB = ~128K tokens at 4 chars/token for Spanish) already pushes limits.
-**How to avoid:** (1) Verify the model's context window size. The default model `deepseek/deepseek-v4-flash` has a large context window (~128K tokens). (2) If using a smaller model, reduce `CHUNK_SIZE_TARGET` proportionally. (3) Set `max_tokens` in the API call. The existing llm.py sets `max_tokens=64000` for completions. Ensure prompt fits within model's input limit.
+**How to avoid:** (1) Verify the model's context window size. The default model `deepseek/deepseek-v4-flash-0731` has a large context window (~128K tokens). (2) If using a smaller model, reduce `CHUNK_SIZE_TARGET` proportionally. (3) Set `max_tokens` in the API call. The existing llm.py sets `max_tokens=64000` for completions. Ensure prompt fits within model's input limit.
 **Warning signs:** OpenRouter errors about context length exceeded; truncated LLM responses.
 
 ### Pitfall 4: Event Deduplication Across Chunks

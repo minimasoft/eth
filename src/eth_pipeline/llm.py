@@ -154,6 +154,7 @@ EVENT_EXTRACTION_V7_SYSTEM_PROMPT: str = (
     "legal ni tienen validez jurídica vinculante. Este proyecto no tiene fines de lucro "
     "ni objetivos político-partidistas — su único propósito es la preservación de la "
     "memoria histórica y la facilitación de investigación académica sobre derechos humanos."
+    "Esta no es una tarea para sobre-pensar el razonamiento se debe limitar a cumplir con el esquema json y ser fidedigno al original."
 )
 
 # ---------------------------------------------------------------------------
@@ -266,7 +267,7 @@ class OpenRouterProvider:
                     url,
                     headers=headers,
                     json=payload,
-                    timeout=1800.0,
+                    timeout=3600.0,
                 )
                 if not response.is_success:
                     logger.warning(
@@ -397,7 +398,7 @@ class OpenRouterProvider:
                 "type": "json_object",
             },
             "max_tokens": 60000,
-            "temperature": 0.8,
+            "temperature": 1.0,
             "top_p": 0.95,
             "top_k": 20,
             "presence_penalty": 0.0,
