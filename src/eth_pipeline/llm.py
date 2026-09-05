@@ -178,12 +178,6 @@ def chat_completions_url(base_url: str) -> str:
         return f"{base}/chat/completions"
     return f"{base}/api/v1/chat/completions"
 
-# Target characters of document text per extraction chunk.  Each chunk is
-# sent to the LLM sequentially with already-extracted events as context,
-# so the model finds NEW events per chunk without exceeding the context
-# window.  ~100K tokens of text at ~4 chars/token for Spanish.
-EXTRACTION_CHUNK_SIZE = 400_000
-
 # ---------------------------------------------------------------------------
 # OpenRouter provider
 # ---------------------------------------------------------------------------

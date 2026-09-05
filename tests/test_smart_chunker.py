@@ -160,7 +160,7 @@ class TestConfigurableSize:
     def test_default_target_size(self, monkeypatch) -> None:
         monkeypatch.delenv("CHUNK_SIZE_TARGET", raising=False)
         chunker = SmartChunker()
-        assert chunker.target_size == 524288
+        assert chunker.target_size == 262144
 
     def test_explicit_target_size(self) -> None:
         chunker = SmartChunker(target_size=500)
@@ -174,7 +174,14 @@ class TestConfigurableSize:
     def test_empty_env_var_falls_back_to_default(self, monkeypatch) -> None:
         monkeypatch.delenv("CHUNK_SIZE_TARGET", raising=False)
         chunker = SmartChunker()
-        assert chunker.target_size == 524288
+        assert chunker.target_size == 262144
+
+    def test_default_is_half_of_previous_default(self, monkeypatch) -> None:
+        """Regression guards: default halved from 524288, dead duplicate gone."""
+        monkeypatch.delenv("CHUNK_SIZE_TARGET", raising=False)
+        assert SmartChunker.DEFAULT_TARGET == 262144
+        import eth_pipeline.llm as llm_module
+        assert not hasattr(llm_module, "EXTRACTION_CHUNK_SIZE")
 
 
 # ---------------------------------------------------------------------------

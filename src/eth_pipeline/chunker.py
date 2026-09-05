@@ -139,11 +139,11 @@ class SmartChunker:
     (``S.L.``, ``art.``, ``Dr.``, etc.) are handled correctly by Punkt's
     unsupervised abbreviation learning.
 
-    The chunker uses ``CHUNK_SIZE_TARGET`` env var (default 524288 = 512KB)
+    The chunker uses ``CHUNK_SIZE_TARGET`` env var (default 262144 = 256KB)
     so that target size can be tuned per deployment without code changes.
     """
 
-    DEFAULT_TARGET: ClassVar[int] = 524288  # 512KB in chars
+    DEFAULT_TARGET: ClassVar[int] = 262144  # 256KB in chars (~50-65k tokens Spanish)
 
     def __init__(self, target_size: int | None = None) -> None:
         self.target_size = target_size or int(
