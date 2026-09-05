@@ -272,7 +272,7 @@ class OpenRouterProvider:
                     url,
                     headers=headers,
                     json=payload,
-                    timeout=999.0,
+                    timeout=1440.0,
                 )
                 if not response.is_success:
                     logger.warning(
