@@ -163,6 +163,21 @@ EVENT_EXTRACTION_V7_SYSTEM_PROMPT: str = (
 DEFAULT_MODEL = "deepseek/deepseek-v4-flash-0731"
 OPENROUTER_BASE_URL = "https://openrouter.ai"
 
+
+def chat_completions_url(base_url: str) -> str:
+    """Build the chat-completions endpoint for a provider base URL.
+
+    Accepts OpenRouter-style bases (``https://openrouter.ai``) as well as
+    OpenAI-compatible servers that already include the version path
+    (``http://host:8080/v1``, ``http://host:11434/api/v1``).
+    """
+    base = base_url.rstrip("/")
+    if base.endswith("/api/v1"):
+        return f"{base}/chat/completions"
+    if base.endswith("/v1"):
+        return f"{base}/chat/completions"
+    return f"{base}/api/v1/chat/completions"
+
 # Target characters of document text per extraction chunk.  Each chunk is
 # sent to the LLM sequentially with already-extracted events as context,
 # so the model finds NEW events per chunk without exceeding the context
@@ -238,7 +253,7 @@ class OpenRouterProvider:
             (parsed JSON matching ``EVENT_EXTRACTION_SCHEMA_V7``, usage dict from OpenRouter response or None).
         """
         payload = self._build_v7_payload(text, prior_events)
-        url = f"{self._base_url}/api/v1/chat/completions"
+        url = chat_completions_url(self._base_url)
         headers = self._headers()
 
         logger.info(
@@ -508,12 +523,12 @@ async def test_provider(model: str, api_key: str | None, base_url: str = OPENROU
         }
 
     base = base_url.rstrip("/")
-    url = f"{base}/api/v1/chat/completions"
+    url = chat_completions_url(base)
 
     payload = {
         "model": model,
         "messages": [{"role": "user", "content": OPENROUTER_TEST_PROMPT}],
-        "max_tokens": 64,
+        "max_tokens": 1024,
         "temperature": 0.0,
     }
     headers = {
