@@ -460,6 +460,21 @@
           <input type="password" id="api-key" placeholder="sk-..." />
           <div class="hint">Se guarda cifrada en la base de datos y no se vuelve a mostrar.</div>
         </div>
+        <div class="form-group">
+          <label for="instruct-temperature">Temperatura instruct</label>
+          <input type="number" id="instruct-temperature" step="0.05" min="0" max="2" placeholder="0.7 (predeterminado)" />
+          <div class="hint">Opcional — solo para envíos en modo instruct. Vacío usa el valor por defecto.</div>
+        </div>
+        <div class="form-group">
+          <label for="instruct-top-p">Top P instruct</label>
+          <input type="number" id="instruct-top-p" step="0.05" min="0" max="1" placeholder="0.9 (predeterminado)" />
+          <div class="hint">Opcional — vacío usa el valor por defecto.</div>
+        </div>
+        <div class="form-group">
+          <label for="instruct-top-k">Top K instruct</label>
+          <input type="number" id="instruct-top-k" step="1" min="1" placeholder="40 (predeterminado)" />
+          <div class="hint">Opcional — vacío usa el valor por defecto.</div>
+        </div>
         <div class="form-actions">
           <button class="btn-primary" id="add-provider-btn" type="submit">Agregar</button>
         </div>
@@ -640,6 +655,15 @@
       const model = document.getElementById('model-name').value.trim();
       const baseUrl = document.getElementById('base-url').value.trim();
       const apiKey = document.getElementById('api-key').value.trim();
+      const numOrNull = (id) => {
+        const el = document.getElementById(id);
+        if (!el || el.value === '') return null;
+        const v = Number(el.value);
+        return Number.isFinite(v) ? v : null;
+      };
+      const instructTemperature = numOrNull('instruct-temperature');
+      const instructTopP = numOrNull('instruct-top-p');
+      const instructTopK = numOrNull('instruct-top-k');
 
       const submitBtn = document.getElementById('add-provider-btn');
       submitBtn.disabled = true;
@@ -649,7 +673,12 @@
         const res = await fetch('/api/providers', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: name, model: model, base_url: baseUrl || null, api_key: apiKey || null }),
+          body: JSON.stringify({
+            name: name, model: model, base_url: baseUrl || null, api_key: apiKey || null,
+            instruct_temperature: instructTemperature,
+            instruct_top_p: instructTopP,
+            instruct_top_k: instructTopK,
+          }),
         });
         let data = {};
         try { data = await res.json(); } catch (_e) {}

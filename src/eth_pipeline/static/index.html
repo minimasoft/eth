@@ -340,6 +340,22 @@
       accent-color: #2563eb;
     }
 
+    .provider-select .llm-mode-pill {
+      background: none;
+      border: none;
+      padding: 0;
+    }
+
+    .provider-select .llm-mode-pill select {
+      font-size: 13px;
+      color: #334155;
+      background: #f1f5f9;
+      border: 1px solid #e2e8f0;
+      border-radius: 12px;
+      padding: 3px 8px;
+      cursor: pointer;
+    }
+
     .banner {
       position: fixed;
       top: 100px;
@@ -1258,6 +1274,15 @@
         <button class="btn-outline" id="choose-files-btn" type="button">Elegir Archivos</button>
         <ul class="file-list" id="file-list" style="display:none"></ul>
         <div id="provider-select" class="provider-select" style="display:none"></div>
+        <div id="llm-mode-select" class="provider-select" style="display:none">
+          <span class="provider-select-label">Modo:</span>
+          <label class="llm-mode-pill">
+            <select id="llm-mode">
+              <option value="thinking" selected>Thinking (predeterminado)</option>
+              <option value="instruct">Instruct</option>
+            </select>
+          </label>
+        </div>
         <div class="upload-actions" style="display:none" id="upload-actions">
           <button class="btn-primary" id="upload-btn" type="button">Subir</button>
         </div>
@@ -1663,6 +1688,8 @@
     const uploadActions = document.getElementById('upload-actions');
     const bannerContainer = document.getElementById('banner-container');
     const providerSelect = document.getElementById('provider-select');
+    const llmModeSelect = document.getElementById('llm-mode-select');
+    const llmModeInput = document.getElementById('llm-mode');
 
     const providersGearBtn = document.getElementById('providers-gear-btn');
     if (providersGearBtn) {
@@ -1689,6 +1716,7 @@
       });
       fileList.style.display = selectedFiles.length ? '' : 'none';
       uploadActions.style.display = selectedFiles.length ? '' : 'none';
+      if (llmModeSelect) llmModeSelect.style.display = selectedFiles.length ? '' : 'none';
       uploadBtn.disabled = false;
     }
 
@@ -1766,6 +1794,7 @@
       chooseBtn.disabled = true;
       const files = selectedFiles.slice();
       let allSuccess = true;
+      let successCount = 0;
 
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
@@ -1775,6 +1804,7 @@
 
         const formData = new FormData();
         formData.append('file', file);
+        formData.append('llm_mode', (llmModeInput && llmModeInput.value) || 'thinking');
         const providerIds = getSelectedProviderIds();
         providerIds.forEach(pid => formData.append('provider_ids', pid));
 
@@ -1785,6 +1815,7 @@
             const shortId = data.document_id.slice(0, 8);
             statusEl.innerHTML = '<span class="check">&#10003;</span>';
             showBanner('Subido: ' + file.name + ' (ID: ' + shortId + ')', 'success', true);
+            successCount++;
           } else {
             statusEl.innerHTML = '<span class="cross">&#10007;</span>';
             showBanner('Falló: ' + file.name + ' — ' + (data.detail || 'Error desconocido'), 'error', false);
@@ -1804,6 +1835,12 @@
           fileInput.value = '';
           renderFileList();
         }, 3000);
+      }
+
+      // Land the user on the Documentos tab after at least one successful send.
+      if (successCount > 0) {
+        switchTab('documents');
+        fetchDocuments();
       }
 
       uploadBtn.disabled = false;
