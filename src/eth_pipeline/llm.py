@@ -272,7 +272,7 @@ class OpenRouterProvider:
                     url,
                     headers=headers,
                     json=payload,
-                    timeout=555.0,
+                    timeout=999.0,
                 )
                 if not response.is_success:
                     logger.warning(
@@ -294,7 +294,7 @@ class OpenRouterProvider:
                 msg = f"OpenRouter API returned HTTP {status}: {body}"
                 raise RuntimeError(msg) from exc
             except httpx.TimeoutException as exc:
-                msg = f"OpenRouter API v7 timed out after 555s (model={self._model})"
+                msg = f"OpenRouter API v7 timed out after 999s (model={self._model})"
                 logger.error("LLM v7 API timeout [model=%s]", self._model)
                 raise TimeoutError(msg) from exc
             except json.JSONDecodeError as exc:
