@@ -42,6 +42,20 @@ router = APIRouter(tags=["Documents"])
 #: Maximum upload file size: 50 MB.
 MAX_UPLOAD_SIZE = 50 * 1024 * 1024
 
+#: Allowed LLM modes for per-send extraction (T-SK4-01 allowlist).
+_ALLOWED_LLM_MODES = {"thinking", "instruct"}
+
+
+def _normalize_llm_mode(value: str) -> str:
+    """Normalize and validate a client-supplied llm_mode (HTTP 400 otherwise)."""
+    mode = (value or "").strip().lower()
+    if mode not in _ALLOWED_LLM_MODES:
+        raise HTTPException(
+            status_code=400,
+            detail="llm_mode must be 'thinking' or 'instruct'.",
+        )
+    return mode
+
 
 async def _resolve_provider(provider_id: str | None) -> dict:
     """Resolve a provider id to ``{provider_id, provider_name, model}``.
@@ -153,14 +167,15 @@ async def create_document(input: DocumentInput) -> DocumentCreated:
     doc_id = str(uuid.uuid4().hex)
 
     provider = await _resolve_provider(input.provider_id)
+    llm_mode = _normalize_llm_mode(input.llm_mode)
 
     original_blob = base64.b64encode(input.text.encode("utf-8")).decode("ascii")
 
     try:
         async with get_db() as conn:
             await conn.execute(
-                "INSERT INTO document (id, text_content, original_blob, filename, mime_type, status, error_message, provider_id, model, source_id) "
-                "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)",
+                "INSERT INTO document (id, text_content, original_blob, filename, mime_type, status, error_message, provider_id, model, source_id, llm_mode) "
+                "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)",
                 doc_id,
                 input.text,
                 original_blob,
@@ -171,6 +186,7 @@ async def create_document(input: DocumentInput) -> DocumentCreated:
                 provider["provider_id"],
                 provider["model"],
                 doc_id,
+                llm_mode,
             )
     except Exception as exc:
         logger.error("Failed to create document in PostgreSQL: %s", exc)
@@ -201,6 +217,7 @@ async def create_document(input: DocumentInput) -> DocumentCreated:
 async def upload_document(
     file: Annotated[UploadFile, File(...)],
     provider_ids: Annotated[list[str], Form()] = [],  # noqa: B006 — FastAPI Form default
+    llm_mode: Annotated[str, Form()] = "thinking",
 ) -> DocumentUploadCreated:
     """Upload a binary document file for processing.
 
@@ -222,6 +239,10 @@ async def upload_document(
             status_code=400,
             detail="Filename is required.",
         )
+
+    # 1b. Validate llm_mode (T-SK4-01: server-side allowlist, reject early
+    #     before any blob write).
+    llm_mode = _normalize_llm_mode(llm_mode)
 
     # 2. Determine effective providers (fan-out list). Resolve before any
     #    blob write so a bad provider id costs nothing, and de-duplicate
@@ -306,8 +327,8 @@ async def upload_document(
                 inserted_ids.append(row_id)
                 await conn.execute(
                     "INSERT INTO document (id, text_content, original_blob, blob_format, blob_path, "
-                    "filename, mime_type, status, error_message, provider_id, model, source_id) "
-                    "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)",
+                    "filename, mime_type, status, error_message, provider_id, model, source_id, llm_mode) "
+                    "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)",
                     row_id,
                     None,
                     original_blob,
@@ -320,6 +341,7 @@ async def upload_document(
                     _provider["provider_id"],
                     _provider["model"],
                     source_id,
+                    llm_mode,
                 )
     except Exception as exc:
         logger.error("Failed to create document in PostgreSQL: %s", exc)

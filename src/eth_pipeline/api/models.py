@@ -21,6 +21,9 @@ class DocumentInput(BaseModel):
     provider_id: str | None = None
     """Optional llm_provider id to process this document (defaults to env default)."""
 
+    llm_mode: str = "thinking"
+    """LLM sampling mode for extraction: 'thinking' (default) or 'instruct'."""
+
 
 class DocumentCreated(BaseModel):
     """Response body for a successful ``POST /documents`` (HTTP 201)."""

@@ -12,6 +12,7 @@ from temporalio import activity
 
 from eth_pipeline.activities._common import _db_params, _extract_query_results
 from eth_pipeline.db import get_db
+from eth_pipeline.llm import tracking_model_name
 from eth_pipeline.processing_log import ProcessingLogger
 
 
@@ -91,12 +92,17 @@ async def store_events_v7_activity(
         async with get_db(**params) as conn:
             async with conn.transaction():
                 doc_row = await conn.fetchrow(
-                    "SELECT provider_id, model FROM document WHERE id = $1",
+                    "SELECT provider_id, model, llm_mode FROM document WHERE id = $1",
                     document_id,
                 )
                 doc = dict(doc_row) if doc_row else {}
                 event_provider_id = doc.get("provider_id")
-                event_model = doc.get("model")
+                # Instruct runs carry the " [I]" suffix on event_v2.model so
+                # provenance is visible everywhere the model string surfaces.
+                event_model = tracking_model_name(
+                    doc.get("model") or "",
+                    doc.get("llm_mode") or "thinking",
+                )
 
                 await conn.execute(
                     "DELETE FROM event_v2 WHERE id IN ("

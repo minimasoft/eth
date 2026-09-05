@@ -15,7 +15,12 @@ from temporalio import activity
 from eth_pipeline import providers as provider_svc
 from eth_pipeline.activities._common import _db_params, _extract_query_results
 from eth_pipeline.db import get_db
-from eth_pipeline.llm import DEFAULT_MODEL, OpenRouterProvider
+from eth_pipeline.llm import (
+    DEFAULT_MODEL,
+    OpenRouterProvider,
+    resolve_sampling,
+    tracking_model_name,
+)
 from eth_pipeline.llm_usage import record_llm_usage
 from eth_pipeline.llm_call_recorder import record_llm_call_log
 from eth_pipeline.processing_log import ProcessingLogger
@@ -48,7 +53,7 @@ async def extract_events_v7_activity(
         )
         doc_row = _extract_query_results(
             await conn.fetch(
-                "SELECT provider_id, model FROM document WHERE id = $1",
+                "SELECT provider_id, model, llm_mode FROM document WHERE id = $1",
                 document_id,
             )
         )
@@ -70,24 +75,31 @@ async def extract_events_v7_activity(
         or (provider_cfg or {}).get("model")
         or os.environ.get("OPENROUTER_MODEL", DEFAULT_MODEL)
     )
+    # llm_mode and instruct sampling params are fetched from the DB here,
+    # inside the activity — never passed through Temporal activity args
+    # (AGENTS.md rule: LLM config stays out of workflow/event history).
+    mode = (doc.get("llm_mode") or "thinking")
+    sampling = resolve_sampling(mode, provider_cfg)
+    tracking_model = tracking_model_name(model, mode)
     provider_kwargs: dict = {"api_key": api_key, "model": model}
     if provider_cfg and provider_cfg.get("base_url"):
         provider_kwargs["base_url"] = provider_cfg["base_url"]
-    provider = OpenRouterProvider(**provider_kwargs)
+    provider = OpenRouterProvider(**provider_kwargs, sampling=sampling)
 
     activity.logger.info(
-        "extract_events_v7_activity called %s [document_id=%s] [chunk_index=%d] [text_length=%d] [model=%s] [provider_id=%s]",
+        "extract_events_v7_activity called %s [document_id=%s] [chunk_index=%d] [text_length=%d] [model=%s] [provider_id=%s] [mode=%s]",
         chunk_progress,
         document_id,
         chunk_index,
         len(chunk_text),
-        model,
+        tracking_model,
         provider_id,
+        mode,
     )
     await _log.log(document_id, "extract_events_v7", "info",
                    f"Starting v7 event extraction {chunk_progress}, {len(chunk_text)} chars",
                    {"chunk_index": chunk_index, "total_chunks": total_chunks, "text_length": len(chunk_text),
-                    "model": model, "provider_id": provider_id})
+                    "model": tracking_model, "provider_id": provider_id, "llm_mode": mode})
 
     activity.logger.info(
         "Sending prompt to LLM for v7 extraction %s [document_id=%s]",
@@ -130,7 +142,7 @@ async def extract_events_v7_activity(
             document_id=document_id,
             step_name="extract_events_v7",
             chunk_index=chunk_index,
-            model=model,
+            model=tracking_model,
             prompt_tokens=usage["prompt_tokens"],
             completion_tokens=usage["completion_tokens"],
             total_tokens=usage["total_tokens"],
@@ -148,7 +160,7 @@ async def extract_events_v7_activity(
             chunk_index=chunk_index,
             prompt_text=usage["prompt_text"],
             response_text=usage["response_text"],
-            model=model,
+            model=tracking_model,
             prompt_tokens=usage["prompt_tokens"],
             completion_tokens=usage["completion_tokens"],
             total_tokens=usage["total_tokens"],
