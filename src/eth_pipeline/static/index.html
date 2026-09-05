@@ -107,6 +107,7 @@
 
     .tab-content { display: none; }
     .tab-content.active { display: block; }
+    #event-map { height: 600px; border: 1px solid #e2e8f0; border-radius: 8px; }
 
     .placeholder-card {
       background: #f8fafc;
@@ -1219,6 +1220,13 @@
     .cmp-order { color: #64748b; font-size: 12px; font-variant-numeric: tabular-nums; }
 
   </style>
+  <!-- Leaflet 1.9.4 via unpkg — pinned + SRI (official integrity hashes, verified
+       against the unpkg artifacts). Loaded in <head> so L is defined before the
+       inline body script that initializes the event map. -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+          integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 </head>
 <body>
   <header>
@@ -1234,6 +1242,7 @@
     <button role="tab" aria-selected="true" aria-controls="tab-upload" id="tab-btn-upload" data-tab="upload">Cargar</button>
     <button role="tab" aria-selected="false" aria-controls="tab-documents" id="tab-btn-documents" data-tab="documents">Documentos</button>
     <button role="tab" aria-selected="false" aria-controls="tab-eventos" id="tab-btn-eventos" data-tab="eventos">Eventos</button>
+    <button role="tab" aria-selected="false" aria-controls="tab-mapa" id="tab-btn-mapa" data-tab="mapa">Mapa</button>
     <button role="tab" aria-selected="false" aria-controls="tab-compare" id="tab-btn-compare" data-tab="compare" style="display:none">Comparación</button>
     <button role="tab" aria-selected="false" aria-controls="tab-logs" id="tab-btn-logs" data-tab="logs" style="display:none">Registros</button>
   </nav>
@@ -1453,6 +1462,16 @@
       </div>
     </section>
 
+    <section id="tab-mapa" role="tabpanel" aria-labelledby="tab-btn-mapa" class="tab-content">
+      <div class="documents-header">
+        <h2>Mapa de Eventos</h2>
+      </div>
+      <p style="font-size:13px;color:#64748b;margin:0 0 12px 0">
+        <span id="mapa-status"></span>
+      </p>
+      <div id="event-map"></div>
+    </section>
+
     <section id="tab-compare" role="tabpanel" aria-labelledby="tab-btn-compare" class="tab-content">
       <div class="documents-header">
         <h2>Comparación entre Modelos</h2>
@@ -1587,6 +1606,7 @@
       upload: document.getElementById('tab-upload'),
       documents: document.getElementById('tab-documents'),
       eventos: document.getElementById('tab-eventos'),
+      mapa: document.getElementById('tab-mapa'),
       compare: document.getElementById('tab-compare'),
       logs: document.getElementById('tab-logs'),
     };
@@ -1629,6 +1649,7 @@
       if (tabName === 'documents') fetchDocuments();
       if (tabName === 'logs') resumeLogPolling();
       if (tabName === 'eventos') { populateEventosDocFilter(); fetchEventos(); }
+      if (tabName === 'mapa') { initEventMap(); scheduleInvalidateSize(); }
     }
 
     tabs.forEach(tab => {
@@ -3629,6 +3650,118 @@
       }
       docViewerCurrentMatch = globalIdx;
       fetchAndRenderChunk(docViewerCurrentDocId, docViewerCurrentChunk, verbatim, 0);
+    }
+
+    // ===================================================================
+    // Mapa de eventos — Leaflet + OpenStreetMap tiles (GET /geo/events)
+    // Location names come from LLM extraction of user documents, i.e. they
+    // are UNTRUSTED: every dynamic string rendered into a popup goes
+    // through escapeHtml(). Pan/zoom (moveend) re-queries the viewport bbox.
+    // ===================================================================
+    let eventMap = null;
+    let eventMapInitialLoad = true;
+    let eventMapMarkers = null;
+
+    function initEventMap() {
+      if (eventMap) return;
+      if (typeof L === 'undefined') {
+        var statusEl = document.getElementById('mapa-status');
+        if (statusEl) statusEl.textContent = 'Error al cargar el mapa';
+        console.warn('initEventMap: Leaflet (L) is not available — CDN blocked?');
+        return;
+      }
+      eventMap = L.map('event-map').setView([20, 0], 3);
+      L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+      }).addTo(eventMap);
+      eventMapMarkers = L.layerGroup().addTo(eventMap);
+      eventMap.on('moveend', function() {
+        // Swallow the first moveend: it is the programmatic one fired by the
+        // initial fitBounds() — without this guard it would double-fetch.
+        if (eventMapInitialLoad) { eventMapInitialLoad = false; return; }
+        fetchMapEvents(viewportBbox());
+      });
+      fetchMapEvents(null);
+    }
+
+    function viewportBbox() {
+      var b = eventMap.getBounds();
+      return {
+        min_lon: b.getWest(),
+        min_lat: b.getSouth(),
+        max_lon: b.getEast(),
+        max_lat: b.getNorth()
+      };
+    }
+
+    function fetchMapEvents(bbox) {
+      if (!eventMap) return;
+      var params;
+      if (bbox) {
+        params = new URLSearchParams({
+          min_lon: String(bbox.min_lon),
+          min_lat: String(bbox.min_lat),
+          max_lon: String(bbox.max_lon),
+          max_lat: String(bbox.max_lat),
+          limit: '2000'
+        });
+      } else {
+        params = new URLSearchParams({ limit: '2000' });
+      }
+      fetch('/geo/events?' + params.toString())
+        .then(function(resp) {
+          if (!resp.ok) throw new Error('HTTP ' + resp.status);
+          return resp.json();
+        })
+        .then(function(data) {
+          var items = data.items || [];
+          eventMapMarkers.clearLayers();
+          items.forEach(function(item) {
+            var timeHtml = escapeHtml(formatEventDate(item.time_start)) +
+              (item.time_end ? ' &ndash; ' + escapeHtml(formatEventDate(item.time_end)) : '');
+            var popupHtml =
+              '<strong>' + escapeHtml(item.title || '(sin t\u00edtulo)') + '</strong><br>' +
+              escapeHtml(item.location_name || '') + '<br>' +
+              timeHtml +
+              (item.document_filename
+                ? '<br><span style="font-size:12px;color:#64748b">' + escapeHtml(item.document_filename) + '</span>'
+                : '');
+            L.circleMarker([item.lat, item.lon], {
+              radius: 7,
+              color: '#2563eb',
+              fillOpacity: 0.8
+            }).bindPopup(popupHtml).addTo(eventMapMarkers);
+          });
+          var statusEl = document.getElementById('mapa-status');
+          if (items.length > 0) {
+            if (statusEl) statusEl.textContent = items.length + ' eventos ubicados';
+            if (!bbox) {
+              // Initial load: fit the view to the data. The moveend fired by
+              // fitBounds is swallowed by the eventMapInitialLoad guard above.
+              eventMap.fitBounds(eventMapMarkers.getBounds().pad(0.2));
+            }
+          } else {
+            if (statusEl) statusEl.textContent = 'Sin eventos con coordenadas \u2014 ejecuta el geocoder';
+          }
+          if (!bbox) eventMapInitialLoad = false;
+        })
+        .catch(function(err) {
+          console.warn('fetchMapEvents failed:', err);
+          var statusEl = document.getElementById('mapa-status');
+          if (statusEl) statusEl.textContent = 'Error al cargar el mapa';
+          // Keep existing markers; re-arm the guard so the next real user
+          // move fetches (no programmatic moveend is pending here).
+          eventMapInitialLoad = false;
+        });
+    }
+
+    function scheduleInvalidateSize() {
+      // Leaflet renders broken inside a container that was display:none when
+      // the map was created; invalidateSize after the tab becomes visible.
+      setTimeout(function() {
+        if (eventMap) eventMap.invalidateSize();
+      }, 50);
     }
 
   </script>
