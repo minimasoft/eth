@@ -152,7 +152,7 @@ Copy `.env.example` → `.env`. Key variables:
 |----------|---------|-------------|
 | `OPENROUTER_API_KEY` | — | API key for LLM access |
 | `OPENROUTER_MODEL` | `openai/gpt-4o-mini` | LLM model for extraction |
-| `CHUNK_SIZE_TARGET` | `524288` | Target chunk size in chars (512KB) |
+| `CHUNK_SIZE_TARGET` | `262144` | Target chunk size in chars (256KB) |
 
 ## Tests
 
