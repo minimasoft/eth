@@ -2722,13 +2722,15 @@
     }
 
     async function fetchEventos() {
+      if (eventosViewMode === 'timeline') return fetchAllEventos();
+
       if (eventosLoadingFlag) return;
       eventosLoadingFlag = true;
       var loader = deferredLoading('eventos', showEventosLoading, hideEventosLoading);
 
       const params = new URLSearchParams();
       params.set('page', String(eventosCurrentPage));
-      params.set('per_page', eventosViewMode === 'timeline' ? '100' : '20');
+      params.set('per_page', '20');
       params.set('sort', 'time_start');
       params.set('order', 'asc');
       if (eventosSearchTerm) params.set('search', eventosSearchTerm);
@@ -2750,6 +2752,64 @@
         else renderEventos(data);
       } catch (err) {
         console.error('fetchEventos error:', err);
+        loader.done();
+        eventosTableContainer.style.display = 'none';
+        eventosPagination.style.display = 'none';
+        eventosEmpty.style.display = 'block';
+        eventosEmpty.querySelector('p').textContent = 'Error al cargar eventos: ' + err.message;
+        showBanner('Error al cargar eventos: ' + err.message, 'error', false);
+      } finally {
+        eventosLoadingFlag = false;
+      }
+    }
+
+    async function fetchAllEventos() {
+      if (eventosLoadingFlag) return;
+      eventosLoadingFlag = true;
+      var loader = deferredLoading('eventos', showEventosLoading, hideEventosLoading);
+
+      var allItems = [];
+      var lastData = null;
+
+      try {
+        var page = 1;
+        var pages = 1;
+        while (page <= pages) {
+          const params = new URLSearchParams();
+          params.set('page', String(page));
+          params.set('per_page', '100');
+          params.set('sort', 'time_start');
+          params.set('order', 'asc');
+          if (eventosSearchTerm) params.set('search', eventosSearchTerm);
+          if (eventosDocumentFilter) params.set('document', eventosDocumentFilter);
+
+          const res = await fetch('/events?' + params.toString());
+          if (!res.ok) {
+            let detail = 'Error al cargar eventos';
+            try {
+              const errData = await res.json();
+              if (errData && errData.detail) detail = errData.detail;
+            } catch (_pe) { /* ignore parse error */ }
+            throw new Error(detail);
+          }
+          const data = await res.json();
+          lastData = data;
+          pages = data.pages || 1;
+          allItems = allItems.concat(data.items || []);
+          page++;
+        }
+
+        var merged = {
+          items: allItems,
+          total: lastData ? lastData.total : allItems.length,
+          page: 1,
+          pages: 1,
+          per_page: 100,
+        };
+        eventosData = merged;
+        renderEventosTimeline(merged);
+      } catch (err) {
+        console.error('fetchAllEventos error:', err);
         loader.done();
         eventosTableContainer.style.display = 'none';
         eventosPagination.style.display = 'none';
@@ -2856,7 +2916,7 @@
       });
 
       var html = '<div class="tl-note">Una línea por modelo. Cada punto es un evento posicionado por su fecha de inicio ' +
-        '(página actual: ' + items.length + ' de ' + (data.total || items.length) + ').</div>';
+        '(' + (data.total || items.length) + ' eventos).</div>';
 
       laneOrder.forEach(function(k) {
         var laneItems = lanes[k];
