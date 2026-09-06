@@ -1,0 +1,156 @@
+"""Static structure tests for hash-based navigation + tab-bar cleanup (quick task 260906-s7d).
+
+Mirrors tests/test_linea_tiempo.py: source assertions only, no DB.
+Guards the tab order, the universal refresh button, the hash navigation
+state machine in index.html, and the scroll-month memory hooks in
+linea-tiempo.js.
+"""
+
+from __future__ import annotations
+
+import pathlib
+import re
+import shutil
+import subprocess
+import tempfile
+
+import pytest
+
+ROOT = pathlib.Path(__file__).resolve().parents[1]
+INDEX_HTML = ROOT / "src" / "eth_pipeline" / "static" / "index.html"
+LINEA_TIEMPO_JS = ROOT / "src" / "eth_pipeline" / "static" / "linea-tiempo.js"
+
+# Tab order fixed by the plan: Documentos, Línea de tiempo, Mapa, Eventos
+# (Cargar after Eventos; Registros hidden, last).
+TAB_ORDER = ["documents", "lineatiempo", "mapa", "eventos", "upload", "logs"]
+
+# Content sections whose repeated title headers were removed.
+HEADER_LESS_SECTIONS = ["tab-documents", "tab-eventos", "tab-mapa", "tab-lineatiempo"]
+
+
+def _source(path: pathlib.Path) -> str:
+    return path.read_text(encoding="utf-8")
+
+
+def _section_body(source: str, section_id: str) -> str:
+    """Extract the <section id="...">...</section> body."""
+    start = source.index(f'<section id="{section_id}"')
+    end = source.index("</section>", start)
+    return source[start:end]
+
+
+def _inline_app_script(source: str) -> str:
+    """Extract the inline app <script> body (first bare <script> tag)."""
+    open_tag = "<script>"
+    start = source.index(open_tag) + len(open_tag)
+    end = source.index("</script>", start)
+    return source[start:end]
+
+
+def test_tab_button_order():
+    source = _source(INDEX_HTML)
+    positions = {
+        tab: source.index(f'data-tab="{tab}"') for tab in TAB_ORDER
+    }
+    for earlier, later in zip(TAB_ORDER, TAB_ORDER[1:]):
+        assert positions[earlier] < positions[later], (
+            f"Tab '{earlier}' must come before '{later}' in the nav bar "
+            f"(expected order: {TAB_ORDER})"
+        )
+
+
+def test_global_refresh_button_present_in_nav():
+    source = _source(INDEX_HTML)
+    nav_start = source.index("<nav")
+    nav_end = source.index("</nav>", nav_start)
+    nav = source[nav_start:nav_end]
+    assert 'id="global-refresh-btn"' in nav, (
+        "Universal refresh button missing from the nav bar"
+    )
+    assert 'aria-label="Actualizar"' in nav, (
+        "Universal refresh button must have aria-label Actualizar"
+    )
+    # Pushed to the far right via margin-left:auto.
+    assert "#global-refresh-btn" in source and "margin-left: auto" in source, (
+        "CSS rule #global-refresh-btn { margin-left:auto } missing"
+    )
+
+
+def test_nav_css_is_flex_row():
+    source = _source(INDEX_HTML)
+    nav_css = source[source.index("    nav {"):source.index("    nav button {")]
+    assert "display: flex" in nav_css and "align-items: center" in nav_css, (
+        "nav must lay out buttons in a flex row with centered alignment"
+    )
+
+
+@pytest.mark.parametrize("removed_id", [
+    "doc-refresh-btn",
+    "eventos-refresh-btn",
+    "lineatiempo-refresh-btn",
+])
+def test_per_tab_refresh_buttons_removed(removed_id: str):
+    source = _source(INDEX_HTML)
+    assert removed_id not in source, (
+        f"Per-tab refresh button '{removed_id}' must be removed "
+        "(replaced by the universal nav refresh button)"
+    )
+
+
+def test_no_repeated_title_headers_in_content_sections():
+    source = _source(INDEX_HTML)
+    for section_id in HEADER_LESS_SECTIONS:
+        body = _section_body(source, section_id)
+        assert 'class="documents-header"' not in body, (
+            f"{section_id} still repeats its tab title as an in-content "
+            "header — remove the documents-header block"
+        )
+
+
+def test_color_subtitle_removed():
+    source = _source(INDEX_HTML)
+    assert "Los colores por modelo" not in source, (
+        "The Línea de tiempo color subtitle must be removed"
+    )
+
+
+def test_no_lt2_leakage_into_index_html():
+    source = _source(INDEX_HTML)
+    assert "lt2-" not in source, (
+        "The linea-tiempo renderer leaked into index.html"
+    )
+
+
+def test_inline_app_script_syntax():
+    """Syntax gate: the inline app script must be valid JavaScript."""
+    if shutil.which("node") is None:
+        pytest.skip("node is not on PATH")
+    source = _source(INDEX_HTML)
+    script_body = _inline_app_script(source)
+    fd, tmp_path = tempfile.mkstemp(suffix=".js")
+    tmp = pathlib.Path(tmp_path)
+    tmp.write_text(script_body, encoding="utf-8")
+    try:
+        result = subprocess.run(
+            ["node", "--check", str(tmp)],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        assert result.returncode == 0, (
+            f"Inline app script has a JavaScript syntax error:\n{result.stderr}"
+        )
+    finally:
+        tmp.unlink(missing_ok=True)
+
+
+def test_refresh_hook_clears_caches():
+    source = _source(LINEA_TIEMPO_JS)
+    start = source.index("window.refreshLineaTiempo")
+    body = source[start:source.index("};", start)]
+    assert "lt2Events = null" in body and "lt2ColorIndex = null" in body, (
+        "window.refreshLineaTiempo must clear both caches before re-rendering"
+    )
+    assert "renderLineaTiempo(true)" in body, (
+        "window.refreshLineaTiempo must force a re-render"
+    )

@@ -421,17 +421,15 @@
     }
   });
 
-  /* Refresh button (declared in the tab-lineatiempo section of index.html). */
-  document.addEventListener('DOMContentLoaded', function () {
-    var btn = document.getElementById('lineatiempo-refresh-btn');
-    if (btn) {
-      btn.addEventListener('click', function () {
-        lt2Events = null;
-        lt2ColorIndex = null;
-        renderLineaTiempo(true);
-      });
-    }
-  });
+  /* Refresh: clears the caches and refetches. Invoked from index.html's
+   * universal nav refresh button (window.refreshLineaTiempo) and from
+   * window.restoreLineaTiempoScroll (scroll-month memory on tab re-entry)
+   * which onTabClick calls after window.renderLineaTiempo. */
+  window.refreshLineaTiempo = function () {
+    lt2Events = null;
+    lt2ColorIndex = null;
+    renderLineaTiempo(true);
+  };
 
   window.renderLineaTiempo = renderLineaTiempo;
 })();
