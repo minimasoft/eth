@@ -1612,6 +1612,76 @@
       logs: document.getElementById('tab-logs'),
     };
 
+    // ===== Hash-based navigation (#s=<tab>&<key>=<val>) =====
+    // Tabs and eventos options (view/doc/event) are deep-linkable and
+    // back/forward-correct. Hash values are whitelisted/regex-validated and
+    // never interpolated into HTML — they only flow into comparisons and
+    // select.value / showEventDetail(id) (which encodes its fetch paths).
+    const HASH_TABS = ['upload', 'documents', 'lineatiempo', 'mapa', 'eventos', 'logs'];
+    let suppressHashWrite = false;  // loop guard: writes triggered by applyHash
+    let lastWrittenHash = null;     // hash we just wrote (hashchange skips it)
+    let hashReady = false;          // false until startup resolves — no fetch before the passcode gate
+
+    function parseHash() {
+      const raw = location.hash.replace(/^#/, '');
+      if (!raw) return null;
+      const pairs = raw.split('&');
+      const first = pairs[0].split('=');
+      if (first[0] !== 's') return null;
+      if (HASH_TABS.indexOf(first[1]) === -1) return null;
+      const options = {};
+      for (let i = 1; i < pairs.length; i++) {
+        if (!pairs[i]) continue;
+        const eq = pairs[i].indexOf('=');
+        if (eq === -1) { options[pairs[i]] = ''; continue; }
+        options[pairs[i].slice(0, eq)] = pairs[i].slice(eq + 1);
+      }
+      return { tab: first[1], options: options };
+    }
+
+    function syncHash() {
+      if (!hashReady || suppressHashWrite) return;
+      const parts = ['s=' + currentTab];
+      if (currentTab === 'eventos') {
+        parts.push('view=' + eventosViewMode);
+        if (eventosDocumentFilter) parts.push('doc=' + eventosDocumentFilter);
+        if (currentEventId) parts.push('event=' + currentEventId);
+      }
+      const h = '#' + parts.join('&');
+      if (location.hash === h) return;
+      lastWrittenHash = h;
+      suppressHashWrite = true;
+      location.hash = h;
+    }
+
+    function applyHash() {
+      if (!hashReady) return;
+      const state = parseHash();
+      if (!state) return;
+      if (state.tab === 'logs' && !logsDocumentId) return;
+      suppressHashWrite = true;
+      try {
+        if (state.tab === 'eventos') {
+          const opts = state.options;
+          if (opts.view === 'table' || opts.view === 'timeline') {
+            setEventosView(opts.view, { refetch: false });
+          }
+          if (opts.doc && /^[A-Za-z0-9_-]+$/.test(opts.doc)) {
+            eventosDocumentFilter = opts.doc;
+            eventosDocFilter.value = opts.doc;
+          }
+        }
+        onTabClick(state.tab);
+        if (state.tab === 'eventos' && state.options.event &&
+            /^[A-Za-z0-9-]+$/.test(state.options.event)) {
+          showEventDetail(state.options.event);
+        }
+      } finally {
+        suppressHashWrite = false;
+      }
+      syncHash();
+    }
+
     let currentTab = 'documents';
 
     function switchTab(tabName) {
@@ -1630,6 +1700,7 @@
       section.classList.add('active');
       tabButton.classList.add('active');
       tabButton.setAttribute('aria-selected', 'true');
+      syncHash();
     }
 
     let logsDocumentId = null;
@@ -1659,6 +1730,16 @@
 
     tabs.forEach(tab => {
       tab.addEventListener('click', () => onTabClick(tab.dataset.tab));
+    });
+
+    // Browser back/forward: skip our own writes, otherwise restore state.
+    window.addEventListener('hashchange', function() {
+      if (location.hash === lastWrittenHash) {
+        lastWrittenHash = null;
+        suppressHashWrite = false;
+        return;
+      }
+      applyHash();
     });
 
     // Universal refresh: dispatch on whichever tab is currently active.
@@ -3132,17 +3213,26 @@
       e.preventDefault();
     }, { passive: false });
 
+    // Shared view-mode setter: used by the view-toggle click handler and by
+    // applyHash (which restores the mode without refetching).
+    function setEventosView(mode, opts) {
+      eventosViewMode = mode;
+      document.querySelectorAll('#eventos-view-toggle button[data-mode]').forEach(function(b) {
+        b.classList.toggle('active', b.getAttribute('data-mode') === mode);
+      });
+      if (!opts || opts.refetch !== false) {
+        eventosCurrentPage = 1;
+        fetchEventos();
+      }
+      syncHash();
+    }
+
     document.getElementById('eventos-view-toggle').addEventListener('click', function(e) {
       var btn = e.target.closest('button[data-mode]');
       if (!btn) return;
       var mode = btn.getAttribute('data-mode');
       if (mode === eventosViewMode) return;
-      eventosViewMode = mode;
-      this.querySelectorAll('button[data-mode]').forEach(function(b) {
-        b.classList.toggle('active', b === btn);
-      });
-      eventosCurrentPage = 1;
-      fetchEventos();
+      setEventosView(mode);
     });
 
     // Search with debounce
@@ -3194,6 +3284,7 @@
       eventosDocumentFilter = eventosDocFilter.value;
       eventosCurrentPage = 1;
       fetchEventos();
+      syncHash();
     });
 
     // Pagination
@@ -3234,6 +3325,7 @@
 
     async function showEventDetail(eventId) {
       currentEventId = eventId;
+      syncHash();
       eventosContainer.style.display = 'none';
       eventDetailPanel.style.display = 'block';
 
@@ -3348,6 +3440,7 @@
     function hideEventDetail() {
       currentEventId = null;
       currentEventDetail = null;
+      syncHash();
       eventDetailPanel.style.display = 'none';
       eventosContainer.style.display = '';
       fetchEventos();
@@ -3945,6 +4038,12 @@
       await loadModelColors();
       loadUploadProviders();
       fetchDocuments();
+      // Deep-link restore runs only after the passcode gate resolves so no
+      // data fetch fires pre-auth (260906-kj0 contract). A plain load with
+      // no s= in the hash leaves the default view untouched (no hash write
+      // on first paint).
+      hashReady = true;
+      if (location.hash) applyHash();
     })();
 
   </script>

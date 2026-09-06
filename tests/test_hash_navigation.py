@@ -154,3 +154,114 @@ def test_refresh_hook_clears_caches():
     assert "renderLineaTiempo(true)" in body, (
         "window.refreshLineaTiempo must force a re-render"
     )
+
+
+# ---------------------------------------------------------------------------
+# Hash-based navigation
+# ---------------------------------------------------------------------------
+
+HASH_TABS = ["upload", "documents", "lineatiempo", "mapa", "eventos", "logs"]
+
+
+def test_hash_state_machine_identifiers_exist():
+    script = _inline_app_script(_source(INDEX_HTML))
+    for identifier in ("function parseHash", "function applyHash", "function syncHash"):
+        assert identifier in script, f"Missing {identifier}() in the inline app script"
+
+
+def test_hash_tab_whitelist_present():
+    script = _inline_app_script(_source(INDEX_HTML))
+    assert "HASH_TABS" in script, (
+        "Tab whitelist constant missing from the hash navigation code"
+    )
+    for tab in HASH_TABS:
+        assert f"'{tab}'" in script, f"Tab '{tab}' missing from the whitelist"
+
+
+def test_hash_option_values_never_reach_html():
+    """T-S7D-01: hash values must only flow into comparisons/select.value."""
+    script = _inline_app_script(_source(INDEX_HTML))
+    assert "function parseHash" in script
+    # No innerHTML assignment inside the hash functions.
+    for fn in ("function parseHash", "function applyHash", "function syncHash"):
+        start = script.index(fn)
+        end = script.index("\n    }", start)
+        body = script[start:end]
+        assert "innerHTML" not in body, (
+            f"{fn}() must never build HTML from hash values (T-S7D-01)"
+        )
+
+
+def test_hashchange_listener_registered():
+    script = _inline_app_script(_source(INDEX_HTML))
+    assert "addEventListener('hashchange'" in script, (
+        "The app must react to browser back/forward via a hashchange listener"
+    )
+    assert "lastWrittenHash" in script, (
+        "Own hash writes must be skipped by the hashchange handler (loop guard)"
+    )
+
+
+def test_switch_tab_syncs_hash():
+    script = _inline_app_script(_source(INDEX_HTML))
+    start = script.index("function switchTab")
+    body = script[start:script.index("\n    }", start)]
+    assert "syncHash()" in body, "switchTab must sync the URL hash"
+
+
+def test_set_eventos_view_shared_by_toggle_and_apply_hash():
+    script = _inline_app_script(_source(INDEX_HTML))
+    assert "function setEventosView" in script, (
+        "setEventosView helper must be extracted from the view-toggle handler"
+    )
+    # Used by both the view-toggle click handler and applyHash.
+    assert re.search(r"setEventosView\([^)]*refetch", script), (
+        "setEventosView must accept a refetch option (applyHash restores "
+        "the view without refetching)"
+    )
+    start = script.index("document.getElementById('eventos-view-toggle')")
+    handler = script[start:script.index("});", start)]
+    assert "setEventosView(" in handler, (
+        "The view-toggle click handler must route through setEventosView"
+    )
+
+
+def test_doc_filter_change_syncs_hash():
+    script = _inline_app_script(_source(INDEX_HTML))
+    start = script.index("eventosDocFilter.addEventListener('change'")
+    handler = script[start:script.index("});", start)]
+    assert "syncHash()" in handler, (
+        "The eventos document filter change handler must sync the hash"
+    )
+
+
+def test_event_detail_updates_hash():
+    script = _inline_app_script(_source(INDEX_HTML))
+    for fn in ("function showEventDetail", "function hideEventDetail"):
+        start = script.index(fn)
+        body = script[start:script.index("\n    }", start)]
+        assert "syncHash()" in body, (
+            f"{fn}() must update the URL hash via syncHash()"
+        )
+
+
+def test_hash_option_regex_guards():
+    """T-S7D-01: option values are validated before use."""
+    script = _inline_app_script(_source(INDEX_HTML))
+    start = script.index("function applyHash")
+    body = script[start:script.index("\n    function ", start) if "\n    function " in script[start:] else len(script)]
+    assert "/^[A-Za-z0-9_-]+$/.test(opts.doc)" in body, (
+        "applyHash must validate the doc option against ^[A-Za-z0-9_-]+$"
+    )
+    assert "/^[A-Za-z0-9-]+$/.test(state.options.event)" in body, (
+        "applyHash must validate the event option against ^[A-Za-z0-9-]+$"
+    )
+
+
+def test_apply_hash_guards_logs_tab():
+    script = _inline_app_script(_source(INDEX_HTML))
+    start = script.index("function applyHash")
+    body = script[start:script.index("\n    }", start)]
+    assert "logsDocumentId" in body, (
+        "applyHash must not switch to the logs tab without an open document"
+    )
