@@ -19,6 +19,7 @@ from eth_pipeline.api.models import (
     ProviderTestResult,
 )
 from eth_pipeline.llm import test_provider
+from eth_pipeline.passcodes import require_passcode
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +37,7 @@ async def list_providers() -> ProviderItemList:
 
 
 @router.post("/api/providers", response_model=ProviderItem, status_code=201)
+@require_passcode("A")
 async def create_provider(input: ProviderCreate) -> ProviderItem:
     try:
         provider = await provider_svc.add_provider(
@@ -57,6 +59,7 @@ async def create_provider(input: ProviderCreate) -> ProviderItem:
 
 
 @router.delete("/api/providers/{provider_id}", status_code=204)
+@require_passcode("B")
 async def delete_provider(provider_id: str) -> None:
     try:
         deleted = await provider_svc.delete_provider(provider_id)
@@ -70,6 +73,7 @@ async def delete_provider(provider_id: str) -> None:
 
 
 @router.post("/api/providers/{provider_id}/test", response_model=ProviderTestResult)
+@require_passcode("A")
 async def test_provider_route(provider_id: str) -> ProviderTestResult:
     try:
         provider = await provider_svc.resolve_provider(provider_id)

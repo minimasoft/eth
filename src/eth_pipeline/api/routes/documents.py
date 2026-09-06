@@ -12,6 +12,7 @@ from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
 
 from eth_pipeline.api import app
 from eth_pipeline.db import get_db
+from eth_pipeline.passcodes import require_passcode
 
 from eth_pipeline import providers as provider_svc
 
@@ -153,6 +154,7 @@ async def _start_workflow(doc_id: str) -> None:
 
 
 @router.post("/documents", response_model=DocumentCreated, status_code=201)
+@require_passcode("A")
 async def create_document(input: DocumentInput) -> DocumentCreated:
     """Ingest a new document into the pipeline.
 
@@ -214,6 +216,7 @@ async def create_document(input: DocumentInput) -> DocumentCreated:
 
 
 @router.post("/documents/upload", response_model=DocumentUploadCreated, status_code=201)
+@require_passcode("A")
 async def upload_document(
     file: Annotated[UploadFile, File(...)],
     provider_ids: Annotated[list[str], Form()] = [],  # noqa: B006 — FastAPI Form default
@@ -1048,6 +1051,7 @@ async def list_documents(
     "/documents/{document_id}",
     response_model=DocumentDeleted,
 )
+@require_passcode("B")
 async def delete_document(document_id: str) -> DocumentDeleted:
     """Delete a document and all its associated data.
 
