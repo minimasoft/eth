@@ -1150,15 +1150,6 @@
     .model-chip .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
     .model-chip .txt { overflow: hidden; text-overflow: ellipsis; }
 
-    .src-chip {
-      display: inline-flex; align-items: center; gap: 3px;
-      font-size: 11px; font-weight: 600; line-height: 1.4;
-      padding: 1px 7px; border-radius: 10px; cursor: pointer;
-      color: #7c3aed; background: #f5f3ff; border: 1px solid #ddd6fe;
-      white-space: nowrap; vertical-align: middle; margin-left: 6px;
-    }
-    .src-chip:hover { background: #ede9fe; }
-
     /* ---- View toggle (tabla / cronología) ---- */
 
     .view-toggle {
@@ -1232,54 +1223,6 @@
     .tl-undated-item:hover { background: #f1f5f9; }
     .tl-undated-item .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
 
-    /* ---- Comparison view ---- */
-
-    .cmp-meta {
-      display: flex; gap: 20px; flex-wrap: wrap; align-items: center;
-      margin-bottom: 16px; padding: 16px;
-      background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px;
-    }
-    .cmp-meta-item { display: flex; flex-direction: column; gap: 4px; }
-    .cmp-meta-item .label {
-      font-size: 12px; color: #64748b; text-transform: uppercase;
-      letter-spacing: 0.5px; font-weight: 600;
-    }
-    .cmp-agree-badge {
-      display: inline-block; font-size: 12px; font-weight: 600;
-      padding: 2px 8px; border-radius: 4px; border: 1px solid; white-space: nowrap;
-    }
-    .cmp-agree-all { background: #f0fdf4; border-color: #bbf7d0; color: #166534; }
-    .cmp-agree-some { background: #fffbeb; border-color: #fde68a; color: #b45309; }
-    .cmp-agree-one { background: #fef2f2; border-color: #fecaca; color: #991b1b; }
-    .cmp-table {
-      width: 100%; border-collapse: separate; border-spacing: 0;
-      border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden;
-      font-size: 13px; table-layout: fixed;
-    }
-    .cmp-table th {
-      text-align: left; padding: 10px 12px; font-weight: 600; color: #1e293b;
-      border-bottom: 1px solid #e2e8f0; background: #f8fafc; vertical-align: top;
-    }
-    .cmp-table td {
-      padding: 8px; border-bottom: 1px solid #e2e8f0;
-      vertical-align: top; border-right: 1px solid #f1f5f9;
-    }
-    .cmp-table th:first-child, .cmp-table td:first-child { width: 110px; }
-    .cmp-table tr:last-child td { border-bottom: none; }
-    .cmp-row-agree-all td:first-child { box-shadow: inset 3px 0 0 #16a34a; }
-    .cmp-row-agree-some td:first-child { box-shadow: inset 3px 0 0 #f59e0b; }
-    .cmp-row-agree-one td:first-child { box-shadow: inset 3px 0 0 #dc2626; }
-    .cmp-cell-empty { color: #cbd5e1; text-align: center; padding: 8px 0; }
-    .cmp-event-card {
-      background: #ffffff; border: 1px solid #e2e8f0; border-left-width: 4px;
-      border-radius: 6px; padding: 8px 10px; cursor: pointer; margin-bottom: 6px;
-    }
-    .cmp-event-card:last-child { margin-bottom: 0; }
-    .cmp-event-card:hover { background: #f8fafc; }
-    .cmp-event-title { font-weight: 600; color: #1e293b; margin-bottom: 2px; }
-    .cmp-event-sub { font-size: 12px; color: #64748b; }
-    .cmp-order { color: #64748b; font-size: 12px; font-variant-numeric: tabular-nums; }
-
   </style>
   <!-- Leaflet 1.9.4 via unpkg — pinned + SRI (official integrity hashes, verified
        against the unpkg artifacts). Loaded in <head> so L is defined before the
@@ -1308,7 +1251,6 @@
     <button role="tab" aria-selected="false" aria-controls="tab-eventos" id="tab-btn-eventos" data-tab="eventos">Eventos</button>
     <button role="tab" aria-selected="false" aria-controls="tab-mapa" id="tab-btn-mapa" data-tab="mapa">Mapa</button>
     <button role="tab" aria-selected="false" aria-controls="tab-lineatiempo" id="tab-btn-lineatiempo" data-tab="lineatiempo">Línea de tiempo</button>
-    <button role="tab" aria-selected="false" aria-controls="tab-compare" id="tab-btn-compare" data-tab="compare" style="display:none">Comparación</button>
     <button role="tab" aria-selected="false" aria-controls="tab-logs" id="tab-btn-logs" data-tab="logs" style="display:none">Registros</button>
   </nav>
 
@@ -1561,26 +1503,6 @@
       <div id="lineatiempo-container"></div>
     </section>
 
-    <section id="tab-compare" role="tabpanel" aria-labelledby="tab-btn-compare" class="tab-content">
-      <div class="documents-header">
-        <h2>Comparación entre Modelos</h2>
-      </div>
-      <div class="documents-toolbar">
-        <button class="btn-outline" id="cmp-back-btn" type="button">&larr; Volver</button>
-        <div class="search-wrapper" style="flex:1"></div>
-        <button class="btn-icon btn-refresh" id="cmp-refresh-btn" aria-label="Actualizar comparación" title="Actualizar comparación">
-          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-        </button>
-      </div>
-      <div id="cmp-meta" class="cmp-meta" style="display:none"></div>
-      <div id="cmp-loading" class="documents-loading" style="display:none">Cargando comparación...</div>
-      <div id="cmp-empty" class="placeholder-card" style="display:none">
-        <h2>Sin datos de comparación</h2>
-        <p></p>
-      </div>
-      <div id="cmp-table-container" class="table-container" style="display:none"></div>
-    </section>
-
     <section id="tab-logs" role="tabpanel" aria-labelledby="tab-btn-logs" class="tab-content">
       <div id="logs-container">
         <div class="documents-header">
@@ -1697,7 +1619,6 @@
       eventos: document.getElementById('tab-eventos'),
       mapa: document.getElementById('tab-mapa'),
       lineatiempo: document.getElementById('tab-lineatiempo'),
-      compare: document.getElementById('tab-compare'),
       logs: document.getElementById('tab-logs'),
     };
 
@@ -2209,18 +2130,10 @@
           '</td>' +
           '<td class="col-count">' + (item.event_count ?? '-') + '</td>' +
           '<td class="col-count">' + (item.text_word_count ?? '-') + '</td>' +
-          '<td class="col-model">' + escapeHtml(formatProviderModel(item)) +
-          (item.model_count > 1 && item.source_id
-            ? '<span class="src-chip" data-source-id="' + escapeHtml(item.source_id) + '" title="El mismo documento analizado por ' + item.model_count + ' modelos \u2014 clic para comparar">&#8644; ' + item.model_count + '</span>'
-            : '') + '</td>' +
+          '<td class="col-model">' + escapeHtml(formatProviderModel(item)) + '</td>' +
           '<td class="col-tokens" title="' + formatTokenTitle(item) + '">' + formatTokens(item) + '</td>' +
           '<td class="col-cost"' + (item.total_cost != null ? '' : ' style="color:#94a3b8"') + '>' + formatCost(item) + '</td>' +
           '<td class="col-actions">' +
-          (item.model_count > 1 && item.source_id
-            ? '<button class="btn-icon btn-compare" data-source-id="' + escapeHtml(item.source_id) + '" aria-label="Comparar modelos" title="Comparar eventos entre modelos sobre el mismo documento">' +
-            '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>' +
-            '</button>'
-            : '') +
           '<button class="btn-icon btn-logs" data-document-id="' + escapeHtml(item.document_id) + '" data-filename="' + escapeHtml(item.filename || '') + '" aria-label="Ver registros" title="Ver registros de procesamiento">' +
           '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>' +
           '</button>' +
@@ -2786,14 +2699,6 @@
       var filename = btn.getAttribute('data-filename');
       if (!documentId) return;
       openLogEntry(documentId, filename);
-    });
-
-    // Wire up cross-model comparison buttons (event delegation on doc tbody)
-    docTbody.addEventListener('click', function(e) {
-      var btn = e.target.closest('.btn-compare, .src-chip');
-      if (!btn) return;
-      var sourceId = btn.getAttribute('data-source-id');
-      if (sourceId) openComparison(sourceId, 'documents');
     });
 
     // Stop polling when switching away from logs — override switchTab to clean up
@@ -3442,230 +3347,6 @@
     }
 
     eventDetailBackBtn.addEventListener('click', hideEventDetail);
-
-    // ===== Cross-model comparison view =====
-
-    var cmpSourceId = null;
-    var cmpReturnTab = 'documents';
-    var cmpData = null;
-
-    function openComparison(sourceId, fromTab) {
-      if (!sourceId) return;
-      cmpSourceId = sourceId;
-      cmpReturnTab = fromTab || 'documents';
-      var btn = document.getElementById('tab-btn-compare');
-      if (btn) btn.style.display = '';
-      switchTab('compare');
-      fetchComparison();
-    }
-
-    async function fetchComparison() {
-      if (!cmpSourceId) return;
-      var loading = document.getElementById('cmp-loading');
-      var emptyEl = document.getElementById('cmp-empty');
-      var tableC = document.getElementById('cmp-table-container');
-      var metaEl = document.getElementById('cmp-meta');
-      loading.style.display = 'flex';
-      emptyEl.style.display = 'none';
-      tableC.style.display = 'none';
-      metaEl.style.display = 'none';
-
-      try {
-        var res = await fetchWithC('/comparisons/' + encodeURIComponent(cmpSourceId));
-        if (!res.ok) {
-          var detail = 'Error al cargar la comparación';
-          try {
-            var errData = await res.json();
-            if (errData && errData.detail) detail = errData.detail;
-          } catch (_pe) { /* ignore parse error */ }
-          throw new Error(detail);
-        }
-        var data = await res.json();
-        cmpData = data;
-        renderComparison(data);
-      } catch (err) {
-        console.error('fetchComparison error:', err);
-        loading.style.display = 'none';
-        emptyEl.style.display = 'block';
-        emptyEl.querySelector('p').textContent = 'Error: ' + err.message;
-        showBanner('Error al cargar la comparación: ' + err.message, 'error', false);
-      }
-    }
-
-    function cmpSortKey(ev) {
-      var chunk = ev.chunk_index == null ? 999999 : ev.chunk_index;
-      var span = ev.span_start == null ? 999999999 : ev.span_start;
-      return String(chunk).padStart(6, '0') + '|' +
-        String(span).padStart(10, '0') + '|' + (ev.time_start || '9999') + '|' + (ev.event_id || '');
-    }
-
-    function cmpSpanOverlap(a, b) {
-      if (a.chunk_index == null || b.chunk_index == null) return 0;
-      if (a.chunk_index !== b.chunk_index) return 0;
-      if (a.span_start == null || b.span_start == null) return 0;
-      if (a.span_end == null || b.span_end == null) return 0;
-      var ov = Math.min(a.span_end, b.span_end) - Math.max(a.span_start, b.span_start);
-      if (ov <= 0) return 0;
-      var la = Math.max(1, a.span_end - a.span_start);
-      var lb = Math.max(1, b.span_end - b.span_start);
-      return ov / Math.min(la, lb);
-    }
-
-    function clusterComparisonEvents(events) {
-      var n = events.length;
-      var parent = [];
-      var i, j;
-      for (i = 0; i < n; i++) parent.push(i);
-      function find(x) {
-        while (parent[x] !== x) { parent[x] = parent[parent[x]]; x = parent[x]; }
-        return x;
-      }
-      for (i = 0; i < n; i++) {
-        for (j = i + 1; j < n; j++) {
-          if (events[i].document_id === events[j].document_id) continue;
-          if (cmpSpanOverlap(events[i], events[j]) >= 0.5) {
-            var ri = find(i), rj = find(j);
-            if (ri !== rj) parent[rj] = ri;
-          }
-        }
-      }
-      var groups = {};
-      for (i = 0; i < n; i++) {
-        var r = find(i);
-        if (!groups[r]) groups[r] = [];
-        groups[r].push(events[i]);
-      }
-      var clusters = Object.keys(groups).map(function(k) { return groups[k]; });
-      clusters.sort(function(a, b) {
-        var ka = cmpSortKey(a[0]), kb = cmpSortKey(b[0]);
-        return ka < kb ? -1 : (ka > kb ? 1 : 0);
-      });
-      return clusters;
-    }
-
-    function renderComparison(data) {
-      var loading = document.getElementById('cmp-loading');
-      var emptyEl = document.getElementById('cmp-empty');
-      var tableC = document.getElementById('cmp-table-container');
-      var metaEl = document.getElementById('cmp-meta');
-      loading.style.display = 'none';
-
-      var docs = (data && data.documents) || [];
-      var events = (data && data.events) || [];
-
-      if (!docs.length) {
-        metaEl.style.display = 'none';
-        tableC.style.display = 'none';
-        emptyEl.style.display = 'block';
-        emptyEl.querySelector('p').textContent = 'No hay documentos para esta fuente';
-        return;
-      }
-
-      var allCount = docs.length;
-      var clusters = clusterComparisonEvents(events);
-      var agreeAll = 0, agreeSome = 0, uniqueOnly = 0;
-      clusters.forEach(function(c) {
-        var seen = {};
-        c.forEach(function(ev) { seen[ev.document_id] = true; });
-        var k = Object.keys(seen).length;
-        if (k === allCount) agreeAll++;
-        else if (k > 1) agreeSome++;
-        else uniqueOnly++;
-      });
-
-      var metaHtml =
-        '<div class="cmp-meta-item"><span class="label">Documento</span><span>' +
-          escapeHtml(data.filename || '—') + '</span></div>' +
-        '<div class="cmp-meta-item"><span class="label">Fuente</span><span style="font-family:monospace;font-size:13px">' +
-          escapeHtml((data.source_id || '').slice(0, 8)) + '</span></div>';
-      docs.forEach(function(d) {
-        metaHtml += '<div class="cmp-meta-item"><span class="label">Modelo</span>' +
-          '<span>' + modelChip(d) + ' <span class="' + statusClass(d.status) + '">' +
-          escapeHtml(statusLabel(d.status)) + '</span></span>' +
-          '<span style="font-size:12px;color:#64748b">' + d.event_count + ' eventos</span></div>';
-      });
-      metaHtml += '<div class="cmp-meta-item"><span class="label">Acuerdos</span><span style="display:flex;gap:6px;flex-wrap:wrap">' +
-        '<span class="cmp-agree-badge cmp-agree-all" title="Eventos encontrados por todos los modelos">' + agreeAll + ' coinciden</span>' +
-        (agreeSome ? '<span class="cmp-agree-badge cmp-agree-some" title="Eventos encontrados por algunos modelos">' + agreeSome + ' parcial</span>' : '') +
-        '<span class="cmp-agree-badge cmp-agree-one" title="Eventos encontrados por un solo modelo">' + uniqueOnly + ' \u00fanico</span>' +
-        '</span></div>';
-      metaEl.innerHTML = metaHtml;
-      metaEl.style.display = 'flex';
-
-      if (!events.length) {
-        tableC.style.display = 'none';
-        emptyEl.style.display = 'block';
-        emptyEl.querySelector('h2').textContent = 'Sin eventos aún';
-        emptyEl.querySelector('p').textContent = 'Ningún modelo ha producido eventos para este documento';
-        return;
-      }
-      emptyEl.style.display = 'none';
-
-      var html = '<table class="cmp-table"><thead><tr><th>Orden</th>';
-      docs.forEach(function(d) {
-        html += '<th>' + modelChip(d) + '<div class="cmp-event-sub">' + d.event_count + ' eventos</div></th>';
-      });
-      html += '</tr></thead><tbody>';
-
-      clusters.forEach(function(cluster, idx) {
-        var byDoc = {};
-        cluster.forEach(function(ev) {
-          if (!byDoc[ev.document_id]) byDoc[ev.document_id] = [];
-          byDoc[ev.document_id].push(ev);
-        });
-        var coverage = Object.keys(byDoc).length;
-        var rowCls, badgeCls;
-        if (coverage === allCount) { rowCls = 'cmp-row-agree-all'; badgeCls = 'cmp-agree-all'; }
-        else if (coverage > 1) { rowCls = 'cmp-row-agree-some'; badgeCls = 'cmp-agree-some'; }
-        else { rowCls = 'cmp-row-agree-one'; badgeCls = 'cmp-agree-one'; }
-
-        html += '<tr class="' + rowCls + '"><td><div class="cmp-order">#' + (idx + 1) + '</div>' +
-          '<span class="cmp-agree-badge ' + badgeCls + '">' + coverage + '/' + allCount + '</span></td>';
-        docs.forEach(function(d) {
-          var cellEvents = byDoc[d.document_id];
-          if (!cellEvents || !cellEvents.length) {
-            html += '<td><div class="cmp-cell-empty">—</div></td>';
-            return;
-          }
-          var pal = modelPalette(modelKey(d));
-          html += '<td>';
-          cellEvents.forEach(function(ev) {
-            var sub = [];
-            if (ev.time_start) sub.push(formatEventDate(ev.time_start));
-            if (ev.location_name) sub.push(ev.location_name);
-            if (ev.chunk_index != null) sub.push('parte ' + ev.chunk_index);
-            html += '<div class="cmp-event-card" data-event-id="' + escapeHtml(ev.event_id) +
-              '" style="border-left-color:' + pal.c + '">' +
-              '<div class="cmp-event-title">' + escapeHtml(truncateText(ev.title || '(sin título)', 90)) + '</div>' +
-              (sub.length ? '<div class="cmp-event-sub">' + escapeHtml(sub.join(' · ')) + '</div>' : '') +
-              '</div>';
-          });
-          html += '</td>';
-        });
-        html += '</tr>';
-      });
-      html += '</tbody></table>';
-      tableC.innerHTML = html;
-      tableC.style.display = '';
-    }
-
-    document.getElementById('cmp-table-container').addEventListener('click', function(e) {
-      var card = e.target.closest('.cmp-event-card');
-      if (!card) return;
-      switchTab('eventos');
-      showEventDetail(card.getAttribute('data-event-id'));
-    });
-
-    document.getElementById('cmp-back-btn').addEventListener('click', function() {
-      var btn = document.getElementById('tab-btn-compare');
-      if (btn) btn.style.display = 'none';
-      cmpSourceId = null;
-      cmpData = null;
-      switchTab(cmpReturnTab);
-      if (cmpReturnTab === 'documents') fetchDocuments();
-    });
-
-    document.getElementById('cmp-refresh-btn').addEventListener('click', fetchComparison);
 
     // ===== Document viewer =====
 

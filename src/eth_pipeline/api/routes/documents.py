@@ -205,18 +205,18 @@ async def create_document(input: DocumentInput) -> DocumentCreated:
 @require_passcode("A")
 async def upload_document(
     file: Annotated[UploadFile, File(...)],
-    provider_ids: Annotated[list[str], Form()] = [],  # noqa: B006 — FastAPI Form default
+    provider_id: Annotated[str | None, Form()] = None,
     llm_mode: Annotated[str, Form()] = "thinking",
 ) -> DocumentUploadCreated:
     """Upload a binary document file for processing.
 
     Accepts a multipart file upload, stores the binary blob in MinIO
     (with fallback to base64-encoded inline storage if MinIO is
-    unavailable), creates one PostgreSQL document record per selected
-    provider (fan-out), and triggers Temporal processing (best-effort).
+    unavailable), creates exactly one PostgreSQL document record, and
+    triggers Temporal processing (best-effort).
 
-    ``provider_ids`` may be repeated to send the file to multiple LLM
-    providers.  When empty, the env-backed default provider is used.
+    ``provider_id`` optionally selects the LLM provider; when omitted the
+    env-backed default provider is used.
 
     Returns HTTP 201 with ``{document_id, status}`` on success.
     Returns HTTP 413 if the file exceeds 50 MB.
@@ -233,11 +233,9 @@ async def upload_document(
     #     before any blob write).
     llm_mode = _normalize_llm_mode(llm_mode)
 
-    # 2. Determine effective providers (fan-out list). Resolve before any
-    #    blob write so a bad provider id costs nothing, and de-duplicate
-    #    repeated ids while preserving order.
-    unique_ids = list(dict.fromkeys(provider_ids)) if provider_ids else [None]
-    selected = [await _resolve_provider(pid) for pid in unique_ids]
+    # 2. Resolve the single provider. Resolve before any blob write so a
+    #    bad provider id costs nothing.
+    provider = await _resolve_provider(provider_id)
 
     # 3. Generate document ID
     doc_id = str(uuid.uuid4().hex)
@@ -297,7 +295,7 @@ async def upload_document(
             exc,
         )
 
-    # 7. Prepare document record(s). All fan-out rows share the same blob.
+    # 7. Prepare the document record.
     if minio_available:
         original_blob = ""
         blob_format = "minio"
@@ -307,31 +305,28 @@ async def upload_document(
         blob_format = None
         stored_blob_path = None
 
-    inserted_ids: list[str] = []
+    row_id = str(uuid.uuid4().hex)
     source_id = str(uuid.uuid4().hex)
     try:
         async with get_db() as conn:
-            for _provider in selected:
-                row_id = str(uuid.uuid4().hex)
-                inserted_ids.append(row_id)
-                await conn.execute(
-                    "INSERT INTO document (id, text_content, original_blob, blob_format, blob_path, "
-                    "filename, mime_type, status, error_message, provider_id, model, source_id, llm_mode) "
-                    "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)",
-                    row_id,
-                    None,
-                    original_blob,
-                    blob_format,
-                    stored_blob_path,
-                    file.filename or f"unnamed_{row_id}",
-                    file.content_type or "application/octet-stream",
-                    "pending",
-                    None,
-                    _provider["provider_id"],
-                    _provider["model"],
-                    source_id,
-                    llm_mode,
-                )
+            await conn.execute(
+                "INSERT INTO document (id, text_content, original_blob, blob_format, blob_path, "
+                "filename, mime_type, status, error_message, provider_id, model, source_id, llm_mode) "
+                "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)",
+                row_id,
+                None,
+                original_blob,
+                blob_format,
+                stored_blob_path,
+                file.filename or f"unnamed_{row_id}",
+                file.content_type or "application/octet-stream",
+                "pending",
+                None,
+                provider["provider_id"],
+                provider["model"],
+                source_id,
+                llm_mode,
+            )
     except Exception as exc:
         logger.error("Failed to create document in PostgreSQL: %s", exc)
         # Clean up MinIO blob if database failed after storage
@@ -356,22 +351,18 @@ async def upload_document(
         ) from exc
 
     logger.info(
-        "Created document (filename=%s, blob_format=%s, fanout=%d)",
+        "Created document (filename=%s, blob_format=%s)",
         file.filename,
         blob_format,
-        len(inserted_ids),
     )
 
-    # 8. Trigger Temporal workflow per inserted row (best-effort). Fan-out
-    #    creates one document row per selected provider; each runs its own
-    #    workflow against its own row id.
-    for row_id in inserted_ids:
-        await _start_workflow(row_id)
+    # 8. Trigger the Temporal workflow for the document (best-effort).
+    await _start_workflow(row_id)
 
     return DocumentUploadCreated(
-        document_id=inserted_ids[0],
+        document_id=row_id,
         status="pending",
-        document_ids=inserted_ids,
+        document_ids=[row_id],
         source_id=source_id,
     )
 
