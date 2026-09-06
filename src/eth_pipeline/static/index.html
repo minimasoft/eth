@@ -467,6 +467,29 @@
       color: #94a3b8;
     }
 
+    .passcode-backdrop {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 60;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .passcode-modal {
+      background: #ffffff; border-radius: 12px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+      padding: 20px; display: flex; flex-direction: column; gap: 12px;
+      align-items: center; width: 90vw; max-width: 360px;
+    }
+    .passcode-modal img { max-width: 320px; width: 100%; border-radius: 8px; display: block; }
+    .passcode-row { display: flex; align-items: center; gap: 8px; width: 100%; }
+    .passcode-label { font-size: 18px; font-weight: 600; color: #1e293b; }
+    .passcode-input {
+      flex: 1; width: 100%; font-family: inherit; font-size: 18px; line-height: 1.5;
+      color: #1e293b; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px;
+      padding: 8px 12px; outline: none; transition: border-color 0.15s;
+    }
+    .passcode-input:focus {
+      border-color: #2563eb;
+      box-shadow: 0 0 0 2px rgba(37,99,235,0.15);
+    }
+
     .search-clear {
       position: absolute;
       right: 4px;
@@ -1277,8 +1300,8 @@
   </header>
 
   <nav role="tablist" aria-label="Main navigation">
-    <button role="tab" aria-selected="true" aria-controls="tab-upload" id="tab-btn-upload" data-tab="upload">Cargar</button>
-    <button role="tab" aria-selected="false" aria-controls="tab-documents" id="tab-btn-documents" data-tab="documents">Documentos</button>
+    <button role="tab" aria-selected="false" aria-controls="tab-upload" id="tab-btn-upload" data-tab="upload">Cargar</button>
+    <button role="tab" aria-selected="true" aria-controls="tab-documents" id="tab-btn-documents" data-tab="documents">Documentos</button>
     <button role="tab" aria-selected="false" aria-controls="tab-eventos" id="tab-btn-eventos" data-tab="eventos">Eventos</button>
     <button role="tab" aria-selected="false" aria-controls="tab-mapa" id="tab-btn-mapa" data-tab="mapa">Mapa</button>
     <button role="tab" aria-selected="false" aria-controls="tab-compare" id="tab-btn-compare" data-tab="compare" style="display:none">Comparación</button>
@@ -1687,7 +1710,7 @@
     let logsPollTimer = null;
     let logsShouldPoll = false;
 
-    switchTab('upload');
+    switchTab('documents');
     updateLogsTabState();
 
     function onTabClick(tabName) {
@@ -1715,8 +1738,15 @@
 
     const providersGearBtn = document.getElementById('providers-gear-btn');
     if (providersGearBtn) {
-      providersGearBtn.addEventListener('click', () => {
-        window.location.href = '/ui/providers';
+      providersGearBtn.addEventListener('click', async () => {
+        if (getStoredPasscode('A')) {
+          window.location.href = '/ui/providers';
+          return;
+        }
+        var code = await ensurePasscode('A');
+        if (code) {
+          window.location.href = '/ui/providers';
+        }
       });
     }
 
@@ -1830,8 +1860,16 @@
         const providerIds = getSelectedProviderIds();
         providerIds.forEach(pid => formData.append('provider_ids', pid));
 
+        var passcode = await ensurePasscode('A');
+        if (!passcode) {
+          statusEl.innerHTML = '<span class="cross">&#10007;</span>';
+          showBanner('Falló: ' + file.name + ' — se requiere contraseña', 'error', false);
+          allSuccess = false;
+          continue;
+        }
+
         try {
-          const res = await fetch('/documents/upload', { method: 'POST', body: formData });
+          const res = await fetch('/documents/upload?passcode=' + encodeURIComponent(passcode), { method: 'POST', body: formData });
           const data = await res.json();
           if (res.ok && data.document_id) {
             const shortId = data.document_id.slice(0, 8);
@@ -1839,6 +1877,7 @@
             showBanner('Subido: ' + file.name + ' (ID: ' + shortId + ')', 'success', true);
             successCount++;
           } else {
+            if (res.status === 403) clearStoredPasscode('A');
             statusEl.innerHTML = '<span class="cross">&#10007;</span>';
             showBanner('Falló: ' + file.name + ' — ' + (data.detail || 'Error desconocido'), 'error', false);
             allSuccess = false;
@@ -2143,6 +2182,8 @@
         if (window._docPollTimer) clearTimeout(window._docPollTimer);
         window._docPollTimer = setTimeout(fetchDocuments, 5000);
       }
+
+      applyPasscodeVisibility();
     }
 
     // Search with debounce
@@ -2195,32 +2236,33 @@
       var filename = btn.getAttribute('data-filename');
       if (!documentId) return;
 
-      if (!confirm('¿Está seguro de que desea eliminar "' + (filename || 'este documento') + '"? Esta acción no se puede deshacer.')) return;
+      (async function() {
+        var passcode = await ensurePasscode('B');
+        if (!passcode) return;
 
-      btn.disabled = true;
-      btn.style.opacity = '0.5';
-      btn.style.cursor = 'not-allowed';
+        if (!confirm('¿Está seguro de que desea eliminar "' + (filename || 'este documento') + '"? Esta acción no se puede deshacer.')) return;
 
-      fetch('/documents/' + encodeURIComponent(documentId), { method: 'DELETE' })
-        .then(function(res) {
+        btn.disabled = true;
+        btn.style.opacity = '0.5';
+        btn.style.cursor = 'not-allowed';
+
+        try {
+          const res = await fetch('/documents/' + encodeURIComponent(documentId) + '?passcode=' + encodeURIComponent(passcode), { method: 'DELETE' });
           if (!res.ok) {
-            return res.json().then(function(data) {
-              throw new Error(data.detail || 'Error al eliminar el documento');
-            }).catch(function(err) {
-              if (err instanceof Error) throw err;
-              throw new Error('Error al eliminar el documento');
-            });
+            if (res.status === 403) clearStoredPasscode('B');
+            const errData = await res.json().catch(function() { return {}; });
+            throw new Error(errData.detail || 'Error al eliminar el documento');
           }
           showBanner('Documento "' + (filename || documentId.slice(0, 8)) + '" eliminado exitosamente', 'success', true);
           fetchDocuments();
-        })
-        .catch(function(err) {
+        } catch (err) {
           console.error('deleteDocument error:', err);
           btn.disabled = false;
           btn.style.opacity = '';
           btn.style.cursor = '';
           showBanner('Error al eliminar el documento: ' + err.message, 'error', false);
-        });
+        }
+      })();
     });
 
 // Refresh button handlers
@@ -4002,6 +4044,114 @@
         if (eventMap) eventMap.invalidateSize();
       }, 50);
     }
+
+    // ===== Passcode permissions =====
+    var PASSCODE_KEYS = { A: 'eth_passcode_A', B: 'eth_passcode_B', C: 'eth_passcode_C' };
+
+    function getStoredPasscode(level) {
+      try { return localStorage.getItem(PASSCODE_KEYS[level]) || ''; } catch (_e) { return ''; }
+    }
+
+    function storePasscode(level, code) {
+      try { localStorage.setItem(PASSCODE_KEYS[level], code); } catch (_e) { /* ignore */ }
+    }
+
+    function clearStoredPasscode(level) {
+      try { localStorage.removeItem(PASSCODE_KEYS[level]); } catch (_e) { /* ignore */ }
+    }
+
+    async function checkPasscode(level, code) {
+      try {
+        var res = await fetch('/api/passcode/check?passcode=' + encodeURIComponent(code));
+        if (!res.ok) return false;
+        var data = await res.json();
+        return !!(data && data.level === level);
+      } catch (_e) { return false; }
+    }
+
+    function promptPasscode(level) {
+      return new Promise(function(resolve) {
+        var backdrop = document.createElement('div');
+        backdrop.className = 'passcode-backdrop';
+        var modal = document.createElement('div');
+        modal.className = 'passcode-modal';
+        modal.setAttribute('role', 'dialog');
+        modal.setAttribute('aria-modal', 'true');
+        var img = document.createElement('img');
+        img.src = '/ui/passcode.png';
+        img.alt = 'Contraseña';
+        var row = document.createElement('div');
+        row.className = 'passcode-row';
+        var label = document.createElement('span');
+        label.className = 'passcode-label';
+        label.textContent = level + ':';
+        var input = document.createElement('input');
+        input.type = 'password';
+        input.className = 'passcode-input';
+        input.setAttribute('aria-label', 'Contraseña nivel ' + level);
+        row.appendChild(label);
+        row.appendChild(input);
+        modal.appendChild(img);
+        modal.appendChild(row);
+        backdrop.appendChild(modal);
+        document.body.appendChild(backdrop);
+
+        function done(value) {
+          document.removeEventListener('keydown', keyHandler);
+          if (backdrop.parentNode) backdrop.remove();
+          resolve(value);
+        }
+        function keyHandler(e) {
+          if (e.key === 'Enter') {
+            if (input.value) done(input.value);
+          } else if (e.key === 'Escape') {
+            done(null);
+          }
+        }
+        backdrop.addEventListener('click', function(e) {
+          if (e.target === backdrop) done(null);
+        });
+        document.addEventListener('keydown', keyHandler);
+        input.focus();
+      });
+    }
+
+    async function ensurePasscode(level) {
+      var stored = getStoredPasscode(level);
+      if (stored) return stored;
+      for (;;) {
+        var code = await promptPasscode(level);
+        if (!code) return null;
+        if (await checkPasscode(level, code)) {
+          storePasscode(level, code);
+          applyPasscodeVisibility();
+          return code;
+        }
+      }
+    }
+
+    function applyPasscodeVisibility() {
+      var hasCode = !!(getStoredPasscode('A') || getStoredPasscode('B'));
+      var cargarBtn = document.getElementById('tab-btn-upload');
+      var cargarPanel = document.getElementById('tab-upload');
+      if (cargarBtn) cargarBtn.style.display = hasCode ? '' : 'none';
+      if (cargarPanel) cargarPanel.style.display = hasCode ? '' : 'none';
+      document.querySelectorAll('.btn-delete').forEach(function(btn) {
+        btn.style.display = hasCode ? '' : 'none';
+      });
+    }
+
+    applyPasscodeVisibility();
+    if (!getStoredPasscode('A') && !getStoredPasscode('B') && !getStoredPasscode('C')) {
+      (async function() {
+        var code = await promptPasscode('C');
+        if (code && await checkPasscode('C', code)) {
+          storePasscode('C', code);
+        }
+        applyPasscodeVisibility();
+      })();
+    }
+    fetchDocuments();
 
   </script>
 </body>
