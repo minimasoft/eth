@@ -3,7 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>ETH — Espacio Tiempo Humanos</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%23ffffff'/%3E%3C/svg%3E" />
+  <title>¿Qué? ¿Cuándo? ¿Dónde?</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; }
     body { margin: 0; }
@@ -346,7 +347,8 @@
       padding: 0;
     }
 
-    .provider-select .llm-mode-pill select {
+    .provider-select .llm-mode-pill select,
+    .provider-select > select {
       font-size: 13px;
       color: #334155;
       background: #f1f5f9;
@@ -1720,35 +1722,32 @@
       return d.innerHTML;
     }
 
-    function getSelectedProviderIds() {
-      const checked = providerSelect.querySelectorAll('input[name="provider_ids"]:checked');
-      return Array.from(checked).map(cb => cb.value).filter(Boolean);
-    }
-
     function renderUploadProviders() {
+      /* Single-select model picker: one default option (env-backed default
+         provider when no value is sent) plus one option per non-default
+         provider, labeled by model name. */
       providerSelect.innerHTML = '';
-      const nonDefault = uploadProviders.filter(p => !p.is_default);
-      if (!nonDefault.length) {
-        providerSelect.style.display = 'none';
-        return;
-      }
       providerSelect.style.display = '';
       const label = document.createElement('span');
       label.className = 'provider-select-label';
-      label.textContent = 'Proveedores:';
+      label.textContent = 'Modelo:';
       providerSelect.appendChild(label);
-      nonDefault.forEach(p => {
-        const l = document.createElement('label');
-        const cb = document.createElement('input');
-        cb.type = 'checkbox';
-        cb.name = 'provider_ids';
-        cb.value = String(p.id);
-        const text = document.createElement('span');
-        text.textContent = escapeHtml(p.name || ('Proveedor ' + p.id)) + (p.model ? ' (' + escapeHtml(String(p.model)) + ')' : '');
-        l.appendChild(cb);
-        l.appendChild(text);
-        providerSelect.appendChild(l);
+      const select = document.createElement('select');
+      select.id = 'upload-provider';
+      const defaultProvider = uploadProviders.find(p => p.is_default);
+      const optDefault = document.createElement('option');
+      optDefault.value = '';
+      optDefault.textContent = (defaultProvider && defaultProvider.model)
+        ? 'Predeterminado (' + defaultProvider.model + ')'
+        : 'Predeterminado';
+      select.appendChild(optDefault);
+      uploadProviders.filter(p => !p.is_default).forEach(p => {
+        const opt = document.createElement('option');
+        opt.value = String(p.id);
+        opt.textContent = p.model ? String(p.model) : (p.name || ('Proveedor ' + p.id));
+        select.appendChild(opt);
       });
+      providerSelect.appendChild(select);
     }
 
     async function loadUploadProviders() {
@@ -1798,8 +1797,10 @@
         const formData = new FormData();
         formData.append('file', file);
         formData.append('llm_mode', (llmModeInput && llmModeInput.value) || 'thinking');
-        const providerIds = getSelectedProviderIds();
-        providerIds.forEach(pid => formData.append('provider_ids', pid));
+        const providerSel = document.getElementById('upload-provider');
+        if (providerSel && providerSel.value) {
+          formData.append('provider_id', providerSel.value);
+        }
 
         var passcode = await ensurePasscode('A');
         if (!passcode) {
