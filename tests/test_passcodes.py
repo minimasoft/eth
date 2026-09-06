@@ -7,6 +7,8 @@ contact).
 
 from __future__ import annotations
 
+import importlib
+
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -120,3 +122,148 @@ class TestCheckEndpoint:
         body = response.json()
         assert body == {"detail": "Invalid passcode."}
         assert "level" not in body
+
+
+# ---------------------------------------------------------------------------
+# Read enforcement (260906-kj0): every data-returning GET requires level C
+# ---------------------------------------------------------------------------
+
+def _read_app() -> FastAPI:
+    app = FastAPI()
+
+    @app.get("/r/things")
+    @require_passcode("C")
+    async def list_things() -> dict[str, str]:
+        return {"ok": "true"}
+
+    @app.get("/r/things/{thing_id}")
+    @require_passcode("C")
+    async def get_thing(thing_id: str) -> dict[str, str]:
+        if thing_id == "missing":
+            from fastapi import HTTPException
+
+            raise HTTPException(status_code=404, detail="Thing not found.")
+        return {"ok": "true"}
+
+    return app
+
+
+class TestRequirePasscodeReads:
+    """T-KJ0-01: C-on-reads contract (mirror of the mutating-endpoint tests)."""
+
+    def test_missing_passcode_422(self) -> None:
+        client = TestClient(_read_app())
+        assert client.get("/r/things").status_code == 422
+
+    def test_empty_passcode_generic_403(self) -> None:
+        client = TestClient(_read_app())
+        response = client.get("/r/things", params={"passcode": ""})
+        assert response.status_code == 403
+        assert response.json() == {"detail": "Passcode required."}
+
+    def test_wrong_passcode_generic_403(self) -> None:
+        client = TestClient(_read_app())
+        response = client.get("/r/things", params={"passcode": "nope"})
+        assert response.status_code == 403
+        assert response.json() == {"detail": "Passcode required."}
+
+    def test_level_a_does_not_satisfy_c(self) -> None:
+        client = TestClient(_read_app())
+        response = client.get("/r/things", params={"passcode": "AAAAA"})
+        assert response.status_code == 403
+        assert response.json() == {"detail": "Passcode required."}
+
+    def test_level_b_does_not_satisfy_c(self) -> None:
+        client = TestClient(_read_app())
+        response = client.get("/r/things", params={"passcode": "BBBBB"})
+        assert response.status_code == 403
+        assert response.json() == {"detail": "Passcode required."}
+
+    def test_valid_c_passes(self) -> None:
+        client = TestClient(_read_app())
+        response = client.get("/r/things", params={"passcode": "CCCCC"})
+        assert response.status_code == 200
+
+    def test_mocked_db_miss_still_proves_decorator_passed(self) -> None:
+        """A 404 from the handler proves the C decorator let the request through."""
+        client = TestClient(_read_app())
+        response = client.get("/r/things/missing", params={"passcode": "CCCCC"})
+        assert response.status_code == 404
+
+
+#: (route module, path) for every data-returning GET endpoint that must be
+#: gated with require_passcode("C").
+READ_ENDPOINTS: list[tuple[str, str]] = [
+    ("eth_pipeline.api.routes.documents", "/"),
+    ("eth_pipeline.api.routes.documents", "/documents"),
+    ("eth_pipeline.api.routes.documents", "/documents/{document_id}"),
+    ("eth_pipeline.api.routes.documents", "/documents/{document_id}/chunks/{part_index}"),
+    ("eth_pipeline.api.routes.documents", "/documents/{document_id}/logs"),
+    ("eth_pipeline.api.routes.documents", "/documents/{document_id}/llm-calls"),
+    ("eth_pipeline.api.routes.documents", "/documents/{document_id}/tokens"),
+    ("eth_pipeline.api.routes.events_v2", "/events"),
+    ("eth_pipeline.api.routes.events_v2", "/events/{event_id}"),
+    ("eth_pipeline.api.routes.geo", "/geo/events"),
+    ("eth_pipeline.api.routes.providers", "/api/providers"),
+    ("eth_pipeline.api.routes.comparisons", "/comparisons/{source_id}"),
+]
+
+#: Endpoints that must stay reachable WITHOUT any passcode.
+#: (/api/passcode/check takes its own ``passcode`` param by design, so it is
+#: verified behaviorally below rather than structurally.)
+OPEN_ENDPOINTS: list[tuple[str, str]] = [
+    ("eth_pipeline.api.routes.documents", "/health"),
+]
+
+
+def _find_route(module_name: str, path: str) -> object:
+    module = importlib.import_module(module_name)
+    for route in module.router.routes:
+        if getattr(route, "path", None) == path and "GET" in getattr(route, "methods", set()):
+            return route
+    raise AssertionError(f"GET {path} not found in {module_name}")
+
+
+def _passcode_query_param(route: object) -> object | None:
+    for param in route.dependant.query_params:  # type: ignore[attr-defined]
+        if param.name == "passcode":
+            return param
+    return None
+
+
+class TestReadEndpointsDecorated:
+    """Structural checks: the real routers carry the C gate on all reads."""
+
+    def test_every_read_endpoint_requires_passcode(self) -> None:
+        for module_name, path in READ_ENDPOINTS:
+            route = _find_route(module_name, path)
+            param = _passcode_query_param(route)
+            assert param is not None, f"GET {path} ({module_name}) lacks passcode param"
+            assert param.required is True, f"GET {path} passcode param not required"
+
+    def test_health_and_check_stay_open(self) -> None:
+        for module_name, path in OPEN_ENDPOINTS:
+            route = _find_route(module_name, path)
+            assert _passcode_query_param(route) is None, f"GET {path} must stay open"
+
+    def test_real_app_enforces_read_gate(self) -> None:
+        """Behavioral spot-check on the real app (rejections happen before DB)."""
+        from eth_pipeline.api import app as real_app
+
+        client = TestClient(real_app)
+        assert client.get("/documents").status_code == 422
+        response = client.get("/documents", params={"passcode": ""})
+        assert response.status_code == 403
+        assert response.json() == {"detail": "Passcode required."}
+        response = client.get("/documents", params={"passcode": "AAAAA"})
+        assert response.status_code == 403  # A is not C
+        assert client.get("/health").status_code == 200
+
+    def test_passcode_check_stays_open(self) -> None:
+        """The bootstrap validation endpoint works without any prior gate."""
+        from eth_pipeline.api import app as real_app
+
+        client = TestClient(real_app)
+        response = client.get("/api/passcode/check", params={"passcode": "CCCCC"})
+        assert response.status_code == 200
+        assert response.json() == {"level": "C"}
