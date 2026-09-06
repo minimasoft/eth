@@ -6,6 +6,14 @@
  * BEFORE this file: fetchWithC, showEventDetail, escapeHtml, showBanner,
  * truncateText.
  *
+ * Exposed hooks (called from index.html):
+ * - window.renderLineaTiempo()      — render (cached; force=true refetches)
+ * - window.refreshLineaTiempo()     — universal nav refresh button: clears
+ *                                     caches and re-renders
+ * - window.restoreLineaTiempoScroll() — onTabClick calls this after render;
+ *                                     scrolls back to the month the user
+ *                                     had scrolled to (lt2SavedMonth)
+ *
  * Layout: vertical months (old→new, top→bottom), one column per model
  * (149px + 16px gap), 149×92 event rectangles colored from the tableau20
  * palette (DB-stored color_index where available, string-hash fallback),
@@ -35,6 +43,62 @@
   var lt2ColorIndex = null;   /* model string -> DB color_index | null */
 
   var lt2Loading = false;
+
+  /* Scroll-month memory: the label of the top-most month visible when the
+   * user leaves the tab, restored on re-entry. */
+  var lt2SavedMonth = null;
+  var SCROLL_TRACK_OFFSET = 80;   /* px below the viewport top for tracking */
+  var SCROLL_RESTORE_OFFSET = 8;  /* px above the anchor when restoring */
+
+  /* Map each rendered .lt2-month-label to its document-space top and text. */
+  function getMonthAnchors() {
+    var container = document.getElementById('lineatiempo-container');
+    if (!container) return [];
+    var anchors = [];
+    var labels = container.querySelectorAll('.lt2-month-label');
+    for (var i = 0; i < labels.length; i++) {
+      var top = labels[i].getBoundingClientRect().top + window.scrollY;
+      anchors.push({ label: labels[i].textContent, docTop: top });
+    }
+    return anchors;
+  }
+
+  function lineatiempoActive() {
+    var section = document.getElementById('tab-lineatiempo');
+    return !!(section && section.classList.contains('active'));
+  }
+
+  /* Track the top-most visible month while the tab is active. Added once —
+   * a no-op whenever the Línea de tiempo is not the active tab. */
+  window.addEventListener('scroll', function () {
+    if (!lineatiempoActive()) return;
+    var anchors = getMonthAnchors();
+    if (!anchors.length) { lt2SavedMonth = null; return; }
+    var y = window.scrollY + SCROLL_TRACK_OFFSET;
+    var saved = null;
+    for (var i = 0; i < anchors.length; i++) {
+      if (anchors[i].docTop <= y) saved = anchors[i].label;
+      else break;
+    }
+    lt2SavedMonth = saved;
+  }, { passive: true });
+
+  /* Restore: called from index.html onTabClick AFTER window.renderLineaTiempo
+   * (renderLineaTiempo returns early on cache hits, so this must be a
+   * separate call). Restoring re-triggers the scroll listener, which simply
+   * re-records the same month. */
+  window.restoreLineaTiempoScroll = function () {
+    if (!lineatiempoActive()) return;
+    if (!lt2Events || !lt2Events.length) return;
+    if (!lt2SavedMonth) return;
+    var anchors = getMonthAnchors();
+    for (var i = 0; i < anchors.length; i++) {
+      if (anchors[i].label === lt2SavedMonth) {
+        window.scrollTo({ top: Math.max(0, anchors[i].docTop - SCROLL_RESTORE_OFFSET) });
+        return;
+      }
+    }
+  };
 
   /* ------------------------------------------------------------------ */
   /* CSS — injected once, class prefix lt2- (no clash with .tl-*).       */

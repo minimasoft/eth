@@ -146,7 +146,7 @@ def test_inline_app_script_syntax():
 
 def test_refresh_hook_clears_caches():
     source = _source(LINEA_TIEMPO_JS)
-    start = source.index("window.refreshLineaTiempo")
+    start = source.index("window.refreshLineaTiempo = function")
     body = source[start:source.index("};", start)]
     assert "lt2Events = null" in body and "lt2ColorIndex = null" in body, (
         "window.refreshLineaTiempo must clear both caches before re-rendering"
@@ -264,4 +264,61 @@ def test_apply_hash_guards_logs_tab():
     body = script[start:script.index("\n    }", start)]
     assert "logsDocumentId" in body, (
         "applyHash must not switch to the logs tab without an open document"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Línea de tiempo scroll-month memory
+# ---------------------------------------------------------------------------
+
+def test_linea_tiempo_scroll_memory_hooks():
+    source = _source(LINEA_TIEMPO_JS)
+    for identifier in (
+        "function getMonthAnchors",
+        "lt2SavedMonth",
+        "window.restoreLineaTiempoScroll",
+        "window.refreshLineaTiempo",
+    ):
+        assert identifier in source, (
+            f"Missing {identifier} in linea-tiempo.js"
+        )
+    assert "addEventListener('scroll'" in source, (
+        "linea-tiempo.js must track the scroll position with a window "
+        "scroll listener"
+    )
+
+
+def test_scroll_listener_only_tracks_active_tab():
+    source = _source(LINEA_TIEMPO_JS)
+    start = source.index("window.addEventListener('scroll'")
+    body = source[start:source.index("}, { passive: true })", start)]
+    assert "tab-lineatiempo" in body or "lineatiempoActive()" in body, (
+        "The scroll listener must no-op unless the Línea de tiempo tab is active"
+    )
+
+
+def test_restore_uses_month_label_match():
+    source = _source(LINEA_TIEMPO_JS)
+    start = source.index("window.restoreLineaTiempoScroll = function")
+    body = source[start:source.index("};", start)]
+    assert "lt2SavedMonth" in body, (
+        "Restore must target the saved month label"
+    )
+    assert "window.scrollTo" in body, (
+        "Restore must scroll the window back to the anchor position"
+    )
+
+
+def test_month_anchors_use_label_text_and_doc_top():
+    source = _source(LINEA_TIEMPO_JS)
+    start = source.index("function getMonthAnchors")
+    body = source[start:source.index("\n  }", start)]
+    assert ".lt2-month-label" in body, (
+        "Anchors must come from the rendered month labels"
+    )
+    assert "getBoundingClientRect" in body and "window.scrollY" in body, (
+        "Anchor tops must be document-space (rect.top + window.scrollY)"
+    )
+    assert "textContent" in body, (
+        "Anchors must carry the label text (e.g. 'Ene 2026')"
     )

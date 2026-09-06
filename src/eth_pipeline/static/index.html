@@ -1725,7 +1725,11 @@
       if (tabName === 'logs') resumeLogPolling();
       if (tabName === 'eventos') { populateEventosDocFilter(); fetchEventos(); }
       if (tabName === 'mapa') { initEventMap(); scheduleInvalidateSize(); }
-      if (tabName === 'lineatiempo' && window.renderLineaTiempo) window.renderLineaTiempo();
+      if (tabName === 'lineatiempo' && window.renderLineaTiempo) {
+        window.renderLineaTiempo();
+        // renderLineaTiempo returns early when cached — restore is a separate call.
+        if (window.restoreLineaTiempoScroll) window.restoreLineaTiempoScroll();
+      }
     }
 
     tabs.forEach(tab => {
