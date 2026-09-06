@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-06-08)
 Phase: 38
 Plan: Not started
 Status: Executing Phase 38
-Last activity: 2026-09-06 - Completed quick task 260906-0kn: Alembic 0005 applied to dev DB (fixes GET /ui/providers), llm.py prompt change committed
+Last activity: 2026-09-06 - Completed quick task 260906-kj0: all read endpoints require C passcode (422/403 enforcement), UI read fetches send stored C, startup gated on C modal
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -115,6 +115,7 @@ None yet.
 | 260905-vxr | Timeline polish: month dividers under data dots (z-index), zoom-adaptive month tick-label axis (50px→6mo, 100→3, 200→2, 400→1, thresholds for intermediates) inside scroll canvas, wheel-over-timeline horizontal scroll (passive:false, overflow-guarded) | 2026-09-05 | e04a5ef, cecc98d, 50a29f1 | [260905-vxr-timeline-fixes-month-divider-lines-must-](./quick/260905-vxr-timeline-fixes-month-divider-lines-must-/) |
 | 260906-0kn | Apply Alembic 0005 to dev DB (instruct params + llm_mode) fixing GET /ui/providers UndefinedColumn error; commit overthinking-warning line in v7 extraction prompt | 2026-09-06 | 61367f6 | [260906-0kn-fix-llm-provider-migration-add-instruct-](./quick/260906-0kn-fix-llm-provider-migration-add-instruct-/) |
 | 260906-jd7 | Basic passcode permissions: A/B/C env-backed passcodes (constant-time), require_passcode decorator on all six mutating endpoints, /api/passcode/check, passcode.png modal gating Cargar/deletes/gear in index.html + providers.html, documents default view | 2026-09-06 | 9c09ffa, 3939883, 46e6df9 | [260906-jd7-implement-basic-passcode-permissions-for](./quick/260906-jd7-implement-basic-passcode-permissions-for/) |
+| 260906-kj0 | Fix passcode enforcement gap: require C passcode on all 11 read endpoints (GET → query), index.html/providers.html send stored C on read fetches, startup gated on C modal | 2026-09-06 | 180b20d, 6e1f2de, b37932f, fb6eefd | [260906-kj0-fix-passcode-enforcement-gap-all-read-en](./quick/260906-kj0-fix-passcode-enforcement-gap-all-read-en/) |
 
 ## Deferred Items
 
