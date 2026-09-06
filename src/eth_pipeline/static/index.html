@@ -1307,6 +1307,7 @@
     <button role="tab" aria-selected="true" aria-controls="tab-documents" id="tab-btn-documents" data-tab="documents">Documentos</button>
     <button role="tab" aria-selected="false" aria-controls="tab-eventos" id="tab-btn-eventos" data-tab="eventos">Eventos</button>
     <button role="tab" aria-selected="false" aria-controls="tab-mapa" id="tab-btn-mapa" data-tab="mapa">Mapa</button>
+    <button role="tab" aria-selected="false" aria-controls="tab-lineatiempo" id="tab-btn-lineatiempo" data-tab="lineatiempo">Línea de tiempo</button>
     <button role="tab" aria-selected="false" aria-controls="tab-compare" id="tab-btn-compare" data-tab="compare" style="display:none">Comparación</button>
     <button role="tab" aria-selected="false" aria-controls="tab-logs" id="tab-btn-logs" data-tab="logs" style="display:none">Registros</button>
   </nav>
@@ -1545,6 +1546,21 @@
       <div id="event-map"></div>
     </section>
 
+    <section id="tab-lineatiempo" role="tabpanel" aria-labelledby="tab-btn-lineatiempo" class="tab-content">
+      <div class="documents-header">
+        <h2>Línea de tiempo</h2>
+      </div>
+      <p style="font-size:13px;color:#64748b;margin:0 0 12px 0">
+        Cronología vertical por meses. Los colores por modelo provienen de la
+        configuración de proveedores.
+        <button class="btn-icon btn-refresh" id="lineatiempo-refresh-btn" aria-label="Actualizar línea de tiempo" title="Actualizar línea de tiempo" style="vertical-align:middle">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+        </button>
+      </p>
+      <div id="lineatiempo-loading" class="documents-loading" style="display:none">Cargando línea de tiempo...</div>
+      <div id="lineatiempo-container"></div>
+    </section>
+
     <section id="tab-compare" role="tabpanel" aria-labelledby="tab-btn-compare" class="tab-content">
       <div class="documents-header">
         <h2>Comparación entre Modelos</h2>
@@ -1680,6 +1696,7 @@
       documents: document.getElementById('tab-documents'),
       eventos: document.getElementById('tab-eventos'),
       mapa: document.getElementById('tab-mapa'),
+      lineatiempo: document.getElementById('tab-lineatiempo'),
       compare: document.getElementById('tab-compare'),
       logs: document.getElementById('tab-logs'),
     };
@@ -1723,6 +1740,7 @@
       if (tabName === 'logs') resumeLogPolling();
       if (tabName === 'eventos') { populateEventosDocFilter(); fetchEventos(); }
       if (tabName === 'mapa') { initEventMap(); scheduleInvalidateSize(); }
+      if (tabName === 'lineatiempo' && window.renderLineaTiempo) window.renderLineaTiempo();
     }
 
     tabs.forEach(tab => {
@@ -4194,5 +4212,6 @@
     })();
 
   </script>
+  <script src="linea-tiempo.js"></script>
 </body>
 </html>
