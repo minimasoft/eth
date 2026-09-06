@@ -239,7 +239,7 @@ class TestReadEndpointsDecorated:
             route = _find_route(module_name, path)
             param = _passcode_query_param(route)
             assert param is not None, f"GET {path} ({module_name}) lacks passcode param"
-            assert param.required is True, f"GET {path} passcode param not required"
+            assert param.field_info.is_required(), f"GET {path} passcode param not required"
 
     def test_health_and_check_stay_open(self) -> None:
         for module_name, path in OPEN_ENDPOINTS:

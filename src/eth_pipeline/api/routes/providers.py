@@ -27,6 +27,7 @@ router = APIRouter(tags=["Providers"])
 
 
 @router.get("/api/providers", response_model=ProviderItemList)
+@require_passcode("C")
 async def list_providers() -> ProviderItemList:
     try:
         items = await provider_svc.list_providers()

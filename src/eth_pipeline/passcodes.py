@@ -1,11 +1,17 @@
-"""Passcode-based permission levels for mutating endpoints.
+"""Passcode-based permission levels for mutating and read endpoints.
 
-The app is exposed via a Cloudflare tunnel, so mutating actions are gated
-by passcodes while reads stay open.  Levels:
+The app is exposed via a Cloudflare tunnel, so every data-returning
+endpoint is gated by passcodes.  Levels:
 
 - ``A``: add providers, send documents
 - ``B``: deletes (level A never satisfies B)
-- ``C``: read confirmation (asked once by the UI; reads need nothing)
+- ``C``: read level — required by ALL data-returning GET endpoints
+  (documents, events, geo, providers, comparisons); asked once by the
+  UI and reused for every read fetch
+
+Only liveness/bootstrap endpoints stay open: ``GET /health`` (docker
+healthcheck) and ``GET /api/passcode/check`` (lets the UI validate a C
+code before any read is possible).
 
 Passcodes come from the environment (``PASSCODE_A``/``PASSCODE_B``/
 ``PASSCODE_C``) with hardcoded fallback defaults.  All comparisons are

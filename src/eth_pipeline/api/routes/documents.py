@@ -82,6 +82,7 @@ async def _resolve_provider(provider_id: str | None) -> dict:
 
 
 @router.get("/", response_model=APIInfo)
+@require_passcode("C")
 async def root() -> APIInfo:
     """Return basic API information and available endpoints."""
     return APIInfo(
@@ -399,6 +400,7 @@ async def upload_document(
     "/documents/{document_id}",
     response_model=DocumentStatus,
 )
+@require_passcode("C")
 async def get_document(document_id: str) -> DocumentStatus:
     """Retrieve document status and metadata.
 
@@ -490,6 +492,7 @@ async def get_document(document_id: str) -> DocumentStatus:
     "/documents/{document_id}/chunks/{part_index}",
     response_model=ChunkTextResponse,
 )
+@require_passcode("C")
 async def get_chunk_text(
     document_id: str,
     part_index: int,
@@ -544,6 +547,7 @@ async def get_chunk_text(
     "/documents/{document_id}/logs",
     response_model=ProcessingLogListResponse,
 )
+@require_passcode("C")
 async def get_document_logs(
     document_id: str,
     page: int = Query(1, ge=1),
@@ -670,6 +674,7 @@ async def get_document_logs(
     "/documents/{document_id}/llm-calls",
     response_model=LlmCallLogListResponse,
 )
+@require_passcode("C")
 async def get_document_llm_calls(
     document_id: str,
     page: int = Query(1, ge=1),
@@ -800,6 +805,7 @@ async def get_document_llm_calls(
 
 
 @router.get("/documents/{document_id}/tokens", response_model=DocumentTokenUsage)
+@require_passcode("C")
 async def get_document_tokens(document_id: str) -> DocumentTokenUsage:
     """Retrieve aggregated token usage for a single document."""
     try:
@@ -839,6 +845,7 @@ async def get_document_tokens(document_id: str) -> DocumentTokenUsage:
 
 
 @router.get("/documents", response_model=DocumentListResponse)
+@require_passcode("C")
 async def list_documents(
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),

@@ -7,6 +7,7 @@ from fastapi import APIRouter, HTTPException, Query
 from eth_pipeline.api import app
 from eth_pipeline.api.models import GeoEventItem, GeoEventsResponse
 from eth_pipeline.db import get_db
+from eth_pipeline.passcodes import require_passcode
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +57,7 @@ def parse_bbox(
 
 
 @router.get("/geo/events", response_model=GeoEventsResponse)
+@require_passcode("C")
 async def list_geo_events(
     min_lon: float | None = Query(None),
     min_lat: float | None = Query(None),

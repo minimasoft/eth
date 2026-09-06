@@ -10,6 +10,7 @@ from eth_pipeline.api.models import (
     ComparisonResponse,
 )
 from eth_pipeline.db import get_db
+from eth_pipeline.passcodes import require_passcode
 
 logger = logging.getLogger(__name__)
 
@@ -17,6 +18,7 @@ router = APIRouter(tags=["Comparisons"])
 
 
 @router.get("/comparisons/{source_id}", response_model=ComparisonResponse)
+@require_passcode("C")
 async def get_comparison(source_id: str) -> ComparisonResponse:
     """Cross-model comparison data for one source group.
 

@@ -14,6 +14,7 @@ from eth_pipeline.api.models import (
     EventV2ListItem,
 )
 from eth_pipeline.db import get_db
+from eth_pipeline.passcodes import require_passcode
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +22,7 @@ router = APIRouter(tags=["Events V2"])
 
 
 @router.get("/events", response_model=EventListV2Response)
+@require_passcode("C")
 async def list_events_v2(
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
@@ -136,6 +138,7 @@ async def list_events_v2(
 
 
 @router.get("/events/{event_id}", response_model=EventV2DetailResponse)
+@require_passcode("C")
 async def get_event_v2_detail(event_id: str) -> EventV2DetailResponse:
     """Retrieve full v7 event detail with locations, participants, and references."""
 
