@@ -194,7 +194,8 @@ class TestRequirePasscodeReads:
 #: (route module, path) for every data-returning GET endpoint that must be
 #: gated with require_passcode("C").
 READ_ENDPOINTS: list[tuple[str, str]] = [
-    ("eth_pipeline.api.routes.documents", "/"),
+    # ("/" removed in 260906-mdt: the root is now an open redirect to /ui,
+    # not a data-returning endpoint — see tests/test_routing.py)
     ("eth_pipeline.api.routes.documents", "/documents"),
     ("eth_pipeline.api.routes.documents", "/documents/{document_id}"),
     ("eth_pipeline.api.routes.documents", "/documents/{document_id}/chunks/{part_index}"),

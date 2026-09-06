@@ -4,7 +4,7 @@ import logging
 from pathlib import Path
 
 from fastapi import FastAPI, Request
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from eth_pipeline.api.lifespan import lifespan
@@ -65,6 +65,16 @@ if STATIC_DIR.is_dir():
     )
 else:
     logger.warning("Static directory %s not found — UI will not be served at /ui", STATIC_DIR)
+
+
+@app.get("/api", include_in_schema=False)
+async def api_redirect() -> RedirectResponse:
+    """Redirect to the API reference (Swagger UI) at FastAPI's ``/docs``.
+
+    Exact-path route: cannot shadow ``/api/providers`` or
+    ``/api/passcode/check`` (Starlette matches longer paths first).
+    """
+    return RedirectResponse("/docs", status_code=307)
 
 # =======================================================================
 # Include route modules via their routers

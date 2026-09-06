@@ -9,6 +9,7 @@ import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
+from fastapi.responses import RedirectResponse
 
 from eth_pipeline.api import app
 from eth_pipeline.db import get_db
@@ -17,7 +18,6 @@ from eth_pipeline.passcodes import require_passcode
 from eth_pipeline import providers as provider_svc
 
 from eth_pipeline.api.models import (
-    APIInfo,
     ChunkTextResponse,
     DocumentCreated,
     DocumentDeleted,
@@ -81,29 +81,14 @@ async def _resolve_provider(provider_id: str | None) -> dict:
 # =======================================================================
 
 
-@router.get("/", response_model=APIInfo)
-@require_passcode("C")
-async def root() -> APIInfo:
-    """Return basic API information and available endpoints."""
-    return APIInfo(
-        name="eth-pipeline",
-        version="0.1.0",
-        description="Document processing pipeline with Temporal and PostgreSQL",
-        endpoints={
-            "/": "This information",
-            "/health": "Liveness check",
-            "/documents": "List documents (GET) or submit for processing (POST)",
-            "/documents/upload": "Upload a binary document file (POST, multipart, fan-out via repeated provider_ids)",
-            "/documents/{document_id}": "Get document status (GET) or delete cascade (DELETE)",
-            "/documents/{document_id}/logs": "Get processing log entries for a document (GET)",
-            "/documents/{document_id}/llm-calls": "Get LLM call log entries for a document (GET)",
-            "/documents/{document_id}/tokens": "Get aggregated token usage for a document (GET)",
-            "/events": "List extracted events with model provenance (GET; filters: search, document, source, model)",
-            "/events/{event_id}": "Get event detail with locations, participants, references (GET)",
-            "/comparisons/{source_id}": "Cross-model comparison of events extracted from one source document (GET)",
-            "/api/providers": "Manage LLM providers (GET/POST/DELETE)",
-        },
-    )
+@router.get("/", include_in_schema=False)
+async def root() -> RedirectResponse:
+    """Redirect to the web UI served at ``/ui``.
+
+    The old API-info JSON blob here duplicated ``/openapi.json`` and
+    ``/docs``; the obvious entry point now lands on the UI instead.
+    """
+    return RedirectResponse("/ui", status_code=307)
 
 
 # =======================================================================
