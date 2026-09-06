@@ -1811,7 +1811,7 @@
 
     async function loadUploadProviders() {
       try {
-        const res = await fetch('/api/providers');
+        const res = await fetchWithC('/api/providers');
         if (!res.ok) return;
         const data = await res.json();
         uploadProviders = (data && data.items) ? data.items : [];
@@ -1820,7 +1820,6 @@
       }
       renderUploadProviders();
     }
-    loadUploadProviders();
 
     chooseBtn.addEventListener('click', () => fileInput.click());
 
@@ -2083,7 +2082,7 @@
       if (docsStatusFilter) params.set('status', docsStatusFilter);
 
       try {
-        const res = await fetch('/documents?' + params.toString());
+        const res = await fetchWithC('/documents?' + params.toString());
         if (!res.ok) {
           let detail = 'Error al obtener documentos';
           try {
@@ -2394,7 +2393,7 @@
       params.set('page', String(page));
 
       try {
-        const res = await fetch('/documents/' + encodeURIComponent(docId) + '/logs?' + params.toString());
+        const res = await fetchWithC('/documents/' + encodeURIComponent(docId) + '/logs?' + params.toString());
         if (!res.ok) {
           let detail = 'Error al obtener registros';
           try {
@@ -2485,7 +2484,7 @@
     async function fetchLogsTokens(docId) {
       if (!docId) return;
       try {
-        const res = await fetch('/documents/' + encodeURIComponent(docId) + '/tokens');
+        const res = await fetchWithC('/documents/' + encodeURIComponent(docId) + '/tokens');
         if (!res.ok) {
           logsTokenSummary.style.display = 'none';
           return;
@@ -2535,7 +2534,7 @@
       params.set('per_page', '20');
 
       try {
-        var res = await fetch('/documents/' + encodeURIComponent(docId) + '/llm-calls?' + params.toString());
+        var res = await fetchWithC('/documents/' + encodeURIComponent(docId) + '/llm-calls?' + params.toString());
         if (!res.ok) {
           var detail = 'Error al obtener llamadas LLM';
           try { var errData = await res.json(); if (errData && errData.detail) detail = errData.detail; } catch (_pe) {}
@@ -2801,7 +2800,7 @@
       if (eventosDocumentFilter) params.set('document', eventosDocumentFilter);
 
       try {
-        const res = await fetch('/events?' + params.toString());
+        const res = await fetchWithC('/events?' + params.toString());
         if (!res.ok) {
           let detail = 'Error al cargar eventos';
           try {
@@ -2847,7 +2846,7 @@
           if (eventosSearchTerm) params.set('search', eventosSearchTerm);
           if (eventosDocumentFilter) params.set('document', eventosDocumentFilter);
 
-          const res = await fetch('/events?' + params.toString());
+          const res = await fetchWithC('/events?' + params.toString());
           if (!res.ok) {
             let detail = 'Error al cargar eventos';
             try {
@@ -3184,7 +3183,7 @@
 
     async function populateEventosDocFilter() {
       try {
-        var res = await fetch('/documents?per_page=100');
+        var res = await fetchWithC('/documents?per_page=100');
         if (!res.ok) return;
         var data = await res.json();
         var select = eventosDocFilter;
@@ -3263,7 +3262,7 @@
       eventDetailRefsEmpty.style.display = 'none';
 
       try {
-        const res = await fetch('/events/' + encodeURIComponent(eventId));
+        const res = await fetchWithC('/events/' + encodeURIComponent(eventId));
         if (!res.ok) {
           let detail = 'Error al cargar evento';
           try {
@@ -3404,7 +3403,7 @@
       metaEl.style.display = 'none';
 
       try {
-        var res = await fetch('/comparisons/' + encodeURIComponent(cmpSourceId));
+        var res = await fetchWithC('/comparisons/' + encodeURIComponent(cmpSourceId));
         if (!res.ok) {
           var detail = 'Error al cargar la comparación';
           try {
@@ -3742,7 +3741,7 @@
 
     async function fetchAndRenderChunk(documentId, chunkIndex, verbatimText, refIndex) {
       try {
-        var res = await fetch('/documents/' + encodeURIComponent(documentId) + '/chunks/' + encodeURIComponent(String(chunkIndex)));
+        var res = await fetchWithC('/documents/' + encodeURIComponent(documentId) + '/chunks/' + encodeURIComponent(String(chunkIndex)));
         if (!res.ok) {
           var detail = 'Error al cargar el texto del chunk';
           try { var errData = await res.json(); if (errData && errData.detail) detail = errData.detail; } catch (_pe) {}
@@ -3781,7 +3780,7 @@
         if (chunkPrevBtn) chunkPrevBtn.disabled = chunkIndex <= 0;
         // Try to determine if next chunk exists
         try {
-          var nextRes = await fetch('/documents/' + encodeURIComponent(documentId) + '/chunks/' + encodeURIComponent(String(chunkIndex + 1)));
+          var nextRes = await fetchWithC('/documents/' + encodeURIComponent(documentId) + '/chunks/' + encodeURIComponent(String(chunkIndex + 1)));
           if (chunkNextBtn) chunkNextBtn.disabled = !nextRes.ok;
         } catch (_e) {
           if (chunkNextBtn) chunkNextBtn.disabled = true;
@@ -3990,7 +3989,7 @@
       } else {
         params = new URLSearchParams({ limit: '2000' });
       }
-      fetch('/geo/events?' + params.toString())
+      fetchWithC('/geo/events?' + params.toString())
         .then(function(resp) {
           if (!resp.ok) throw new Error('HTTP ' + resp.status);
           return resp.json();
@@ -4057,7 +4056,28 @@
     }
 
     function clearStoredPasscode(level) {
-      try { localStorage.removeItem(PASSCODE_KEYS[level]); } catch (_e) { /* ignore */ }
+      try { localStorage.removeItem(PASSCODE_KEYS[level]) } catch (_e) { /* ignore */ }
+    }
+
+    // Append the stored C passcode to a read URL (empty value when absent so
+    // the server 403s and the caller can re-prompt).
+    function readUrl(url) {
+      var code = getStoredPasscode('C');
+      return url + (url.indexOf('?') === -1 ? '?' : '&') + 'passcode=' + encodeURIComponent(code);
+    }
+
+    // Read fetch wrapper: sends the stored C passcode; on 403 clears the
+    // stored code, re-prompts, and retries once. Always resolves to a
+    // Response (a cancelled prompt retries with an empty passcode, which the
+    // server rejects with 403 for the caller's existing error path).
+    async function fetchWithC(url) {
+      var res = await fetch(readUrl(url));
+      if (res.status === 403) {
+        clearStoredPasscode('C');
+        await ensurePasscode('C');
+        res = await fetch(readUrl(url));
+      }
+      return res;
     }
 
     async function checkPasscode(level, code) {
@@ -4142,16 +4162,18 @@
     }
 
     applyPasscodeVisibility();
-    if (!getStoredPasscode('A') && !getStoredPasscode('B') && !getStoredPasscode('C')) {
-      (async function() {
-        var code = await promptPasscode('C');
-        if (code && await checkPasscode('C', code)) {
-          storePasscode('C', code);
-        }
-        applyPasscodeVisibility();
-      })();
-    }
-    fetchDocuments();
+    // Startup gate: no data fetch may fire before the C passcode resolves.
+    // If a C code is already stored, ensurePasscode returns immediately and
+    // the initial loads proceed; otherwise the modal blocks until a valid C
+    // code is entered (or the user cancels — the documents table then stays
+    // empty, matching providers.html cancel behavior).
+    (async function() {
+      var code = await ensurePasscode('C');
+      applyPasscodeVisibility();
+      if (!code) return; // cancelled — leave the view empty, no fetch
+      loadUploadProviders();
+      fetchDocuments();
+    })();
 
   </script>
 </body>
