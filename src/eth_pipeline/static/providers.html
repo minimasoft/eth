@@ -795,9 +795,14 @@
         label.className = 'passcode-label';
         label.textContent = level + ':';
         var input = document.createElement('input');
-        input.type = 'password';
+        input.type = 'text';
         input.className = 'passcode-input';
         input.setAttribute('aria-label', 'Contraseña nivel ' + level);
+        input.setAttribute('autocomplete', 'off');
+        input.setAttribute('name', 'passcode-value');
+        input.setAttribute('spellcheck', 'false');
+        input.setAttribute('autocapitalize', 'off');
+        input.setAttribute('autocorrect', 'off');
         row.appendChild(label);
         row.appendChild(input);
         modal.appendChild(img);
