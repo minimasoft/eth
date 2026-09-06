@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-06-08)
 Phase: 38
 Plan: Not started
 Status: Executing Phase 38
-Last activity: 2026-09-06 - Completed quick task 260906-lkl: Eventos tab defaults to timeline view
+Last activity: 2026-09-06 - Completed quick task 260906-mdt: / redirects to /ui, /api redirects to /docs
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -118,6 +118,7 @@ None yet.
 | 260906-kj0 | Fix passcode enforcement gap: require C passcode on all 11 read endpoints (GET → query), index.html/providers.html send stored C on read fetches, startup gated on C modal | 2026-09-06 | 180b20d, 6e1f2de, b37932f, fb6eefd | [260906-kj0-fix-passcode-enforcement-gap-all-read-en](./quick/260906-kj0-fix-passcode-enforcement-gap-all-read-en/) |
 | 260906-l1o | Passcode UX: modal input is a plain text field (autocomplete off) so password managers never trigger; Logout button (index.html) / Salir (providers.html) clears stored A/B/C passcodes and returns to unauthenticated state | 2026-09-06 | 2ebfbf0, e4db2f5 | [260906-l1o-passcode-ux-fixes-1-passcode-modal-input](./quick/260906-l1o-passcode-ux-fixes-1-passcode-modal-input/) |
 | 260906-lkl | Eventos tab defaults to Cronología (timeline) view on load instead of table view | 2026-09-06 | 9fa8af0 | [260906-lkl-in-the-eventos-tab-of-index-html-make-th](./quick/260906-lkl-in-the-eventos-tab-of-index-html-make-th/) |
+| 260906-mdt | Routing: / redirects to /ui (redirect is open, was gated), /api redirects to /docs; UI stays at /ui, /api/* data endpoints unaffected | 2026-09-06 | 0b05a26, 50d782b | [260906-mdt-routing-changes-redirects-to-ui-api-serv](./quick/260906-mdt-routing-changes-redirects-to-ui-api-serv/) |
 
 ## Deferred Items
 
