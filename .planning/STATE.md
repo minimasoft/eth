@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-06-08)
 Phase: 38
 Plan: Not started
 Status: Executing Phase 38
-Last activity: 2026-09-06 - Completed quick task 260906-l1o: passcode input plain-text (no password manager), logout button clears stored passcodes
+Last activity: 2026-09-06 - Completed quick task 260906-lkl: Eventos tab defaults to timeline view
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -117,6 +117,7 @@ None yet.
 | 260906-jd7 | Basic passcode permissions: A/B/C env-backed passcodes (constant-time), require_passcode decorator on all six mutating endpoints, /api/passcode/check, passcode.png modal gating Cargar/deletes/gear in index.html + providers.html, documents default view | 2026-09-06 | 9c09ffa, 3939883, 46e6df9 | [260906-jd7-implement-basic-passcode-permissions-for](./quick/260906-jd7-implement-basic-passcode-permissions-for/) |
 | 260906-kj0 | Fix passcode enforcement gap: require C passcode on all 11 read endpoints (GET → query), index.html/providers.html send stored C on read fetches, startup gated on C modal | 2026-09-06 | 180b20d, 6e1f2de, b37932f, fb6eefd | [260906-kj0-fix-passcode-enforcement-gap-all-read-en](./quick/260906-kj0-fix-passcode-enforcement-gap-all-read-en/) |
 | 260906-l1o | Passcode UX: modal input is a plain text field (autocomplete off) so password managers never trigger; Logout button (index.html) / Salir (providers.html) clears stored A/B/C passcodes and returns to unauthenticated state | 2026-09-06 | 2ebfbf0, e4db2f5 | [260906-l1o-passcode-ux-fixes-1-passcode-modal-input](./quick/260906-l1o-passcode-ux-fixes-1-passcode-modal-input/) |
+| 260906-lkl | Eventos tab defaults to Cronología (timeline) view on load instead of table view | 2026-09-06 | 9fa8af0 | [260906-lkl-in-the-eventos-tab-of-index-html-make-th](./quick/260906-lkl-in-the-eventos-tab-of-index-html-make-th/) |
 
 ## Deferred Items
 
