@@ -526,7 +526,7 @@
     }
 
     async function loadProviders() {
-      const res = await fetch('/api/providers');
+      const res = await fetchWithC('/api/providers');
       if (!res.ok) {
         let detail = 'Error al cargar proveedores';
         try { const d = await res.json(); if (d && d.detail) detail = d.detail; } catch (_e) {}
@@ -750,6 +750,25 @@
       try { localStorage.removeItem(PASSCODE_KEYS[level]); } catch (_e) { /* ignore */ }
     }
 
+    // Append the stored C passcode to a read URL (empty value when absent so
+    // the server 403s and the caller can re-prompt).
+    function readUrl(url) {
+      var code = getStoredPasscode('C');
+      return url + (url.indexOf('?') === -1 ? '?' : '&') + 'passcode=' + encodeURIComponent(code);
+    }
+
+    // Read fetch wrapper: sends the stored C passcode; on 403 clears the
+    // stored code, re-prompts, and retries once (mirrors index.html).
+    async function fetchWithC(url) {
+      var res = await fetch(readUrl(url));
+      if (res.status === 403) {
+        clearStoredPasscode('C');
+        await ensurePasscode('C');
+        res = await fetch(readUrl(url));
+      }
+      return res;
+    }
+
     async function checkPasscode(level, code) {
       try {
         var res = await fetch('/api/passcode/check?passcode=' + encodeURIComponent(code));
@@ -827,6 +846,15 @@
           return;
         }
         storePasscode('A', code);
+      }
+      // The provider list is a read: gate it on C (A does not satisfy C —
+      // both modals may appear on first visit; A remains for create/test).
+      if (!getStoredPasscode('C')) {
+        var cCode = await ensurePasscode('C');
+        if (!cCode) {
+          window.location.href = '/ui';
+          return;
+        }
       }
       refresh();
     })();
