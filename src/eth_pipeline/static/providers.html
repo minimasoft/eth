@@ -411,6 +411,29 @@
       font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
       word-break: break-all;
     }
+
+    .passcode-backdrop {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 60;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .passcode-modal {
+      background: #ffffff; border-radius: 12px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+      padding: 20px; display: flex; flex-direction: column; gap: 12px;
+      align-items: center; width: 90vw; max-width: 360px;
+    }
+    .passcode-modal img { max-width: 320px; width: 100%; border-radius: 8px; display: block; }
+    .passcode-row { display: flex; align-items: center; gap: 8px; width: 100%; }
+    .passcode-label { font-size: 18px; font-weight: 600; color: #1e293b; }
+    .passcode-input {
+      flex: 1; width: 100%; font-family: inherit; font-size: 18px; line-height: 1.5;
+      color: #1e293b; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px;
+      padding: 8px 12px; outline: none; transition: border-color 0.15s;
+    }
+    .passcode-input:focus {
+      border-color: #2563eb;
+      box-shadow: 0 0 0 2px rgba(37,99,235,0.15);
+    }
   </style>
 </head>
 <body>
@@ -578,10 +601,13 @@
       closeResult(btn);
 
       try {
-        const res = await fetch('/api/providers/' + encodeURIComponent(id) + '/test', { method: 'POST' });
+        const passcode = await ensurePasscode('A');
+        if (!passcode) return;
+        const res = await fetch('/api/providers/' + encodeURIComponent(id) + '/test?passcode=' + encodeURIComponent(passcode), { method: 'POST' });
         let data = {};
         try { data = await res.json(); } catch (_e) {}
         if (!res.ok) {
+          if (res.status === 403) clearStoredPasscode('A');
           throw new Error(data.detail || 'Error al probar el proveedor');
         }
         showTestResult(btn, data);
@@ -620,10 +646,13 @@
     }
 
     async function deleteProvider(id, name) {
+      const passcode = await ensurePasscode('B');
+      if (!passcode) return;
       if (!confirm('¿Eliminar el proveedor "' + name + '"? Esta acción no se puede deshacer.')) return;
       try {
-        const res = await fetch('/api/providers/' + encodeURIComponent(id), { method: 'DELETE' });
+        const res = await fetch('/api/providers/' + encodeURIComponent(id) + '?passcode=' + encodeURIComponent(passcode), { method: 'DELETE' });
         if (!res.ok) {
+          if (res.status === 403) clearStoredPasscode('B');
           let detail = 'Error al eliminar';
           try { const d = await res.json(); if (d && d.detail) detail = d.detail; } catch (_e) {}
           throw new Error(detail);
@@ -670,16 +699,25 @@
       submitBtn.textContent = 'Guardando...';
 
       try {
-        const res = await fetch('/api/providers', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            name: name, model: model, base_url: baseUrl || null, api_key: apiKey || null,
-            instruct_temperature: instructTemperature,
-            instruct_top_p: instructTopP,
-            instruct_top_k: instructTopK,
-          }),
-        });
+        let passcode = await ensurePasscode('A');
+        if (!passcode) return;
+        let res;
+        for (;;) {
+          res = await fetch('/api/providers?passcode=' + encodeURIComponent(passcode), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              name: name, model: model, base_url: baseUrl || null, api_key: apiKey || null,
+              instruct_temperature: instructTemperature,
+              instruct_top_p: instructTopP,
+              instruct_top_k: instructTopK,
+            }),
+          });
+          if (res.status !== 403) break;
+          clearStoredPasscode('A');
+          passcode = await ensurePasscode('A');
+          if (!passcode) return;
+        }
         let data = {};
         try { data = await res.json(); } catch (_e) {}
         if (!res.ok) {
@@ -697,7 +735,101 @@
       }
     });
 
-    refresh();
+    // ===== Passcode permissions =====
+    var PASSCODE_KEYS = { A: 'eth_passcode_A', B: 'eth_passcode_B', C: 'eth_passcode_C' };
+
+    function getStoredPasscode(level) {
+      try { return localStorage.getItem(PASSCODE_KEYS[level]) || ''; } catch (_e) { return ''; }
+    }
+
+    function storePasscode(level, code) {
+      try { localStorage.setItem(PASSCODE_KEYS[level], code); } catch (_e) { /* ignore */ }
+    }
+
+    function clearStoredPasscode(level) {
+      try { localStorage.removeItem(PASSCODE_KEYS[level]); } catch (_e) { /* ignore */ }
+    }
+
+    async function checkPasscode(level, code) {
+      try {
+        var res = await fetch('/api/passcode/check?passcode=' + encodeURIComponent(code));
+        if (!res.ok) return false;
+        var data = await res.json();
+        return !!(data && data.level === level);
+      } catch (_e) { return false; }
+    }
+
+    function promptPasscode(level) {
+      return new Promise(function(resolve) {
+        var backdrop = document.createElement('div');
+        backdrop.className = 'passcode-backdrop';
+        var modal = document.createElement('div');
+        modal.className = 'passcode-modal';
+        modal.setAttribute('role', 'dialog');
+        modal.setAttribute('aria-modal', 'true');
+        var img = document.createElement('img');
+        img.src = '/ui/passcode.png';
+        img.alt = 'Contraseña';
+        var row = document.createElement('div');
+        row.className = 'passcode-row';
+        var label = document.createElement('span');
+        label.className = 'passcode-label';
+        label.textContent = level + ':';
+        var input = document.createElement('input');
+        input.type = 'password';
+        input.className = 'passcode-input';
+        input.setAttribute('aria-label', 'Contraseña nivel ' + level);
+        row.appendChild(label);
+        row.appendChild(input);
+        modal.appendChild(img);
+        modal.appendChild(row);
+        backdrop.appendChild(modal);
+        document.body.appendChild(backdrop);
+
+        function done(value) {
+          document.removeEventListener('keydown', keyHandler);
+          if (backdrop.parentNode) backdrop.remove();
+          resolve(value);
+        }
+        function keyHandler(e) {
+          if (e.key === 'Enter') {
+            if (input.value) done(input.value);
+          } else if (e.key === 'Escape') {
+            done(null);
+          }
+        }
+        backdrop.addEventListener('click', function(e) {
+          if (e.target === backdrop) done(null);
+        });
+        document.addEventListener('keydown', keyHandler);
+        input.focus();
+      });
+    }
+
+    async function ensurePasscode(level) {
+      var stored = getStoredPasscode(level);
+      if (stored) return stored;
+      for (;;) {
+        var code = await promptPasscode(level);
+        if (!code) return null;
+        if (await checkPasscode(level, code)) {
+          storePasscode(level, code);
+          return code;
+        }
+      }
+    }
+
+    (async function() {
+      if (!getStoredPasscode('A')) {
+        var code = await promptPasscode('A');
+        if (!code || !(await checkPasscode('A', code))) {
+          window.location.href = '/ui';
+          return;
+        }
+        storePasscode('A', code);
+      }
+      refresh();
+    })();
   </script>
 </body>
 </html>
