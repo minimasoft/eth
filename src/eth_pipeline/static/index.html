@@ -3091,6 +3091,20 @@
       renderEventosTimeline(lastTimelineData); /* re-render from cache, no refetch */
     });
 
+    /* Wheel over the timeline scrolls it horizontally instead of the page.
+       Delegated on the persistent #eventos-timeline (never inside
+       renderEventosTimeline) because .tl-scroll is recreated on each
+       innerHTML re-render; passive:false so preventDefault works. */
+    document.getElementById('eventos-timeline').addEventListener('wheel', function(e) {
+      var scroll = e.target.closest('.tl-scroll');
+      if (!scroll) return;
+      /* Only hijack page scroll when the timeline actually overflows. */
+      if (scroll.scrollWidth <= scroll.clientWidth) return;
+      var delta = Math.abs(e.deltaY) >= Math.abs(e.deltaX) ? e.deltaY : e.deltaX;
+      scroll.scrollLeft += delta;
+      e.preventDefault();
+    }, { passive: false });
+
     document.getElementById('eventos-view-toggle').addEventListener('click', function(e) {
       var btn = e.target.closest('button[data-mode]');
       if (!btn) return;
