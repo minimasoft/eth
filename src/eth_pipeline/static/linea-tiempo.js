@@ -9,7 +9,7 @@
  * Layout: vertical months (old→new, top→bottom), one column per model
  * (149px + 16px gap), 149×92 event rectangles colored from the tableau20
  * palette (DB-stored color_index where available, string-hash fallback),
- * month divider lines with left "Jan 2026" labels, horizontally centered
+ * month divider lines with left "Ene 2026" labels, horizontally centered
  * with a right-side compensation element matching the left gutter width.
  */
 (function () {
@@ -26,8 +26,9 @@
   var GUTTER_W = 90;                          /* left month-label gutter */
   var MONTH_PAD = 4;                          /* inset above/below month content */
 
-  var MONTHS3 = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-                 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  var MONTHS3 = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun',
+                 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+  var DAYS3 = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
 
   /* Caches — refetched only via the refresh button. */
   var lt2Events = null;       /* all events (array) */
@@ -70,6 +71,9 @@
       + '.lt2-event-text { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;'
       + '  overflow: hidden; text-overflow: ellipsis; font-size: 12px; line-height: 1.3;'
       + '  color: #1e293b; max-height: 100%; }'
+      + '.lt2-event-when { position: absolute; top: 4px; left: 0; right: 0; text-align: center;'
+      + '  font-size: 10px; font-weight: 600; color: #cbd5e1; letter-spacing: 0.02em;'
+      + '  font-variant-numeric: tabular-nums; pointer-events: none; user-select: none; }'
       + '.lt2-undated { margin-top: 20px; }'
       + '.lt2-undated h3 { font-size: 14px; font-weight: 600; color: #1e293b; margin: 0 0 8px 0; }'
       + '.lt2-undated-item { display: inline-flex; align-items: center; gap: 6px; margin: 0 8px 6px 0;'
@@ -170,12 +174,33 @@
     return when + ' — ' + (item.description || item.title || '');
   }
 
-  /* Position events of one month inside one model column. */
+  /* Background watermark for the event card: 3-letter Spanish weekday, day
+   * number and hour if present — e.g. "Dom 6 18:00". Shown light grey at
+   * the top center so it reads as part of the card background. */
+  function eventWhenBg(item) {
+    if (!item.time_start) return '';
+    var d = new Date(item.time_start);
+    if (isNaN(d.getTime())) return '';
+    var label = DAYS3[d.getDay()] + ' ' + d.getDate();
+    var t = String(item.time_start).match(/T(\d{2}:\d{2})/);
+    if (t && t[1] !== '00:00') label += ' ' + t[1];
+    return label;
+  }
+
+  /* Position events of one month inside one model column.
+   *
+   * Day-centered with a downward collision pass, plus a remaining-space
+   * guarantee: when placing item i, the space left below it must fit all
+   * remaining items (each EVENT_H + EVENT_GAP). If it doesn't, the item is
+   * shifted up. A final backward cascade then raises earlier items whose
+   * positions would overlap a shifted later one (the "previous should have
+   * started higher" border case). */
   function layoutMonthEvents(events, monthHeight) {
     var contentHeight = monthHeight - MONTH_PAD * 2;
-    var positioned = [];
+    var n = events.length;
+    var ys = new Array(n);
     var prevBottom = MONTH_PAD - (EVENT_H + EVENT_GAP);
-    for (var i = 0; i < events.length; i++) {
+    for (var i = 0; i < n; i++) {
       var item = events[i];
       var d = new Date(item.time_start);
       var dim = daysInMonth(d.getFullYear(), d.getMonth());
@@ -184,13 +209,22 @@
       /* Downward collision pass: keep ≥ EVENT_GAP between same-column rects. */
       var minY = prevBottom + EVENT_GAP;
       if (y < minY) y = minY;
-      /* Clamp to the month bottom. */
-      var maxY = monthHeight - EVENT_H;
+      /* Remaining-space check: the space below must fit all remaining items. */
+      var remaining = n - 1 - i;
+      var maxY = monthHeight - EVENT_H - remaining * (EVENT_H + EVENT_GAP);
       if (y > maxY) y = maxY;
       if (y < MONTH_PAD) y = MONTH_PAD;
       prevBottom = y + EVENT_H;
-      positioned.push({ item: item, y: y });
+      ys[i] = y;
     }
+    /* Backward cascade: shift earlier items up so nothing overlaps a later
+     * item that was pulled up by the remaining-space clamp. */
+    for (var j = n - 2; j >= 0; j--) {
+      var ceiling = ys[j + 1] - (EVENT_H + EVENT_GAP);
+      if (ys[j] > ceiling) ys[j] = ceiling;
+    }
+    var positioned = [];
+    for (var k = 0; k < n; k++) positioned.push({ item: events[k], y: ys[k] });
     return positioned;
   }
 
@@ -303,6 +337,7 @@
             + ' style="left:' + (mi * COL_STEP) + 'px;top:' + (monthTop[key] + p.y) + 'px;'
             + 'border:2px solid ' + c + '"'
             + ' title="' + escapeHtml(eventTooltip(p.item)) + '">'
+            + '<span class="lt2-event-when">' + escapeHtml(eventWhenBg(p.item)) + '</span>'
             + '<span class="lt2-event-text">' + escapeHtml(eventText(p.item)) + '</span></div>';
         });
       });

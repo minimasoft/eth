@@ -72,6 +72,45 @@ def test_linea_tiempo_js_contents():
     )
 
 
+def test_linea_tiempo_js_month_labels_spanish():
+    source = LINEA_TIEMPO_JS.read_text(encoding="utf-8")
+    for month in ("Ene", "Feb", "Mar", "Abr", "May", "Jun",
+                  "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"):
+        assert f"'{month}'" in source, (
+            f"Spanish 3-letter month '{month}' missing from MONTHS3"
+        )
+    for en in ("'Jan'", "'Apr'", "'Aug'", "'Dec'"):
+        assert en not in source, f"English month label {en} still present"
+
+
+def test_linea_tiempo_js_remaining_space_layout():
+    """Layout must guarantee room for all remaining items of the month."""
+    source = LINEA_TIEMPO_JS.read_text(encoding="utf-8")
+    assert "remaining * (EVENT_H + EVENT_GAP)" in source, (
+        "layoutMonthEvents must check remaining space fits all remaining "
+        "items (remaining * (EVENT_H + EVENT_GAP))"
+    )
+    # Backward cascade: earlier items shift up when a later item is clamped.
+    assert "ys[j + 1] - (EVENT_H + EVENT_GAP)" in source, (
+        "layoutMonthEvents must cascade positions backwards so an earlier "
+        "item never overlaps a shifted later one"
+    )
+
+
+def test_linea_tiempo_js_event_when_background():
+    source = LINEA_TIEMPO_JS.read_text(encoding="utf-8")
+    assert "eventWhenBg" in source, (
+        "linea-tiempo.js must render the background day/hour watermark"
+    )
+    assert ".lt2-event-when" in source, (
+        "CSS for the .lt2-event-when background watermark is missing"
+    )
+    for day in ("'Dom'", "'Lun'", "'Mié'", "'Sáb'"):
+        assert day in source, (
+            f"Spanish 3-letter weekday {day} missing from DAYS3"
+        )
+
+
 def test_renderer_stays_out_of_inline_script():
     source = INDEX_HTML.read_text(encoding="utf-8")
     assert "TABLEAU20" not in source, (
