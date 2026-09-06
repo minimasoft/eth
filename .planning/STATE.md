@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-06-08)
 Phase: 38
 Plan: Not started
 Status: Executing Phase 38
-Last activity: 2026-09-06 - Completed quick task 260906-ql3: Cleanup 1 — model colors, comparison/fanout removal, single picker, title, favicon
+Last activity: 2026-09-06 - Completed quick task 260906-s7d: Hash navigation (#s=tab&option=val), tab order Documentos→Línea de tiempo→Mapa→Eventos, no repeated in-tab titles, universal refresh button, timeline scroll-month memory
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -121,6 +121,7 @@ None yet.
 | 260906-mdt | Routing: / redirects to /ui (redirect is open, was gated), /api redirects to /docs; UI stays at /ui, /api/* data endpoints unaffected | 2026-09-06 | 0b05a26, 50d782b | [260906-mdt-routing-changes-redirects-to-ui-api-serv](./quick/260906-mdt-routing-changes-redirects-to-ui-api-serv/) |
 | 260906-nap | New vertical "Línea de tiempo" tab: migration 0006 model_color table (tableau20 palette index, 1:1 UNIQUE FK, CASCADE frees color on delete, first-available backfill/assignment), GET /events/colors, self-contained static/linea-tiempo.js renderer (vertical months, day-centered 149×92 bordered event rectangles, month labels left w/ centering compensation, no zoom); existing Cronología untouched | 2026-09-06 | 86379c3, 8e0ebf8, 7b0f08f | [260906-nap-new-vertical-timeline-view-as-linea-de-t](./quick/260906-nap-new-vertical-timeline-view-as-linea-de-t/) |
 | 260906-ql3 | Cleanup 1: events view uses DB-backed model colors (same as timeline/assignation), comparison + fanout features removed, single model/mode picker with "default" option shown by model name, title "¿Qué? ¿Cuándo? ¿Dónde?", inline SVG favicon (no 404s) | 2026-09-06 | 2586f3d, 6229004, 340e556 | [260906-ql3-cleanup-1-model-colors-in-events-view-re](./quick/260906-ql3-cleanup-1-model-colors-in-events-view-re/) |
+| 260906-s7d | Hash navigation (#s=tab, #s=tab&option=val for eventos view/doc filter/event detail; back/forward + deep-link restore), tab order Documentos→Línea de tiempo→Mapa→Eventos (Cargar last), removed duplicated in-tab titles + timeline color subtitle, single universal refresh button at far right of tab bar, Línea de tiempo remembers scroll month across tab switches | 2026-09-06 | 590f143, 50dad84, c44abee | [260906-s7d-hash-based-navigation-for-tabs-s-tab-s-t](./quick/260906-s7d-hash-based-navigation-for-tabs-s-tab-s-t/) |
 
 ## Deferred Items
 
