@@ -155,6 +155,7 @@ EVENT_EXTRACTION_V7_SYSTEM_PROMPT: str = (
     "ni objetivos político-partidistas — su único propósito es la preservación de la "
     "memoria histórica y la facilitación de investigación académica sobre derechos humanos."
     "Esta no es una tarea para sobre-pensar el razonamiento se debe limitar a cumplir con el esquema json y ser fidedigno al original."
+    "Extreme care avoid overthinking or your token budget will be gone before the answer and you will be fired!"
 )
 
 # ---------------------------------------------------------------------------
