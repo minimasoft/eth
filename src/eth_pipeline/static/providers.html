@@ -102,6 +102,16 @@
       background: #eff6ff;
     }
 
+    /* header logout: sit right, grouped with the back-link */
+    header .btn-outline {
+      margin-left: auto;
+      margin-right: 8px;
+    }
+
+    header .btn-outline + .back-link {
+      margin-left: 0;
+    }
+
     .btn-outline:disabled {
       color: #94a3b8;
       border-color: #e2e8f0;
@@ -439,6 +449,7 @@
 <body>
   <header>
     <h1>ETH — Proveedores LLM</h1>
+    <button class="btn-outline" id="logout-btn" type="button">Salir</button>
     <a href="/ui" class="back-link">&larr; Volver al panel</a>
   </header>
 
@@ -841,6 +852,16 @@
           return code;
         }
       }
+    }
+
+    var logoutBtn = document.getElementById('logout-btn');
+    if (logoutBtn) {
+      logoutBtn.addEventListener('click', function() {
+        clearStoredPasscode('A');
+        clearStoredPasscode('B');
+        clearStoredPasscode('C');
+        window.location.href = '/ui';
+      });
     }
 
     (async function() {
