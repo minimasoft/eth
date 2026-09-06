@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-06-08)
 Phase: 38
 Plan: Not started
 Status: Executing Phase 38
-Last activity: 2026-09-06 - Completed quick task 260906-nap: New vertical "Línea de tiempo" tab with DB-backed model colors
+Last activity: 2026-09-06 - Completed quick task 260906-ql3: Cleanup 1 — model colors, comparison/fanout removal, single picker, title, favicon
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -120,6 +120,7 @@ None yet.
 | 260906-lkl | Eventos tab defaults to Cronología (timeline) view on load instead of table view | 2026-09-06 | 9fa8af0 | [260906-lkl-in-the-eventos-tab-of-index-html-make-th](./quick/260906-lkl-in-the-eventos-tab-of-index-html-make-th/) |
 | 260906-mdt | Routing: / redirects to /ui (redirect is open, was gated), /api redirects to /docs; UI stays at /ui, /api/* data endpoints unaffected | 2026-09-06 | 0b05a26, 50d782b | [260906-mdt-routing-changes-redirects-to-ui-api-serv](./quick/260906-mdt-routing-changes-redirects-to-ui-api-serv/) |
 | 260906-nap | New vertical "Línea de tiempo" tab: migration 0006 model_color table (tableau20 palette index, 1:1 UNIQUE FK, CASCADE frees color on delete, first-available backfill/assignment), GET /events/colors, self-contained static/linea-tiempo.js renderer (vertical months, day-centered 149×92 bordered event rectangles, month labels left w/ centering compensation, no zoom); existing Cronología untouched | 2026-09-06 | 86379c3, 8e0ebf8, 7b0f08f | [260906-nap-new-vertical-timeline-view-as-linea-de-t](./quick/260906-nap-new-vertical-timeline-view-as-linea-de-t/) |
+| 260906-ql3 | Cleanup 1: events view uses DB-backed model colors (same as timeline/assignation), comparison + fanout features removed, single model/mode picker with "default" option shown by model name, title "¿Qué? ¿Cuándo? ¿Dónde?", inline SVG favicon (no 404s) | 2026-09-06 | 2586f3d, 6229004, 340e556 | [260906-ql3-cleanup-1-model-colors-in-events-view-re](./quick/260906-ql3-cleanup-1-model-colors-in-events-view-re/) |
 
 ## Deferred Items
 
