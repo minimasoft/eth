@@ -195,11 +195,59 @@ async def add_provider(
             instruct_top_p,
             instruct_top_k,
         )
+        # Assign a timeline color right after the provider INSERT succeeds.
+        # Failure here must never fail provider creation (assign_free_color
+        # already tolerates insert errors; this also guards a pre-0006 DB).
+        try:
+            await assign_free_color(conn, provider_id)
+        except Exception as exc:  # DB degraded mode — non-fatal
+            logger.warning(
+                "Color assignment skipped for provider %s: %s", provider_id, exc
+            )
     return await get_provider(provider_id)  # type: ignore[return-value]
 
 
+async def assign_free_color(conn, provider_id: str) -> int | None:
+    """Assign the lowest free color_index (0..19) to a provider.
+
+    Inserts a ``model_color`` row and returns the assigned index.  If all
+    20 palette slots are taken, falls back to a shared slot based on the
+    current row count modulo 20.  Returns None if the assignment could not
+    be recorded (the caller decides whether that is fatal).
+    """
+    taken = await conn.fetch("SELECT color_index FROM model_color")
+    used = {r["color_index"] for r in taken}
+    color_index: int | None = None
+    for candidate in range(20):
+        if candidate not in used:
+            color_index = candidate
+            break
+    if color_index is None:
+        count = await conn.fetchval("SELECT COUNT(*) FROM model_color")
+        color_index = count % 20
+    try:
+        await conn.execute(
+            "INSERT INTO model_color (id, provider_id, color_index) "
+            "VALUES ($1, $2, $3)",
+            uuid.uuid4().hex,
+            provider_id,
+            color_index,
+        )
+        return color_index
+    except Exception as exc:
+        logger.warning(
+            "Failed to assign color to provider %s: %s", provider_id, exc
+        )
+        return None
+
+
 async def delete_provider(provider_id: str) -> bool:
-    """Delete a custom provider. Returns False if it is the default provider."""
+    """Delete a custom provider. Returns False if it is the default provider.
+
+    No explicit model_color cleanup is needed here: the FK
+    (model_color.provider_id → llm_provider.id ON DELETE CASCADE) frees the
+    color row automatically. Do not "fix" this by deleting colors manually.
+    """
     async with get_db() as conn:
         row = await conn.fetchrow(
             "SELECT id, is_default FROM llm_provider WHERE id = $1", provider_id
