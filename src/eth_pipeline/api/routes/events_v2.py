@@ -12,6 +12,8 @@ from eth_pipeline.api.models import (
     EventRefDetail,
     EventV2DetailResponse,
     EventV2ListItem,
+    ModelColorItem,
+    ModelColorsResponse,
 )
 from eth_pipeline.db import get_db
 from eth_pipeline.passcodes import require_passcode
@@ -134,6 +136,40 @@ async def list_events_v2(
         page=page,
         per_page=per_page,
         pages=pages,
+    )
+
+
+@router.get("/events/colors", response_model=ModelColorsResponse)
+@require_passcode("C")
+async def list_model_colors() -> ModelColorsResponse:
+    """Serve the model→color_index map for the Línea de tiempo view.
+
+    Declared BEFORE ``/events/{event_id}`` so FastAPI does not capture
+    "colors" as an event id. Models whose provider was deleted come back
+    with color_index null — the client falls back to a hash-palette color.
+    """
+    try:
+        async with get_db() as conn:
+            rows = await conn.fetch(
+                "SELECT DISTINCT ev.model, mc.color_index FROM event_v2 ev "
+                "LEFT JOIN llm_provider lp ON lp.id = ev.provider_id "
+                "LEFT JOIN model_color mc ON mc.provider_id = lp.id "
+                "WHERE ev.model IS NOT NULL AND ev.model <> '' "
+                "ORDER BY ev.model"
+            )
+    except Exception as exc:
+        logger.error("Failed to query model colors: %s", exc)
+        raise HTTPException(
+            status_code=502,
+            detail="Failed to query database.",
+        ) from exc
+
+    logger.info("Listed model colors — %d distinct models", len(rows))
+    return ModelColorsResponse(
+        colors=[
+            ModelColorItem(model=r["model"], color_index=r["color_index"])
+            for r in rows
+        ]
     )
 
 

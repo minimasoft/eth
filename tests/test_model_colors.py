@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import logging
 import uuid
+from datetime import datetime, timezone
 
 import asyncpg
 import pytest
@@ -122,3 +123,93 @@ class TestAssignFreeColor:
                 await db_connection.execute("DELETE FROM llm_provider WHERE id = $1", pid2)
         finally:
             await db_connection.execute("DELETE FROM llm_provider WHERE id = $1", pid)
+
+
+class TestEventsColorsEndpoint:
+
+    @pytest.mark.asyncio
+    async def test_colors_endpoint_model_to_index(
+        self,
+        db_connection: asyncpg.Connection,
+        v7_test_event: dict,
+        v7_test_document: str,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """GET /events/colors returns model→color_index; unlinked models → null."""
+        from fastapi.testclient import TestClient
+
+        from eth_pipeline.api import app as fastapi_app
+
+        monkeypatch.setenv("PASSCODE_C", "CCCCC")
+        pid = "test-mc-" + uuid.uuid4().hex[:8]
+        unlinked_event_id = "test-mc-ev-" + uuid.uuid4().hex[:8]
+        try:
+            await _insert_provider(db_connection, pid, "colors-endpoint-provider")
+            await db_connection.execute(
+                "INSERT INTO model_color (id, provider_id, color_index) "
+                "VALUES ($1, $2, 7)",
+                "test-mc-row-" + uuid.uuid4().hex[:8],
+                pid,
+            )
+            # Link the fixture event to the colored provider/model.
+            await db_connection.execute(
+                "UPDATE event_v2 SET model = 'test-colors-model', provider_id = $1 "
+                "WHERE id = $2",
+                pid,
+                v7_test_event["event_id"],
+            )
+            # A model string with no provider link → color_index must be null.
+            await db_connection.execute(
+                "INSERT INTO event_v2 (id, document_id, title, description, time_start, "
+                "time_precision, model) "
+                "VALUES ($1, $2, 'Evento sin proveedor', 'desc', $3, 'day', "
+                "'unlinked-test-model')",
+                unlinked_event_id,
+                v7_test_document,
+                datetime(2024, 7, 1, tzinfo=timezone.utc),
+            )
+
+            client = TestClient(fastapi_app)
+            res = client.get("/events/colors", params={"passcode": "CCCCC"})
+            assert res.status_code == 200, f"Unexpected status: {res.status_code}"
+            data = res.json()
+            items = {i["model"]: i["color_index"] for i in data["colors"]}
+            assert items.get("test-colors-model") == 7, (
+                f"Colored model missing/misindexed: {items}"
+            )
+            assert "unlinked-test-model" in items
+            assert items.get("unlinked-test-model") is None, (
+                "Unlinked model must come back with color_index null"
+            )
+        finally:
+            await db_connection.execute(
+                "DELETE FROM event_v2 WHERE document_id = $1", v7_test_document
+            )
+            await db_connection.execute("DELETE FROM llm_provider WHERE id = $1", pid)
+
+    def test_colors_endpoint_declared_before_detail_route(self) -> None:
+        """Static guard: /events/colors is declared before /events/{event_id}."""
+        import pathlib
+
+        source = (
+            pathlib.Path(__file__).resolve().parents[1]
+            / "src" / "eth_pipeline" / "api" / "routes" / "events_v2.py"
+        ).read_text(encoding="utf-8")
+        colors_pos = source.index('"/events/colors"')
+        detail_pos = source.index('"/events/{event_id}"')
+        assert colors_pos < detail_pos, (
+            "/events/colors must be declared BEFORE /events/{event_id} or "
+            "FastAPI captures 'colors' as an event_id"
+        )
+
+    def test_colors_endpoint_passcode_gated(self) -> None:
+        """The endpoint requires the C passcode (422 without it)."""
+        from fastapi.testclient import TestClient
+
+        from eth_pipeline.api import app as fastapi_app
+
+        client = TestClient(fastapi_app)
+        res = client.get("/events/colors")
+        assert res.status_code == 422, (
+            f"GET /events/colors without passcode must not pass, got {res.status_code}"
+        )

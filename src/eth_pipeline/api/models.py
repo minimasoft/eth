@@ -430,6 +430,23 @@ class EventV2DetailResponse(BaseModel):
     """ISO-8601 timestamp of last event update."""
 
 
+class ModelColorItem(BaseModel):
+    """A model string with its timeline palette index."""
+
+    model: str
+    """Model identifier as stored on event_v2 rows (e.g. 'glm-5.3-flash')."""
+
+    color_index: int | None = None
+    """Index into the fixed tableau20 palette (None when no provider/color is linked)."""
+
+
+class ModelColorsResponse(BaseModel):
+    """Response body for ``GET /events/colors``."""
+
+    colors: list[ModelColorItem]
+    """Distinct model strings seen on events, each with its DB color index."""
+
+
 class ChunkTextResponse(BaseModel):
     """Response body for ``GET /api/v2/chunks/{document_id}/{part_index}``."""
 
@@ -799,6 +816,8 @@ __all__ = [
 
     "LlmCallLogListItem",
     "LlmCallLogListResponse",
+    "ModelColorItem",
+    "ModelColorsResponse",
     "ProcessingLogListItem",
     "ProcessingLogListResponse",
 
