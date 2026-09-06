@@ -74,7 +74,7 @@
       + '.lt2-event-when { position: absolute; top: 4px; left: 0; right: 0; text-align: center;'
       + '  font-size: 10px; font-weight: 600; color: #cbd5e1; letter-spacing: 0.02em;'
       + '  font-variant-numeric: tabular-nums; pointer-events: none; user-select: none; }'
-      + '.lt2-undated { margin-top: 20px; }'
+      + '.lt2-undated { margin-top: 20px; box-sizing: border-box; overflow-wrap: anywhere; }'
       + '.lt2-undated h3 { font-size: 14px; font-weight: 600; color: #1e293b; margin: 0 0 8px 0; }'
       + '.lt2-undated-item { display: inline-flex; align-items: center; gap: 6px; margin: 0 8px 6px 0;'
       + '  padding: 4px 10px; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 13px;'
@@ -348,7 +348,10 @@
     html += '</div>'; /* body */
 
     if (undated.length) {
-      html += '<div class="lt2-undated"><h3>Sin fecha (' + undated.length + ')</h3>';
+      /* Width-capped to the timeline (gutter + canvas) so long item lists
+       * wrap instead of stretching .lt2-table (width: max-content). */
+      html += '<div class="lt2-undated" style="width:' + (GUTTER_W + canvasW) + 'px">'
+        + '<h3>Sin fecha (' + undated.length + ')</h3>';
       undated.forEach(function (item) {
         var k = modelKey(item);
         html += '<span class="lt2-undated-item" data-event-id="' + escapeHtml(item.event_id) + '"'

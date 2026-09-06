@@ -111,6 +111,15 @@ def test_linea_tiempo_js_event_when_background():
         )
 
 
+def test_linea_tiempo_js_undated_section_width_capped():
+    """The Sin fecha section must not stretch the max-content timeline table."""
+    source = LINEA_TIEMPO_JS.read_text(encoding="utf-8")
+    assert 'class="lt2-undated" style="width:' in source, (
+        "lt2-undated must be rendered with an inline width capped to the "
+        "timeline (GUTTER_W + canvasW) so it cannot stretch the layout"
+    )
+
+
 def test_renderer_stays_out_of_inline_script():
     source = INDEX_HTML.read_text(encoding="utf-8")
     assert "TABLEAU20" not in source, (
