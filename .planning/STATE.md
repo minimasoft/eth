@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-06-08)
 Phase: 38
 Plan: Not started
 Status: Executing Phase 38
-Last activity: 2026-09-05 - Completed quick task 260905-sk4: Instruct-mode toggle for LLM extraction (migration 0005, '[I]' tracking suffix, UI Modo select)
+Last activity: 2026-09-05 - Completed quick task 260905-to0: Fix Cronología timeline view to fetch all events (was capped at 100 of 212)
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -110,6 +110,7 @@ None yet.
 | 260905-hss | Raise LLM extraction activity timeout 15→30 min, AST regression test guarding the floor | 2026-09-05 | f2069c5, d924d67 | [260905-hss-review-that-activity-timeout-for-llm-tas](./quick/260905-hss-review-that-activity-timeout-for-llm-tas/) |
 | 260905-jsy | Reduce chunk sizing ~50% (524288→262144 chars, ~100k→~50-65k input tokens per LLM call) to avoid provider timeouts; CHUNK_SIZE_TARGET is the only knob; dead EXTRACTION_CHUNK_SIZE removed; call-site audit clean | 2026-09-05 | ffc74e8, 24750ce | [260905-jsy-reduce-chunk-sizing-to-50-of-current-100](./quick/260905-jsy-reduce-chunk-sizing-to-50-of-current-100/) |
 | 260905-sk4 | Instruct-mode toggle: document.llm_mode, per-provider instruct sampling columns (migration 0005), '[I]' tracking suffix in llm_usage/llm_call_log/event_v2.model, UI Modo select + Documentos navigation | 2026-09-05 | 729ce81, bef5cba, 706bc58, cde8950 | [260905-sk4-add-instruct-mode-toggle-for-llms-with-o](./quick/260905-sk4-add-instruct-mode-toggle-for-llms-with-o/) |
+| 260905-to0 | Fix Cronología timeline view: client-side fetch-all of /events pages (per_page=100 loop) so it renders all events instead of first 100; note shows plain total; table pagination unchanged; server le=100 cap kept | 2026-09-05 | df508c0, b8f10bc | [260905-to0-fix-the-timeline-cronologia-view-it-shou](./quick/260905-to0-fix-the-timeline-cronologia-view-it-shou/) |
 
 ## Deferred Items
 
