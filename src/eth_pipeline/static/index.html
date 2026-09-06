@@ -2006,18 +2006,64 @@
       return out.length > 40 ? out.slice(0, 39) + '…' : out;
     }
 
-    var MODEL_PALETTE = [
-      { c: '#2563eb', bg: '#eff6ff', bd: '#bfdbfe' },
-      { c: '#16a34a', bg: '#f0fdf4', bd: '#bbf7d0' },
-      { c: '#9333ea', bg: '#faf5ff', bd: '#e9d5ff' },
-      { c: '#ea580c', bg: '#fff7ed', bd: '#fed7aa' },
-      { c: '#0891b2', bg: '#ecfeff', bd: '#a5f3fc' },
-      { c: '#db2777', bg: '#fdf2f8', bd: '#fbcfe8' },
-      { c: '#ca8a04', bg: '#fefce8', bd: '#fde047' },
-      { c: '#4f46e5', bg: '#eef2ff', bd: '#c7d2fe' }
-    ];
+    /* Model colors — same DB-backed system as linea-tiempo.js: TABLEAU20
+       palette, color index per model from GET /events/colors, string-hash
+       fallback for models without a DB-assigned color. */
+    var TABLEAU20 = [[31,119,180],[174,199,232],[255,127,14],[255,187,120],[44,160,44],[152,223,138],[214,39,40],[255,152,150],[148,103,189],[197,176,213],[140,86,75],[196,156,148],[227,119,194],[247,182,210],[127,127,127],[199,199,199],[188,189,34],[219,219,141],[23,190,207],[158,218,229]];
+
+    var modelColorIndex = null;   /* model string -> DB color_index | null */
+    var modelColorsPromise = null;
+
+    function rgb(index) {
+      var c = TABLEAU20[index % TABLEAU20.length];
+      return 'rgb(' + c[0] + ',' + c[1] + ',' + c[2] + ')';
+    }
+
+    function rgba(color, alpha) {
+      return color.replace('rgb(', 'rgba(').replace(')', ',' + alpha + ')');
+    }
+
+    function hashModel(model) {
+      /* Stable string hash → palette fallback for models without a DB color. */
+      var h = 0;
+      for (var i = 0; i < model.length; i++) {
+        h = ((h * 31) + model.charCodeAt(i)) & 0x7fffffff;
+      }
+      return h;
+    }
+
+    function loadModelColors() {
+      /* Fetch once; a failed fetch degrades to the hash fallback. */
+      if (modelColorsPromise) return modelColorsPromise;
+      modelColorsPromise = (async function() {
+        try {
+          var res = await fetchWithC('/events/colors');
+          if (!res.ok) return;
+          var data = await res.json();
+          var map = {};
+          (data.colors || []).forEach(function(item) {
+            if (!item || !item.model) return;
+            map[item.model] = (item.color_index !== null && item.color_index !== undefined)
+              ? item.color_index : null;
+          });
+          modelColorIndex = map;
+        } catch (err) {
+          console.error('loadModelColors error:', err);
+        }
+      })();
+      return modelColorsPromise;
+    }
+
+    function modelName(item) {
+      /* Color key: the model name only (provider name as fallback). */
+      if (!item) return '';
+      if (item.model) return String(item.model);
+      if (item.provider_name) return String(item.provider_name);
+      return '';
+    }
 
     function modelKey(item) {
+      /* Lane grouping key (provider · model) — colors come from the DB map. */
       if (!item) return '';
       var provider = item.provider_name ? String(item.provider_name) : '';
       var model = item.model ? String(item.model) : '';
@@ -2027,20 +2073,21 @@
       return parts.join(' \u00b7 ');
     }
 
-    function modelPalette(key) {
-      var h = 0;
-      for (var i = 0; i < key.length; i++) h = ((h << 5) - h + key.charCodeAt(i)) >>> 0;
-      return MODEL_PALETTE[h % MODEL_PALETTE.length];
+    function modelColor(item) {
+      var model = modelName(item);
+      var idx = modelColorIndex ? modelColorIndex[model] : undefined;
+      if (idx === undefined || idx === null) idx = hashModel(model) % TABLEAU20.length;
+      return rgb(idx);
     }
 
     function modelChip(item) {
-      var key = modelKey(item);
-      if (!key) return '<span style="color:#94a3b8">\u2014</span>';
-      var p = modelPalette(key);
-      return '<span class="model-chip" style="color:' + p.c + ';background:' + p.bg +
-        ';border-color:' + p.bd + '" title="' + escapeHtml(key) + '">' +
-        '<span class="dot" style="background:' + p.c + '"></span>' +
-        '<span class="txt">' + escapeHtml(key) + '</span></span>';
+      var name = modelName(item);
+      if (!name) return '<span style="color:#94a3b8">\u2014</span>';
+      var color = modelColor(item);
+      return '<span class="model-chip" style="color:' + color + ';background:' + rgba(color, 0.08) +
+        ';border-color:' + rgba(color, 0.25) + '" title="' + escapeHtml(name) + '">' +
+        '<span class="dot" style="background:' + color + '"></span>' +
+        '<span class="txt">' + escapeHtml(name) + '</span></span>';
     }
 
     function entityTypeLabel(type) {
@@ -3071,7 +3118,7 @@
       laneOrder.forEach(function(k) {
         var laneItems = lanes[k];
         var rep = laneItems[0];
-        var pal = modelPalette(modelKey(rep));
+        var color = modelColor(rep);
         html += '<div class="tl-lane">';
         laneItems.forEach(function(item) {
           var t = item.time_start ? Date.parse(item.time_start) : NaN;
@@ -3079,7 +3126,7 @@
           var left = dotLeftPx(t);
           var tip = formatEventDate(item.time_start) + ' — ' + (item.title || '(sin título)');
           html += '<span class="tl-dot" data-event-id="' + escapeHtml(item.event_id) +
-            '" style="left:' + left.toFixed(1) + 'px;background:' + pal.c + '" title="' + escapeHtml(tip) + '"></span>';
+            '" style="left:' + left.toFixed(1) + 'px;background:' + color + '" title="' + escapeHtml(tip) + '"></span>';
         });
         html += '</div>';
       });
@@ -3114,9 +3161,9 @@
       if (undated.length) {
         html += '<div class="tl-undated"><h3>Sin fecha (' + undated.length + ')</h3>';
         undated.forEach(function(item) {
-          var pal = modelPalette(modelKey(item));
+          var color = modelColor(item);
           html += '<span class="tl-undated-item" data-event-id="' + escapeHtml(item.event_id) + '">' +
-            '<span class="dot" style="background:' + pal.c + '"></span>' +
+            '<span class="dot" style="background:' + color + '"></span>' +
             escapeHtml(truncateText(item.title || '(sin título)', 60)) + '</span>';
         });
         html += '</div>';
@@ -4207,6 +4254,7 @@
       var code = await ensurePasscode('C');
       applyPasscodeVisibility();
       if (!code) return; // cancelled — leave the view empty, no fetch
+      await loadModelColors();
       loadUploadProviders();
       fetchDocuments();
     })();
