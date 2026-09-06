@@ -1189,9 +1189,9 @@
       position: absolute; top: 50%; width: 14px; height: 14px;
       margin: -7px 0 0 -7px; border-radius: 50%;
       border: 2px solid #ffffff; box-shadow: 0 0 0 1px rgba(0,0,0,0.18);
-      cursor: pointer; transition: transform 0.1s;
+      cursor: pointer; transition: transform 0.1s; z-index: 2; /* above month dividers (z-index:1) */
     }
-    .tl-dot:hover { transform: scale(1.4); z-index: 2; }
+    .tl-dot:hover { transform: scale(1.4); }
     .tl-axis {
       position: absolute; left: 0; right: 0; bottom: 0;
       display: flex; justify-content: space-between;
