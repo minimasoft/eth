@@ -1193,11 +1193,11 @@
     }
     .tl-dot:hover { transform: scale(1.4); }
     .tl-axis {
-      position: absolute; left: 0; right: 0; bottom: 0;
-      display: flex; justify-content: space-between;
-      font-size: 12px; color: #64748b; padding-top: 2px;
+      position: absolute; left: 0; right: 0; bottom: 0; height: 18px;
+      font-size: 12px; color: #64748b;
       font-variant-numeric: tabular-nums;
     }
+    .tl-axis span { position: absolute; bottom: 0; white-space: nowrap; }
     .tl-undated { margin-top: 20px; }
     .tl-undated h3 { font-size: 14px; font-weight: 600; color: #1e293b; margin: 0 0 8px 0; }
     .tl-undated-item {
@@ -3030,8 +3030,21 @@
       });
 
       if (dated.length) {
-        html += '<div class="tl-axis"><span>' + escapeHtml(formatEventDate(new Date(min).toISOString())) +
-          '</span><span>' + escapeHtml(formatEventDate(new Date(max).toISOString())) + '</span></div>';
+        /* Tick-label interval adapts to zoom: threshold lookup consistent
+           with the 50px/mo→6mo, 100→3, 200→2, 400→1 mapping, covering
+           arbitrary intermediate ×1.25 values (62, 78, 122, 153, ...). */
+        var tickInterval;
+        if (tlPxPerMonth < 75) tickInterval = 6;
+        else if (tlPxPerMonth < 150) tickInterval = 3;
+        else if (tlPxPerMonth < 300) tickInterval = 2;
+        else tickInterval = 1;
+        html += '<div class="tl-axis">';
+        monthEntries.forEach(function(entry, i) {
+          if (i % tickInterval !== 0) return;
+          var label = new Date(entry.startMs).toLocaleDateString('es-ES', { month: 'short', year: 'numeric' });
+          html += '<span style="left:' + entry.px + 'px">' + escapeHtml(label) + '</span>';
+        });
+        html += '</div>';
       }
 
       html += '</div></div></div>';
