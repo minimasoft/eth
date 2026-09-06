@@ -1152,17 +1152,38 @@
 
     /* ---- Timeline view ---- */
 
-    .tl-note { font-size: 13px; color: #64748b; margin-bottom: 12px; }
+    .tl-toolbar {
+      display: flex; align-items: center; justify-content: space-between;
+      flex-wrap: wrap; gap: 10px; margin-bottom: 12px;
+    }
+    .tl-note { font-size: 13px; color: #64748b; }
     .tl-legend { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 16px; }
-    .tl-row { display: flex; align-items: center; margin-bottom: 10px; }
-    .tl-lane-label {
-      width: 240px; flex-shrink: 0; padding-right: 12px;
+    .tl-zoom { display: inline-flex; border: 1px solid #e2e8f0; border-radius: 6px; overflow: hidden; }
+    .tl-zoom button {
+      font-family: inherit; font-size: 14px; font-weight: 500;
+      color: #64748b; background: #ffffff; border: none;
+      padding: 6px 14px; cursor: pointer; line-height: 1;
+    }
+    .tl-zoom button + button { border-left: 1px solid #e2e8f0; }
+    .tl-zoom button:hover:not(:disabled) { background: #f1f5f9; color: #2563eb; }
+    .tl-zoom button:disabled { color: #cbd5e1; cursor: default; }
+    .tl-body { display: flex; }
+    .tl-labels-col { width: 240px; flex-shrink: 0; }
+    .tl-label-cell {
+      height: 40px; margin-bottom: 10px; padding-right: 12px;
+      border: 1px solid transparent; /* matches .tl-lane border box so rows align */
       display: flex; align-items: center; justify-content: flex-end; gap: 6px;
     }
     .tl-lane-count { font-size: 12px; color: #64748b; font-variant-numeric: tabular-nums; }
+    .tl-scroll { flex: 1; overflow-x: auto; overflow-y: hidden; min-width: 0; }
+    .tl-canvas { position: relative; padding-bottom: 28px; }
     .tl-lane {
-      position: relative; flex: 1; height: 40px; min-width: 0;
+      position: relative; height: 40px; margin-bottom: 10px;
       background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px;
+    }
+    .tl-month-div {
+      position: absolute; top: 0; bottom: 38px; width: 1px; /* stops at last lane's bottom edge (18px axis zone + 10px last-lane margin) */
+      background: #e8edf3; pointer-events: none; z-index: 1;
     }
     .tl-dot {
       position: absolute; top: 50%; width: 14px; height: 14px;
@@ -1172,7 +1193,8 @@
     }
     .tl-dot:hover { transform: scale(1.4); z-index: 2; }
     .tl-axis {
-      display: flex; justify-content: space-between; margin-left: 240px;
+      position: absolute; left: 0; right: 0; bottom: 0;
+      display: flex; justify-content: space-between;
       font-size: 12px; color: #64748b; padding-top: 2px;
       font-variant-numeric: tabular-nums;
     }
@@ -2877,6 +2899,10 @@
     // ===== Eventos timeline view =====
 
     var eventosViewMode = 'table';
+    var tlPxPerMonth = 100; /* px per month scale; persists across re-renders */
+    var TL_PX_PER_MONTH_MIN = 50;
+    var TL_PX_PER_MONTH_MAX = 400;
+    var lastTimelineData = null; /* cached dataset for zoom re-renders (no refetch) */
 
     function renderEventosTimeline(data) {
       var loader = deferredLoaders['eventos'];
@@ -2887,6 +2913,10 @@
       eventosPagination.style.display = 'none';
       eventosEmpty.style.display = 'none';
 
+      var savedScrollLeft = 0;
+      var prevScroll = tlEl.querySelector('.tl-scroll');
+      if (prevScroll) savedScrollLeft = prevScroll.scrollLeft;
+
       var items = (data && data.items) || [];
       if (!items.length) {
         tlEl.innerHTML = '<div class="placeholder-card"><h2>No se encontraron eventos</h2>' +
@@ -2896,6 +2926,8 @@
         tlEl.style.display = 'block';
         return;
       }
+
+      lastTimelineData = data;
 
       var lanes = {};
       var laneOrder = [];
@@ -2915,32 +2947,94 @@
         if (d.t > max) max = d.t;
       });
 
-      var html = '<div class="tl-note">Una línea por modelo. Cada punto es un evento posicionado por su fecha de inicio ' +
-        '(' + (data.total || items.length) + ' eventos).</div>';
+      /* Month-aware mapping: months have unequal lengths, so walk month
+         boundaries from the first day of min's month to the last ms of
+         max's month instead of assuming fixed-length months. */
+      function monthStartMs(t) {
+        var d = new Date(t);
+        return new Date(d.getFullYear(), d.getMonth(), 1).getTime();
+      }
+      function nextMonthStartMs(t) {
+        var d = new Date(t);
+        return new Date(d.getFullYear(), d.getMonth() + 1, 1).getTime();
+      }
+      var minMonthStart = monthStartMs(min);
+      var maxMonthEnd = nextMonthStartMs(max) - 1; /* last ms of max's month */
+      var monthEntries = [];
+      var msCursor = minMonthStart;
+      while (msCursor <= maxMonthEnd) {
+        var nextStart = nextMonthStartMs(msCursor);
+        monthEntries.push({
+          startMs: msCursor,
+          endMs: nextStart - 1,
+          px: monthEntries.length * tlPxPerMonth,
+        });
+        msCursor = nextStart;
+      }
+      var canvasWidth = monthEntries.length * tlPxPerMonth;
+
+      function dotLeftPx(t) {
+        var d = new Date(monthStartMs(t));
+        var base = new Date(minMonthStart);
+        var idx = (d.getFullYear() - base.getFullYear()) * 12 + (d.getMonth() - base.getMonth());
+        if (idx < 0) idx = 0;
+        if (idx >= monthEntries.length) idx = monthEntries.length - 1;
+        var entry = monthEntries[idx];
+        var msInMonth = entry.endMs + 1 - entry.startMs;
+        var frac = msInMonth > 0 ? (t - entry.startMs) / msInMonth : 0;
+        if (frac < 0) frac = 0;
+        if (frac > 1) frac = 1;
+        var left = entry.px + frac * tlPxPerMonth;
+        if (left < 0) left = 0;
+        if (left > canvasWidth) left = canvasWidth;
+        return left;
+      }
+
+      var html = '<div class="tl-toolbar"><div class="tl-note">Una línea por modelo. Cada punto es un evento posicionado por su fecha de inicio ' +
+        '(' + (data.total || items.length) + ' eventos). Usa + / − para acercar o alejar (50–400 px/mes).</div>' +
+        '<div class="tl-zoom">' +
+        '<button type="button" id="tl-zoom-out" title="Alejar">&minus;</button>' +
+        '<button type="button" id="tl-zoom-in" title="Acercar">+</button>' +
+        '</div></div>';
+
+      html += '<div class="tl-body"><div class="tl-labels-col">';
+      laneOrder.forEach(function(k) {
+        var laneItems = lanes[k];
+        var rep = laneItems[0];
+        html += '<div class="tl-label-cell">' + modelChip(rep) +
+          '<span class="tl-lane-count">' + laneItems.length + '</span></div>';
+      });
+      html += '</div><div class="tl-scroll"><div class="tl-canvas" style="width:' + canvasWidth + 'px">';
 
       laneOrder.forEach(function(k) {
         var laneItems = lanes[k];
         var rep = laneItems[0];
         var pal = modelPalette(modelKey(rep));
-        html += '<div class="tl-row"><div class="tl-lane-label">' + modelChip(rep) +
-          '<span class="tl-lane-count">' + laneItems.length + '</span></div><div class="tl-lane">';
+        html += '<div class="tl-lane">';
         laneItems.forEach(function(item) {
           var t = item.time_start ? Date.parse(item.time_start) : NaN;
           if (isNaN(t)) return;
-          var pct = max > min ? ((t - min) / (max - min)) * 100 : 50;
-          if (pct < 1.5) pct = 1.5;
-          if (pct > 98.5) pct = 98.5;
+          var left = dotLeftPx(t);
           var tip = formatEventDate(item.time_start) + ' — ' + (item.title || '(sin título)');
           html += '<span class="tl-dot" data-event-id="' + escapeHtml(item.event_id) +
-            '" style="left:' + pct.toFixed(2) + '%;background:' + pal.c + '" title="' + escapeHtml(tip) + '"></span>';
+            '" style="left:' + left.toFixed(1) + 'px;background:' + pal.c + '" title="' + escapeHtml(tip) + '"></span>';
         });
-        html += '</div></div>';
+        html += '</div>';
+      });
+
+      /* Month boundary dividers at canvas level: one per month start after
+         the first; pointer-events:none keeps dots clickable underneath. */
+      monthEntries.forEach(function(entry, i) {
+        if (i === 0) return;
+        html += '<span class="tl-month-div" style="left:' + entry.px + 'px"></span>';
       });
 
       if (dated.length) {
         html += '<div class="tl-axis"><span>' + escapeHtml(formatEventDate(new Date(min).toISOString())) +
           '</span><span>' + escapeHtml(formatEventDate(new Date(max).toISOString())) + '</span></div>';
       }
+
+      html += '</div></div></div>';
 
       if (undated.length) {
         html += '<div class="tl-undated"><h3>Sin fecha (' + undated.length + ')</h3>';
@@ -2955,12 +3049,33 @@
 
       tlEl.innerHTML = html;
       tlEl.style.display = 'block';
+
+      /* Restore horizontal scroll across zoom and search/filter re-renders. */
+      var newScroll = tlEl.querySelector('.tl-scroll');
+      if (newScroll) newScroll.scrollLeft = savedScrollLeft;
+
+      /* Reflect clamp limits on the zoom buttons. */
+      var zoomOutBtn = document.getElementById('tl-zoom-out');
+      var zoomInBtn = document.getElementById('tl-zoom-in');
+      if (zoomOutBtn) zoomOutBtn.disabled = tlPxPerMonth <= TL_PX_PER_MONTH_MIN;
+      if (zoomInBtn) zoomInBtn.disabled = tlPxPerMonth >= TL_PX_PER_MONTH_MAX;
     }
 
     document.getElementById('eventos-timeline').addEventListener('click', function(e) {
       var el = e.target.closest('[data-event-id]');
       if (!el) return;
       showEventDetail(el.getAttribute('data-event-id'));
+    });
+
+    document.getElementById('eventos-timeline').addEventListener('click', function(e) {
+      var btn = e.target.closest('#tl-zoom-in, #tl-zoom-out');
+      if (!btn) return;
+      var next = Math.round(tlPxPerMonth * (btn.id === 'tl-zoom-in' ? 1.25 : 1 / 1.25));
+      if (next < TL_PX_PER_MONTH_MIN) next = TL_PX_PER_MONTH_MIN;
+      if (next > TL_PX_PER_MONTH_MAX) next = TL_PX_PER_MONTH_MAX;
+      if (next === tlPxPerMonth || !lastTimelineData) return;
+      tlPxPerMonth = next;
+      renderEventosTimeline(lastTimelineData); /* re-render from cache, no refetch */
     });
 
     document.getElementById('eventos-view-toggle').addEventListener('click', function(e) {
