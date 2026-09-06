@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-06-08)
 Phase: 38
 Plan: Not started
 Status: Executing Phase 38
-Last activity: 2026-09-05 - Completed quick task 260905-txn: Cronología zoom (50-400 px/month, +/- buttons, fixed labels, month dividers)
+Last activity: 2026-09-05 - Completed quick task 260905-vxr: Timeline polish (dividers under dots, month tick axis, wheel scroll)
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -112,6 +112,7 @@ None yet.
 | 260905-sk4 | Instruct-mode toggle: document.llm_mode, per-provider instruct sampling columns (migration 0005), '[I]' tracking suffix in llm_usage/llm_call_log/event_v2.model, UI Modo select + Documentos navigation | 2026-09-05 | 729ce81, bef5cba, 706bc58, cde8950 | [260905-sk4-add-instruct-mode-toggle-for-llms-with-o](./quick/260905-sk4-add-instruct-mode-toggle-for-llms-with-o/) |
 | 260905-to0 | Fix Cronología timeline view: client-side fetch-all of /events pages (per_page=100 loop) so it renders all events instead of first 100; note shows plain total; table pagination unchanged; server le=100 cap kept | 2026-09-05 | df508c0, b8f10bc | [260905-to0-fix-the-timeline-cronologia-view-it-shou](./quick/260905-to0-fix-the-timeline-cronologia-view-it-shou/) |
 | 260905-txn | Cronología rendering: px-per-month scale (default 100, clamp 50–400) with +/- zoom buttons on top, horizontal scroll of canvas only with fixed model labels, thin month divider lines; zoom state persists across re-renders | 2026-09-05 | 2ca50d2 | [260905-txn-improve-cronologia-timeline-rendering-zo](./quick/260905-txn-improve-cronologia-timeline-rendering-zo/) |
+| 260905-vxr | Timeline polish: month dividers under data dots (z-index), zoom-adaptive month tick-label axis (50px→6mo, 100→3, 200→2, 400→1, thresholds for intermediates) inside scroll canvas, wheel-over-timeline horizontal scroll (passive:false, overflow-guarded) | 2026-09-05 | e04a5ef, cecc98d, 50a29f1 | [260905-vxr-timeline-fixes-month-divider-lines-must-](./quick/260905-vxr-timeline-fixes-month-divider-lines-must-/) |
 
 ## Deferred Items
 
