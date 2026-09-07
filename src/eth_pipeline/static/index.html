@@ -1097,6 +1097,22 @@
     .event-ref-clickable { cursor: pointer; }
     .event-ref-clickable:hover { background: #f8fafc; }
 
+    /* Línea de tiempo 50-50 split: timeline left, shared event detail right. */
+    #lineatiempo-split { display: flex; gap: 16px; align-items: flex-start; }
+    #lineatiempo-split-detail { display: none; }
+    #lineatiempo-split.split-open #lineatiempo-split-timeline { flex: 1 1 50%; min-width: 0; }
+    #lineatiempo-split.split-open #lineatiempo-split-detail {
+      display: block; flex: 1 1 50%; min-width: 0; position: relative;
+      background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px;
+    }
+    #lineatiempo-detail-close { display: none; position: absolute; top: 8px; right: 8px; }
+    #lineatiempo-split.split-open #lineatiempo-detail-close { display: inline-flex; }
+    @media (max-width: 900px) {
+      #lineatiempo-split { flex-direction: column; }
+      #lineatiempo-split.split-open #lineatiempo-split-timeline,
+      #lineatiempo-split.split-open #lineatiempo-split-detail { flex: 1 1 auto; width: 100%; }
+    }
+
     .doc-viewer-backdrop {
       position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 50;
       display: flex; align-items: center; justify-content: center;
@@ -1489,8 +1505,15 @@
     </section>
 
     <section id="tab-lineatiempo" role="tabpanel" aria-labelledby="tab-btn-lineatiempo" class="tab-content">
-      <div id="lineatiempo-loading" class="documents-loading" style="display:none">Cargando línea de tiempo...</div>
-      <div id="lineatiempo-container"></div>
+      <div id="lineatiempo-split">
+        <div id="lineatiempo-split-timeline">
+          <div id="lineatiempo-loading" class="documents-loading" style="display:none">Cargando línea de tiempo...</div>
+          <div id="lineatiempo-container"></div>
+        </div>
+        <div id="lineatiempo-split-detail">
+          <button id="lineatiempo-detail-close" class="btn-icon" type="button" aria-label="Cerrar detalle">&times;</button>
+        </div>
+      </div>
     </section>
 
     <section id="tab-logs" role="tabpanel" aria-labelledby="tab-btn-logs" class="tab-content">
@@ -1647,6 +1670,9 @@
         if (eventosDocumentFilter) parts.push('doc=' + eventosDocumentFilter);
         if (currentEventId) parts.push('event=' + currentEventId);
       }
+      if (currentTab === 'lineatiempo' && lineatiempoEventId) {
+        parts.push('event=' + lineatiempoEventId);
+      }
       const h = '#' + parts.join('&');
       if (location.hash === h) return;
       lastWrittenHash = h;
@@ -1675,6 +1701,15 @@
         if (state.tab === 'eventos' && state.options.event &&
             /^[A-Za-z0-9-]+$/.test(state.options.event)) {
           showEventDetail(state.options.event);
+        }
+        if (state.tab === 'lineatiempo') {
+          const ltEvent = state.options.event;
+          if (ltEvent && /^[A-Za-z0-9-]+$/.test(ltEvent)) {
+            openEventDetail(ltEvent, 'lineatiempo');
+          } else if (lineatiempoEventId) {
+            // Browser back from #s=lineatiempo&event=<id> closes the detail.
+            closeTimelineEventDetail({ skipSync: true });
+          }
         }
       } finally {
         suppressHashWrite = false;
@@ -1720,6 +1755,11 @@
 
     function onTabClick(tabName) {
       if (tabName === 'logs' && !logsDocumentId) return;
+      // Switching away from the timeline always closes its detail and
+      // returns the shared panel to the eventos tab.
+      if (tabName !== 'lineatiempo' && lineatiempoEventId) {
+        closeTimelineEventDetail({ skipSync: true });
+      }
       switchTab(tabName);
       if (tabName === 'documents') fetchDocuments();
       if (tabName === 'logs') resumeLogPolling();
@@ -1759,6 +1799,12 @@
           scheduleInvalidateSize();
         } else if (currentTab === 'lineatiempo') {
           if (window.refreshLineaTiempo) window.refreshLineaTiempo();
+          // render() rebuilds the DOM and drops the selection highlight —
+          // markLineaTiempoSelection remembers the id and re-applies it
+          // after the async re-render completes.
+          if (lineatiempoEventId && window.markLineaTiempoSelection) {
+            window.markLineaTiempoSelection(lineatiempoEventId);
+          }
         } else if (currentTab === 'logs') {
           const logsBtn = document.getElementById('logs-refresh-btn');
           if (logsBtn) logsBtn.click();
@@ -3327,12 +3373,13 @@
     const eventDetailRefsEmpty = document.getElementById('event-detail-refs-empty');
     const eventDetailRefsTableContainer = document.getElementById('event-detail-refs-table-container');
 
-    async function showEventDetail(eventId) {
-      currentEventId = eventId;
-      syncHash();
-      eventosContainer.style.display = 'none';
-      eventDetailPanel.style.display = 'block';
+    // Detail context: 'eventos' (panel lives in the eventos tab) or
+    // 'lineatiempo' (panel reparented into the timeline 50-50 split).
+    let detailContext = 'eventos';
+    let lineatiempoEventId = null;
+    const eventDetailOriginalParent = eventDetailPanel.parentElement;
 
+    async function loadEventDetail(eventId) {
       eventDetailRefsLoading.style.display = 'flex';
       eventDetailRefsTableContainer.style.display = 'none';
       eventDetailRefsEmpty.style.display = 'none';
@@ -3357,6 +3404,96 @@
         eventDetailRefsEmpty.querySelector('p').textContent = 'Error: ' + err.message;
         showBanner('Error al cargar evento: ' + err.message, 'error', false);
       }
+    }
+
+    function openEventDetail(eventId, context) {
+      detailContext = context;
+      currentEventId = eventId;
+      if (context === 'lineatiempo') {
+        lineatiempoEventId = eventId;
+        const splitDetail = document.getElementById('lineatiempo-split-detail');
+        const split = document.getElementById('lineatiempo-split');
+        if (splitDetail && eventDetailPanel.parentElement !== splitDetail) {
+          splitDetail.appendChild(eventDetailPanel);
+        }
+        if (split) split.classList.add('split-open');
+        eventDetailPanel.style.display = 'block';
+        if (typeof window.markLineaTiempoSelection === 'function') {
+          window.markLineaTiempoSelection(eventId);
+        }
+        syncHash();
+        loadEventDetail(eventId);
+        return;
+      }
+      // context === 'eventos': defend against a panel left in the timeline pane.
+      if (lineatiempoEventId) {
+        lineatiempoEventId = null;
+        if (typeof window.markLineaTiempoSelection === 'function') {
+          window.markLineaTiempoSelection(null);
+        }
+      }
+      const split = document.getElementById('lineatiempo-split');
+      if (split && split.classList.contains('split-open')) {
+        split.classList.remove('split-open');
+        if (eventDetailOriginalParent && eventDetailPanel.parentElement !== eventDetailOriginalParent) {
+          eventDetailOriginalParent.appendChild(eventDetailPanel);
+        }
+      }
+      syncHash();
+      eventosContainer.style.display = 'none';
+      eventDetailPanel.style.display = 'block';
+      loadEventDetail(eventId);
+    }
+
+    // Kept as the eventos-context entry point so every existing caller
+    // (table rows, Cronología cards, applyHash) is unchanged.
+    function showEventDetail(eventId) {
+      openEventDetail(eventId, 'eventos');
+    }
+
+    function closeTimelineEventDetail(opts) {
+      opts = opts || {};
+      lineatiempoEventId = null;
+      detailContext = 'eventos';
+      currentEventId = null;
+      currentEventDetail = null;
+      eventDetailPanel.style.display = 'none';
+      if (eventDetailOriginalParent && eventDetailPanel.parentElement !== eventDetailOriginalParent) {
+        eventDetailOriginalParent.appendChild(eventDetailPanel);
+      }
+      const split = document.getElementById('lineatiempo-split');
+      if (split) split.classList.remove('split-open');
+      if (typeof window.markLineaTiempoSelection === 'function') {
+        window.markLineaTiempoSelection(null);
+      }
+      if (!opts.skipSync) syncHash();
+    }
+
+    function hideEventDetail() {
+      if (detailContext === 'lineatiempo') {
+        closeTimelineEventDetail();
+        return;
+      }
+      currentEventId = null;
+      currentEventDetail = null;
+      syncHash();
+      eventDetailPanel.style.display = 'none';
+      eventosContainer.style.display = '';
+      fetchEventos();
+    }
+
+    function toggleEventDetailFromTimeline(eventId) {
+      if (currentTab === 'lineatiempo' && lineatiempoEventId === eventId) {
+        closeTimelineEventDetail();
+      } else {
+        openEventDetail(eventId, 'lineatiempo');
+      }
+    }
+    window.toggleEventDetailFromTimeline = toggleEventDetailFromTimeline;
+
+    const lineatiempoDetailClose = document.getElementById('lineatiempo-detail-close');
+    if (lineatiempoDetailClose) {
+      lineatiempoDetailClose.addEventListener('click', hideEventDetail);
     }
 
     function renderEventDetail(data) {
@@ -3439,15 +3576,6 @@
         eventDetailRefsTableContainer.style.display = 'none';
         eventDetailRefsEmpty.style.display = 'block';
       }
-    }
-
-    function hideEventDetail() {
-      currentEventId = null;
-      currentEventDetail = null;
-      syncHash();
-      eventDetailPanel.style.display = 'none';
-      eventosContainer.style.display = '';
-      fetchEventos();
     }
 
     eventDetailBackBtn.addEventListener('click', hideEventDetail);

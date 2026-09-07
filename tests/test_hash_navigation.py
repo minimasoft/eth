@@ -236,13 +236,24 @@ def test_doc_filter_change_syncs_hash():
 
 
 def test_event_detail_updates_hash():
+    """Hash sync lives in openEventDetail (showEventDetail routes there) and
+    hideEventDetail (which routes to closeTimelineEventDetail for the
+    timeline context)."""
     script = _inline_app_script(_source(INDEX_HTML))
-    for fn in ("function showEventDetail", "function hideEventDetail"):
+    for fn in ("function openEventDetail", "function hideEventDetail"):
         start = script.index(fn)
         body = script[start:script.index("\n    }", start)]
         assert "syncHash()" in body, (
             f"{fn}() must update the URL hash via syncHash()"
         )
+    # The eventos-context entry point must remain for existing callers.
+    assert "function showEventDetail" in script
+    start = script.index("function showEventDetail")
+    body = script[start:script.index("\n    }", start)]
+    assert "openEventDetail(eventId, 'eventos')" in body, (
+        "showEventDetail() must route through openEventDetail in the "
+        "eventos context"
+    )
 
 
 def test_hash_option_regex_guards():
