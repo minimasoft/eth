@@ -4130,17 +4130,6 @@
         if (!code) return null;
         if (await checkPasscode(level, code)) {
           storePasscode(level, code);
-    var logoutBtn = document.getElementById('logout-btn');
-    if (logoutBtn) {
-      logoutBtn.addEventListener('click', function() {
-        clearStoredPasscode('A');
-        clearStoredPasscode('B');
-        clearStoredPasscode('C');
-        window.location.reload();
-      });
-    }
-
-    applyPasscodeVisibility();
           return code;
         }
       }
@@ -4154,6 +4143,21 @@
       if (cargarPanel) cargarPanel.style.display = hasCode ? '' : 'none';
       document.querySelectorAll('.btn-delete').forEach(function(btn) {
         btn.style.display = hasCode ? '' : 'none';
+      });
+    }
+
+    // Top-level logout wiring. e4db2f5 accidentally nested this inside
+    // ensurePasscode()'s success branch: when passcodes are already stored,
+    // ensurePasscode returns early and the listener was never attached, so
+    // "Cerrar sesión" silently did nothing for returning users. It must sit
+    // at script top level.
+    var logoutBtn = document.getElementById('logout-btn');
+    if (logoutBtn) {
+      logoutBtn.addEventListener('click', function() {
+        clearStoredPasscode('A');
+        clearStoredPasscode('B');
+        clearStoredPasscode('C');
+        window.location.reload();
       });
     }
 

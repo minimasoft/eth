@@ -487,3 +487,57 @@ def test_linea_tiempo_toggle_and_selection_hooks():
     assert ".lt2-event.lt2-selected, .lt2-undated-item.lt2-selected" in css_body, (
         "ensureStyles must define the selected-card highlight style"
     )
+
+
+# ---------------------------------------------------------------------------
+# Logout wiring nesting (quick task 260906-u3r)
+# ---------------------------------------------------------------------------
+
+def test_logout_wiring_top_level_not_nested_in_ensure_passcode():
+    """e4db2f5 accidentally nested the #logout-btn wiring inside
+    ensurePasscode()'s success branch: when passcodes are already stored,
+    ensurePasscode returns early and the listener was never attached, so
+    'Cerrar sesión' silently did nothing for returning users. The wiring
+    must live at script top level in the passcode section instead."""
+    script = _inline_app_script(_source(INDEX_HTML))
+    # ensurePasscode's own body must not touch the logout button.
+    fn_start = script.index("async function ensurePasscode")
+    fn_body = script[fn_start:script.index("\n    }", fn_start)]
+    assert "logout-btn" not in fn_body, (
+        "The #logout-btn wiring must not live inside ensurePasscode — it "
+        "returns early when passcodes are already stored, leaving the "
+        "button dead for returning users"
+    )
+    # The wiring sits at script top level in the passcode section: after the
+    # ensurePasscode and applyPasscodeVisibility definitions (not nested
+    # inside either), directly before the top-level applyPasscodeVisibility()
+    # call.
+    wire_idx = script.index("getElementById('logout-btn')")
+    apply_fn_idx = script.index("function applyPasscodeVisibility")
+    apply_fn_body = script[apply_fn_idx:script.index("\n    }", apply_fn_idx)]
+    assert "logout-btn" not in apply_fn_body, (
+        "The #logout-btn wiring must not live inside applyPasscodeVisibility"
+    )
+    top_call_idx = script.rindex("    applyPasscodeVisibility();")
+    assert fn_start < apply_fn_idx < wire_idx < top_call_idx, (
+        "The #logout-btn wiring must sit at top level in the passcode "
+        "section (after the ensurePasscode/applyPasscodeVisibility "
+        "definitions, before the top-level applyPasscodeVisibility() call)"
+    )
+    # Behavior contract: clears all three stored passcodes and reloads.
+    wiring = script[wire_idx:top_call_idx]
+    for call in (
+        "clearStoredPasscode('A')",
+        "clearStoredPasscode('B')",
+        "clearStoredPasscode('C')",
+        "window.location.reload()",
+    ):
+        assert call in wiring, (
+            f"The #logout-btn wiring must {call}"
+        )
+    # And the stray applyPasscodeVisibility() call must be gone from
+    # inside ensurePasscode (the top-level call already covers first paint).
+    assert "applyPasscodeVisibility" not in fn_body, (
+        "ensurePasscode must not call applyPasscodeVisibility — the "
+        "top-level call and the startup IIFE already cover it"
+    )
