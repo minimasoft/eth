@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-06-08)
 Phase: 38
 Plan: Not started
 Status: Executing Phase 38
-Last activity: 2026-09-07 - Completed quick task 260906-t6c: Timeline event card click opens 50-50 split detail view, #s=lineatiempo&event=<id> hash support, closes via same-card click or × button
+Last activity: 2026-09-06 - Completed quick task 260906-u3r: timeline card click navigates via #s=eventos&event=<id> (t6c split view removed); logout wiring re-nested out of ensurePasscode
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -123,6 +123,7 @@ None yet.
 | 260906-ql3 | Cleanup 1: events view uses DB-backed model colors (same as timeline/assignation), comparison + fanout features removed, single model/mode picker with "default" option shown by model name, title "¿Qué? ¿Cuándo? ¿Dónde?", inline SVG favicon (no 404s) | 2026-09-06 | 2586f3d, 6229004, 340e556 | [260906-ql3-cleanup-1-model-colors-in-events-view-re](./quick/260906-ql3-cleanup-1-model-colors-in-events-view-re/) |
 | 260906-s7d | Hash navigation (#s=tab, #s=tab&option=val for eventos view/doc filter/event detail; back/forward + deep-link restore), tab order Documentos→Línea de tiempo→Mapa→Eventos (Cargar last), removed duplicated in-tab titles + timeline color subtitle, single universal refresh button at far right of tab bar, Línea de tiempo remembers scroll month across tab switches | 2026-09-06 | 590f143, 50dad84, c44abee | [260906-s7d-hash-based-navigation-for-tabs-s-tab-s-t](./quick/260906-s7d-hash-based-navigation-for-tabs-s-tab-s-t/) |
 | 260906-t6c | Timeline event card click opens event detail in a 50-50 horizontal split (timeline left, shared reparented detail pane right, × button + same-card click to close, .lt2-selected highlight survives refresh); #s=lineatiempo&event=<id> hash support with deep-link open and browser-back close; tab switch closes detail without refetching eventos | 2026-09-07 | cbaac66, 2868559, b211386 | [260906-t6c-timeline-event-card-click-opens-the-even](./quick/260906-t6c-timeline-event-card-click-opens-the-even/) |
+| 260906-u3r | Timeline card click navigates via hash (#s=eventos&event=<id>) so the Eventos tab opens on the event — no in-place fetch; t6c 50-50 split view removed as superseded; logout wiring re-nested out of ensurePasscode ("Cerrar sesión" dead for stored-passcode users) | 2026-09-06 | 297473d, 9d741ba | [260906-u3r-bugfix-clicking-an-event-card-in-the-l-n](./quick/260906-u3r-bugfix-clicking-an-event-card-in-the-l-n/) |
 
 ## Deferred Items
 
