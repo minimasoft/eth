@@ -13,6 +13,17 @@
  * - window.restoreLineaTiempoScroll() — onTabClick calls this after render;
  *                                     scrolls back to the month the user
  *                                     had scrolled to (lt2SavedMonth)
+ * - window.markLineaTiempoSelection(eventId) — index.html calls this on
+ *                                     detail open/close/refresh; toggles
+ *                                     lt2-selected on the matching card.
+ *                                     The id is remembered and re-applied
+ *                                     at the end of render() so the
+ *                                     highlight survives a refresh.
+ *
+ * Card clicks (lt2-event rectangles and lt2-undated-item rows) route
+ * through window.toggleEventDetailFromTimeline(id) — defined by index.html
+ * — which opens the 50-50 split detail, closes it when the SAME card is
+ * clicked again, and keeps the open card highlighted.
  *
  * Layout: vertical months (old→new, top→bottom), one column per model
  * (149px + 16px gap), 149×92 event rectangles colored from the tableau20
@@ -49,6 +60,22 @@
   var lt2SavedMonth = null;
   var SCROLL_TRACK_OFFSET = 80;   /* px below the viewport top for tracking */
   var SCROLL_RESTORE_OFFSET = 8;  /* px above the anchor when restoring */
+
+  /* Open-detail card highlight: set/cleared by index.html via
+   * window.markLineaTiempoSelection; re-applied at the end of render()
+   * because render() rebuilds the container DOM. */
+  var lt2SelectedId = null;
+
+  function applySelection() {
+    var container = document.getElementById('lineatiempo-container');
+    if (!container) return;
+    var nodes = container.querySelectorAll('.lt2-event, .lt2-undated-item');
+    for (var i = 0; i < nodes.length; i++) {
+      var match = lt2SelectedId !== null &&
+        nodes[i].getAttribute('data-event-id') === lt2SelectedId;
+      nodes[i].classList.toggle('lt2-selected', match);
+    }
+  }
 
   /* Map each rendered .lt2-month-label to its document-space top and text. */
   function getMonthAnchors() {
@@ -145,6 +172,7 @@
       + '  color: #1e293b; cursor: pointer; background: #fff; }'
       + '.lt2-undated-item:hover { background: #f1f5f9; }'
       + '.lt2-undated-item .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }'
+      + '.lt2-event.lt2-selected, .lt2-undated-item.lt2-selected { box-shadow: 0 0 0 3px #2563eb; }'
       + '.lt2-empty { padding: 32px; text-align: center; color: #64748b; font-size: 14px; }';
     var style = document.createElement('style');
     style.id = 'lt2-styles';
@@ -428,6 +456,7 @@
 
     html += '</div></div>';
     container.innerHTML = html;
+    applySelection();
   }
 
   async function renderLineaTiempo(force) {
@@ -465,18 +494,25 @@
     }
   }
 
-  /* Click-through: rectangles and undated rows open the existing detail view. */
+  /* Click-through: rectangles and undated rows toggle the detail via
+   * index.html (same-card click closes it; open card is highlighted).
+   * Falls back to the old showEventDetail guard if index.html does not
+   * expose the toggle (defensive — keeps this file self-contained). */
   document.addEventListener('click', function (ev) {
     var target = ev.target;
     while (target && target !== document) {
       if (target.classList && target.classList.contains('lt2-event')) {
-        if (typeof showEventDetail === 'function') {
+        if (typeof window.toggleEventDetailFromTimeline === 'function') {
+          window.toggleEventDetailFromTimeline(target.getAttribute('data-event-id'));
+        } else if (typeof showEventDetail === 'function') {
           showEventDetail(target.getAttribute('data-event-id'));
         }
         return;
       }
       if (target.classList && target.classList.contains('lt2-undated-item')) {
-        if (typeof showEventDetail === 'function') {
+        if (typeof window.toggleEventDetailFromTimeline === 'function') {
+          window.toggleEventDetailFromTimeline(target.getAttribute('data-event-id'));
+        } else if (typeof showEventDetail === 'function') {
           showEventDetail(target.getAttribute('data-event-id'));
         }
         return;
@@ -484,6 +520,14 @@
       target = target.parentNode;
     }
   });
+
+  /* Selection highlight — called from index.html on detail open/close and
+   * after a universal refresh (render() drops the class when it rebuilds
+   * the DOM; the id is remembered here and re-applied by render()). */
+  window.markLineaTiempoSelection = function (eventId) {
+    lt2SelectedId = eventId || null;
+    applySelection();
+  };
 
   /* Refresh: clears the caches and refetches. Invoked from index.html's
    * universal nav refresh button (window.refreshLineaTiempo) and from
