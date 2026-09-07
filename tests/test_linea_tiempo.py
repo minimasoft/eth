@@ -122,9 +122,16 @@ def test_linea_tiempo_js_undated_section_width_capped():
 
 def test_renderer_stays_out_of_inline_script():
     source = INDEX_HTML.read_text(encoding="utf-8")
-    assert "TABLEAU20" not in source, (
-        "The renderer leaked into index.html — all new-view JS must live "
-        "in static/linea-tiempo.js"
+    # TABLEAU20 is now legitimately shared: the events view in index.html
+    # uses the same DB-backed palette as the renderer (quick task
+    # 260906-ql3). The renderer itself must still stay out — guard on its
+    # own identifiers instead.
+    assert "lt2-" not in source, (
+        "The linea-tiempo renderer leaked into index.html — all new-view "
+        "JS must live in static/linea-tiempo.js"
+    )
+    assert "function colorFor" not in source, (
+        "colorFor (linea-tiempo renderer resolver) leaked into index.html"
     )
 
 

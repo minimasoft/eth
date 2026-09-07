@@ -3,7 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>ETH — Espacio Tiempo Humanos</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%23ffffff'/%3E%3C/svg%3E" />
+  <title>¿Qué? ¿Cuándo? ¿Dónde?</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; }
     body { margin: 0; }
@@ -97,6 +98,16 @@
       color: #2563eb;
       font-weight: 600;
       border-bottom-color: #2563eb;
+    }
+
+    /* Universal refresh — pushed to the far right of the tab bar. */
+    #global-refresh-btn {
+      margin-left: auto;
+      margin-right: 4px;
+    }
+    #global-refresh-btn svg {
+      width: 18px;
+      height: 18px;
     }
 
     main {
@@ -346,7 +357,8 @@
       padding: 0;
     }
 
-    .provider-select .llm-mode-pill select {
+    .provider-select .llm-mode-pill select,
+    .provider-select > select {
       font-size: 13px;
       color: #334155;
       background: #f1f5f9;
@@ -1085,6 +1097,22 @@
     .event-ref-clickable { cursor: pointer; }
     .event-ref-clickable:hover { background: #f8fafc; }
 
+    /* Línea de tiempo 50-50 split: timeline left, shared event detail right. */
+    #lineatiempo-split { display: flex; gap: 16px; align-items: flex-start; }
+    #lineatiempo-split-detail { display: none; }
+    #lineatiempo-split.split-open #lineatiempo-split-timeline { flex: 1 1 50%; min-width: 0; }
+    #lineatiempo-split.split-open #lineatiempo-split-detail {
+      display: block; flex: 1 1 50%; min-width: 0; position: relative;
+      background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px;
+    }
+    #lineatiempo-detail-close { display: none; position: absolute; top: 8px; right: 8px; }
+    #lineatiempo-split.split-open #lineatiempo-detail-close { display: inline-flex; }
+    @media (max-width: 900px) {
+      #lineatiempo-split { flex-direction: column; }
+      #lineatiempo-split.split-open #lineatiempo-split-timeline,
+      #lineatiempo-split.split-open #lineatiempo-split-detail { flex: 1 1 auto; width: 100%; }
+    }
+
     .doc-viewer-backdrop {
       position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 50;
       display: flex; align-items: center; justify-content: center;
@@ -1149,15 +1177,6 @@
     }
     .model-chip .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
     .model-chip .txt { overflow: hidden; text-overflow: ellipsis; }
-
-    .src-chip {
-      display: inline-flex; align-items: center; gap: 3px;
-      font-size: 11px; font-weight: 600; line-height: 1.4;
-      padding: 1px 7px; border-radius: 10px; cursor: pointer;
-      color: #7c3aed; background: #f5f3ff; border: 1px solid #ddd6fe;
-      white-space: nowrap; vertical-align: middle; margin-left: 6px;
-    }
-    .src-chip:hover { background: #ede9fe; }
 
     /* ---- View toggle (tabla / cronología) ---- */
 
@@ -1232,54 +1251,6 @@
     .tl-undated-item:hover { background: #f1f5f9; }
     .tl-undated-item .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
 
-    /* ---- Comparison view ---- */
-
-    .cmp-meta {
-      display: flex; gap: 20px; flex-wrap: wrap; align-items: center;
-      margin-bottom: 16px; padding: 16px;
-      background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px;
-    }
-    .cmp-meta-item { display: flex; flex-direction: column; gap: 4px; }
-    .cmp-meta-item .label {
-      font-size: 12px; color: #64748b; text-transform: uppercase;
-      letter-spacing: 0.5px; font-weight: 600;
-    }
-    .cmp-agree-badge {
-      display: inline-block; font-size: 12px; font-weight: 600;
-      padding: 2px 8px; border-radius: 4px; border: 1px solid; white-space: nowrap;
-    }
-    .cmp-agree-all { background: #f0fdf4; border-color: #bbf7d0; color: #166534; }
-    .cmp-agree-some { background: #fffbeb; border-color: #fde68a; color: #b45309; }
-    .cmp-agree-one { background: #fef2f2; border-color: #fecaca; color: #991b1b; }
-    .cmp-table {
-      width: 100%; border-collapse: separate; border-spacing: 0;
-      border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden;
-      font-size: 13px; table-layout: fixed;
-    }
-    .cmp-table th {
-      text-align: left; padding: 10px 12px; font-weight: 600; color: #1e293b;
-      border-bottom: 1px solid #e2e8f0; background: #f8fafc; vertical-align: top;
-    }
-    .cmp-table td {
-      padding: 8px; border-bottom: 1px solid #e2e8f0;
-      vertical-align: top; border-right: 1px solid #f1f5f9;
-    }
-    .cmp-table th:first-child, .cmp-table td:first-child { width: 110px; }
-    .cmp-table tr:last-child td { border-bottom: none; }
-    .cmp-row-agree-all td:first-child { box-shadow: inset 3px 0 0 #16a34a; }
-    .cmp-row-agree-some td:first-child { box-shadow: inset 3px 0 0 #f59e0b; }
-    .cmp-row-agree-one td:first-child { box-shadow: inset 3px 0 0 #dc2626; }
-    .cmp-cell-empty { color: #cbd5e1; text-align: center; padding: 8px 0; }
-    .cmp-event-card {
-      background: #ffffff; border: 1px solid #e2e8f0; border-left-width: 4px;
-      border-radius: 6px; padding: 8px 10px; cursor: pointer; margin-bottom: 6px;
-    }
-    .cmp-event-card:last-child { margin-bottom: 0; }
-    .cmp-event-card:hover { background: #f8fafc; }
-    .cmp-event-title { font-weight: 600; color: #1e293b; margin-bottom: 2px; }
-    .cmp-event-sub { font-size: 12px; color: #64748b; }
-    .cmp-order { color: #64748b; font-size: 12px; font-variant-numeric: tabular-nums; }
-
   </style>
   <!-- Leaflet 1.9.4 via unpkg — pinned + SRI (official integrity hashes, verified
        against the unpkg artifacts). Loaded in <head> so L is defined before the
@@ -1291,7 +1262,7 @@
 </head>
 <body>
   <header>
-    <h1>ETH — Espacio Tiempo Humanos</h1>
+    <h1>¿Qué? ¿Cuándo? ¿Dónde?</h1>
     <div class="header-actions">
       <button class="btn-icon" id="logout-btn" aria-label="Cerrar sesión" title="Cerrar sesión">
         <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
@@ -1303,13 +1274,15 @@
   </header>
 
   <nav role="tablist" aria-label="Main navigation">
-    <button role="tab" aria-selected="false" aria-controls="tab-upload" id="tab-btn-upload" data-tab="upload">Cargar</button>
     <button role="tab" aria-selected="true" aria-controls="tab-documents" id="tab-btn-documents" data-tab="documents">Documentos</button>
-    <button role="tab" aria-selected="false" aria-controls="tab-eventos" id="tab-btn-eventos" data-tab="eventos">Eventos</button>
-    <button role="tab" aria-selected="false" aria-controls="tab-mapa" id="tab-btn-mapa" data-tab="mapa">Mapa</button>
     <button role="tab" aria-selected="false" aria-controls="tab-lineatiempo" id="tab-btn-lineatiempo" data-tab="lineatiempo">Línea de tiempo</button>
-    <button role="tab" aria-selected="false" aria-controls="tab-compare" id="tab-btn-compare" data-tab="compare" style="display:none">Comparación</button>
+    <button role="tab" aria-selected="false" aria-controls="tab-mapa" id="tab-btn-mapa" data-tab="mapa">Mapa</button>
+    <button role="tab" aria-selected="false" aria-controls="tab-eventos" id="tab-btn-eventos" data-tab="eventos">Eventos</button>
+    <button role="tab" aria-selected="false" aria-controls="tab-upload" id="tab-btn-upload" data-tab="upload">Cargar</button>
     <button role="tab" aria-selected="false" aria-controls="tab-logs" id="tab-btn-logs" data-tab="logs" style="display:none">Registros</button>
+    <button class="btn-icon" id="global-refresh-btn" aria-label="Actualizar" title="Actualizar">
+      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+    </button>
   </nav>
 
   <main>
@@ -1340,9 +1313,6 @@
 
     <section id="tab-documents" role="tabpanel" aria-labelledby="tab-btn-documents" class="tab-content">
       <div id="documents-container">
-        <div class="documents-header">
-          <h2>Documentos</h2>
-        </div>
         <div class="documents-toolbar">
           <div class="search-wrapper">
             <input type="text" id="doc-search" class="search-input" placeholder="Buscar por nombre de archivo..." aria-label="Buscar documentos por nombre de archivo" />
@@ -1358,9 +1328,6 @@
             <option value="processed">Procesado</option>
             <option value="failed">Fallido</option>
           </select>
-          <button class="btn-icon btn-refresh" id="doc-refresh-btn" aria-label="Actualizar documentos" title="Actualizar documentos">
-            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-          </button>
         </div>
         <div id="documents-loading" class="documents-loading">Cargando documentos...</div>
         <div id="documents-table-container" class="table-container" style="display:none">
@@ -1396,9 +1363,6 @@
 
     <section id="tab-eventos" role="tabpanel" aria-labelledby="tab-btn-eventos" class="tab-content">
       <div id="eventos-container">
-        <div class="documents-header">
-          <h2>Eventos</h2>
-        </div>
         <div class="documents-toolbar">
           <div class="search-wrapper">
             <input type="text" id="eventos-search" class="search-input" placeholder="Buscar por título..." aria-label="Buscar eventos por título" />
@@ -1411,9 +1375,6 @@
             <button type="button" data-mode="table">Tabla</button>
             <button type="button" data-mode="timeline" class="active">Cronología</button>
           </div>
-          <button class="btn-icon btn-refresh" id="eventos-refresh-btn" aria-label="Actualizar eventos" title="Actualizar eventos">
-            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-          </button>
         </div>
         <div id="eventos-loading" class="documents-loading">Cargando eventos...</div>
         <div id="eventos-table-container" class="table-container" style="display:none">
@@ -1537,9 +1498,6 @@
     </section>
 
     <section id="tab-mapa" role="tabpanel" aria-labelledby="tab-btn-mapa" class="tab-content">
-      <div class="documents-header">
-        <h2>Mapa de Eventos</h2>
-      </div>
       <p style="font-size:13px;color:#64748b;margin:0 0 12px 0">
         <span id="mapa-status"></span>
       </p>
@@ -1547,38 +1505,15 @@
     </section>
 
     <section id="tab-lineatiempo" role="tabpanel" aria-labelledby="tab-btn-lineatiempo" class="tab-content">
-      <div class="documents-header">
-        <h2>Línea de tiempo</h2>
+      <div id="lineatiempo-split">
+        <div id="lineatiempo-split-timeline">
+          <div id="lineatiempo-loading" class="documents-loading" style="display:none">Cargando línea de tiempo...</div>
+          <div id="lineatiempo-container"></div>
+        </div>
+        <div id="lineatiempo-split-detail">
+          <button id="lineatiempo-detail-close" class="btn-icon" type="button" aria-label="Cerrar detalle">&times;</button>
+        </div>
       </div>
-      <p style="font-size:13px;color:#64748b;margin:0 0 12px 0">
-        Cronología vertical por meses. Los colores por modelo provienen de la
-        configuración de proveedores.
-        <button class="btn-icon btn-refresh" id="lineatiempo-refresh-btn" aria-label="Actualizar línea de tiempo" title="Actualizar línea de tiempo" style="vertical-align:middle">
-          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-        </button>
-      </p>
-      <div id="lineatiempo-loading" class="documents-loading" style="display:none">Cargando línea de tiempo...</div>
-      <div id="lineatiempo-container"></div>
-    </section>
-
-    <section id="tab-compare" role="tabpanel" aria-labelledby="tab-btn-compare" class="tab-content">
-      <div class="documents-header">
-        <h2>Comparación entre Modelos</h2>
-      </div>
-      <div class="documents-toolbar">
-        <button class="btn-outline" id="cmp-back-btn" type="button">&larr; Volver</button>
-        <div class="search-wrapper" style="flex:1"></div>
-        <button class="btn-icon btn-refresh" id="cmp-refresh-btn" aria-label="Actualizar comparación" title="Actualizar comparación">
-          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-        </button>
-      </div>
-      <div id="cmp-meta" class="cmp-meta" style="display:none"></div>
-      <div id="cmp-loading" class="documents-loading" style="display:none">Cargando comparación...</div>
-      <div id="cmp-empty" class="placeholder-card" style="display:none">
-        <h2>Sin datos de comparación</h2>
-        <p></p>
-      </div>
-      <div id="cmp-table-container" class="table-container" style="display:none"></div>
     </section>
 
     <section id="tab-logs" role="tabpanel" aria-labelledby="tab-btn-logs" class="tab-content">
@@ -1690,16 +1625,99 @@
       };
     }
 
-    const tabs = document.querySelectorAll('nav button');
+    const tabs = document.querySelectorAll('nav button[data-tab]');
     const sections = {
       upload: document.getElementById('tab-upload'),
       documents: document.getElementById('tab-documents'),
       eventos: document.getElementById('tab-eventos'),
       mapa: document.getElementById('tab-mapa'),
       lineatiempo: document.getElementById('tab-lineatiempo'),
-      compare: document.getElementById('tab-compare'),
       logs: document.getElementById('tab-logs'),
     };
+
+    // ===== Hash-based navigation (#s=<tab>&<key>=<val>) =====
+    // Tabs and eventos options (view/doc/event) are deep-linkable and
+    // back/forward-correct. Hash values are whitelisted/regex-validated and
+    // never interpolated into HTML — they only flow into comparisons and
+    // select.value / showEventDetail(id) (which encodes its fetch paths).
+    const HASH_TABS = ['upload', 'documents', 'lineatiempo', 'mapa', 'eventos', 'logs'];
+    let suppressHashWrite = false;  // loop guard: writes triggered by applyHash
+    let lastWrittenHash = null;     // hash we just wrote (hashchange skips it)
+    let hashReady = false;          // false until startup resolves — no fetch before the passcode gate
+
+    function parseHash() {
+      const raw = location.hash.replace(/^#/, '');
+      if (!raw) return null;
+      const pairs = raw.split('&');
+      const first = pairs[0].split('=');
+      if (first[0] !== 's') return null;
+      if (HASH_TABS.indexOf(first[1]) === -1) return null;
+      const options = {};
+      for (let i = 1; i < pairs.length; i++) {
+        if (!pairs[i]) continue;
+        const eq = pairs[i].indexOf('=');
+        if (eq === -1) { options[pairs[i]] = ''; continue; }
+        options[pairs[i].slice(0, eq)] = pairs[i].slice(eq + 1);
+      }
+      return { tab: first[1], options: options };
+    }
+
+    function syncHash() {
+      if (!hashReady || suppressHashWrite) return;
+      const parts = ['s=' + currentTab];
+      if (currentTab === 'eventos') {
+        parts.push('view=' + eventosViewMode);
+        if (eventosDocumentFilter) parts.push('doc=' + eventosDocumentFilter);
+        if (currentEventId) parts.push('event=' + currentEventId);
+      }
+      if (currentTab === 'lineatiempo' && lineatiempoEventId) {
+        parts.push('event=' + lineatiempoEventId);
+      }
+      const h = '#' + parts.join('&');
+      if (location.hash === h) return;
+      lastWrittenHash = h;
+      suppressHashWrite = true;
+      location.hash = h;
+    }
+
+    function applyHash() {
+      if (!hashReady) return;
+      const state = parseHash();
+      if (!state) return;
+      if (state.tab === 'logs' && !logsDocumentId) return;
+      suppressHashWrite = true;
+      try {
+        if (state.tab === 'eventos') {
+          const opts = state.options;
+          if (opts.view === 'table' || opts.view === 'timeline') {
+            setEventosView(opts.view, { refetch: false });
+          }
+          if (opts.doc && /^[A-Za-z0-9_-]+$/.test(opts.doc)) {
+            eventosDocumentFilter = opts.doc;
+            eventosDocFilter.value = opts.doc;
+          }
+        }
+        onTabClick(state.tab);
+        if (state.tab === 'eventos' && state.options.event &&
+            /^[A-Za-z0-9-]+$/.test(state.options.event)) {
+          showEventDetail(state.options.event);
+        }
+        if (state.tab === 'lineatiempo') {
+          const ltEvent = state.options.event;
+          if (ltEvent && /^[A-Za-z0-9-]+$/.test(ltEvent)) {
+            openEventDetail(ltEvent, 'lineatiempo');
+          } else if (lineatiempoEventId) {
+            // Browser back from #s=lineatiempo&event=<id> closes the detail.
+            closeTimelineEventDetail({ skipSync: true });
+          }
+        }
+      } finally {
+        suppressHashWrite = false;
+      }
+      syncHash();
+    }
+
+    let currentTab = 'documents';
 
     function switchTab(tabName) {
       const section = sections[tabName];
@@ -1708,6 +1726,7 @@
         console.warn('switchTab: unknown tab "%s" — ignoring', tabName);
         return;
       }
+      currentTab = tabName;
       tabs.forEach(t => {
         t.classList.remove('active');
         t.setAttribute('aria-selected', 'false');
@@ -1716,6 +1735,7 @@
       section.classList.add('active');
       tabButton.classList.add('active');
       tabButton.setAttribute('aria-selected', 'true');
+      syncHash();
     }
 
     let logsDocumentId = null;
@@ -1735,17 +1755,63 @@
 
     function onTabClick(tabName) {
       if (tabName === 'logs' && !logsDocumentId) return;
+      // Switching away from the timeline always closes its detail and
+      // returns the shared panel to the eventos tab.
+      if (tabName !== 'lineatiempo' && lineatiempoEventId) {
+        closeTimelineEventDetail({ skipSync: true });
+      }
       switchTab(tabName);
       if (tabName === 'documents') fetchDocuments();
       if (tabName === 'logs') resumeLogPolling();
       if (tabName === 'eventos') { populateEventosDocFilter(); fetchEventos(); }
       if (tabName === 'mapa') { initEventMap(); scheduleInvalidateSize(); }
-      if (tabName === 'lineatiempo' && window.renderLineaTiempo) window.renderLineaTiempo();
+      if (tabName === 'lineatiempo' && window.renderLineaTiempo) {
+        window.renderLineaTiempo();
+        // renderLineaTiempo returns early when cached — restore is a separate call.
+        if (window.restoreLineaTiempoScroll) window.restoreLineaTiempoScroll();
+      }
     }
 
     tabs.forEach(tab => {
       tab.addEventListener('click', () => onTabClick(tab.dataset.tab));
     });
+
+    // Browser back/forward: skip our own writes, otherwise restore state.
+    window.addEventListener('hashchange', function() {
+      if (location.hash === lastWrittenHash) {
+        lastWrittenHash = null;
+        suppressHashWrite = false;
+        return;
+      }
+      applyHash();
+    });
+
+    // Universal refresh: dispatch on whichever tab is currently active.
+    const globalRefreshBtn = document.getElementById('global-refresh-btn');
+    if (globalRefreshBtn) {
+      globalRefreshBtn.addEventListener('click', function() {
+        if (currentTab === 'documents') {
+          fetchDocuments();
+        } else if (currentTab === 'eventos') {
+          eventosCurrentPage = 1;
+          fetchEventos();
+        } else if (currentTab === 'mapa') {
+          scheduleInvalidateSize();
+        } else if (currentTab === 'lineatiempo') {
+          if (window.refreshLineaTiempo) window.refreshLineaTiempo();
+          // render() rebuilds the DOM and drops the selection highlight —
+          // markLineaTiempoSelection remembers the id and re-applies it
+          // after the async re-render completes.
+          if (lineatiempoEventId && window.markLineaTiempoSelection) {
+            window.markLineaTiempoSelection(lineatiempoEventId);
+          }
+        } else if (currentTab === 'logs') {
+          const logsBtn = document.getElementById('logs-refresh-btn');
+          if (logsBtn) logsBtn.click();
+        }
+        // upload: nothing to refresh
+      });
+    }
 
     const fileInput = document.getElementById('file-input');
     const chooseBtn = document.getElementById('choose-files-btn');
@@ -1799,35 +1865,32 @@
       return d.innerHTML;
     }
 
-    function getSelectedProviderIds() {
-      const checked = providerSelect.querySelectorAll('input[name="provider_ids"]:checked');
-      return Array.from(checked).map(cb => cb.value).filter(Boolean);
-    }
-
     function renderUploadProviders() {
+      /* Single-select model picker: one default option (env-backed default
+         provider when no value is sent) plus one option per non-default
+         provider, labeled by model name. */
       providerSelect.innerHTML = '';
-      const nonDefault = uploadProviders.filter(p => !p.is_default);
-      if (!nonDefault.length) {
-        providerSelect.style.display = 'none';
-        return;
-      }
       providerSelect.style.display = '';
       const label = document.createElement('span');
       label.className = 'provider-select-label';
-      label.textContent = 'Proveedores:';
+      label.textContent = 'Modelo:';
       providerSelect.appendChild(label);
-      nonDefault.forEach(p => {
-        const l = document.createElement('label');
-        const cb = document.createElement('input');
-        cb.type = 'checkbox';
-        cb.name = 'provider_ids';
-        cb.value = String(p.id);
-        const text = document.createElement('span');
-        text.textContent = escapeHtml(p.name || ('Proveedor ' + p.id)) + (p.model ? ' (' + escapeHtml(String(p.model)) + ')' : '');
-        l.appendChild(cb);
-        l.appendChild(text);
-        providerSelect.appendChild(l);
+      const select = document.createElement('select');
+      select.id = 'upload-provider';
+      const defaultProvider = uploadProviders.find(p => p.is_default);
+      const optDefault = document.createElement('option');
+      optDefault.value = '';
+      optDefault.textContent = (defaultProvider && defaultProvider.model)
+        ? 'Predeterminado (' + defaultProvider.model + ')'
+        : 'Predeterminado';
+      select.appendChild(optDefault);
+      uploadProviders.filter(p => !p.is_default).forEach(p => {
+        const opt = document.createElement('option');
+        opt.value = String(p.id);
+        opt.textContent = p.model ? String(p.model) : (p.name || ('Proveedor ' + p.id));
+        select.appendChild(opt);
       });
+      providerSelect.appendChild(select);
     }
 
     async function loadUploadProviders() {
@@ -1877,8 +1940,10 @@
         const formData = new FormData();
         formData.append('file', file);
         formData.append('llm_mode', (llmModeInput && llmModeInput.value) || 'thinking');
-        const providerIds = getSelectedProviderIds();
-        providerIds.forEach(pid => formData.append('provider_ids', pid));
+        const providerSel = document.getElementById('upload-provider');
+        if (providerSel && providerSel.value) {
+          formData.append('provider_id', providerSel.value);
+        }
 
         var passcode = await ensurePasscode('A');
         if (!passcode) {
@@ -2006,18 +2071,64 @@
       return out.length > 40 ? out.slice(0, 39) + '…' : out;
     }
 
-    var MODEL_PALETTE = [
-      { c: '#2563eb', bg: '#eff6ff', bd: '#bfdbfe' },
-      { c: '#16a34a', bg: '#f0fdf4', bd: '#bbf7d0' },
-      { c: '#9333ea', bg: '#faf5ff', bd: '#e9d5ff' },
-      { c: '#ea580c', bg: '#fff7ed', bd: '#fed7aa' },
-      { c: '#0891b2', bg: '#ecfeff', bd: '#a5f3fc' },
-      { c: '#db2777', bg: '#fdf2f8', bd: '#fbcfe8' },
-      { c: '#ca8a04', bg: '#fefce8', bd: '#fde047' },
-      { c: '#4f46e5', bg: '#eef2ff', bd: '#c7d2fe' }
-    ];
+    /* Model colors — same DB-backed system as linea-tiempo.js: TABLEAU20
+       palette, color index per model from GET /events/colors, string-hash
+       fallback for models without a DB-assigned color. */
+    var TABLEAU20 = [[31,119,180],[174,199,232],[255,127,14],[255,187,120],[44,160,44],[152,223,138],[214,39,40],[255,152,150],[148,103,189],[197,176,213],[140,86,75],[196,156,148],[227,119,194],[247,182,210],[127,127,127],[199,199,199],[188,189,34],[219,219,141],[23,190,207],[158,218,229]];
+
+    var modelColorIndex = null;   /* model string -> DB color_index | null */
+    var modelColorsPromise = null;
+
+    function rgb(index) {
+      var c = TABLEAU20[index % TABLEAU20.length];
+      return 'rgb(' + c[0] + ',' + c[1] + ',' + c[2] + ')';
+    }
+
+    function rgba(color, alpha) {
+      return color.replace('rgb(', 'rgba(').replace(')', ',' + alpha + ')');
+    }
+
+    function hashModel(model) {
+      /* Stable string hash → palette fallback for models without a DB color. */
+      var h = 0;
+      for (var i = 0; i < model.length; i++) {
+        h = ((h * 31) + model.charCodeAt(i)) & 0x7fffffff;
+      }
+      return h;
+    }
+
+    function loadModelColors() {
+      /* Fetch once; a failed fetch degrades to the hash fallback. */
+      if (modelColorsPromise) return modelColorsPromise;
+      modelColorsPromise = (async function() {
+        try {
+          var res = await fetchWithC('/events/colors');
+          if (!res.ok) return;
+          var data = await res.json();
+          var map = {};
+          (data.colors || []).forEach(function(item) {
+            if (!item || !item.model) return;
+            map[item.model] = (item.color_index !== null && item.color_index !== undefined)
+              ? item.color_index : null;
+          });
+          modelColorIndex = map;
+        } catch (err) {
+          console.error('loadModelColors error:', err);
+        }
+      })();
+      return modelColorsPromise;
+    }
+
+    function modelName(item) {
+      /* Color key: the model name only (provider name as fallback). */
+      if (!item) return '';
+      if (item.model) return String(item.model);
+      if (item.provider_name) return String(item.provider_name);
+      return '';
+    }
 
     function modelKey(item) {
+      /* Lane grouping key (provider · model) — colors come from the DB map. */
       if (!item) return '';
       var provider = item.provider_name ? String(item.provider_name) : '';
       var model = item.model ? String(item.model) : '';
@@ -2027,20 +2138,21 @@
       return parts.join(' \u00b7 ');
     }
 
-    function modelPalette(key) {
-      var h = 0;
-      for (var i = 0; i < key.length; i++) h = ((h << 5) - h + key.charCodeAt(i)) >>> 0;
-      return MODEL_PALETTE[h % MODEL_PALETTE.length];
+    function modelColor(item) {
+      var model = modelName(item);
+      var idx = modelColorIndex ? modelColorIndex[model] : undefined;
+      if (idx === undefined || idx === null) idx = hashModel(model) % TABLEAU20.length;
+      return rgb(idx);
     }
 
     function modelChip(item) {
-      var key = modelKey(item);
-      if (!key) return '<span style="color:#94a3b8">\u2014</span>';
-      var p = modelPalette(key);
-      return '<span class="model-chip" style="color:' + p.c + ';background:' + p.bg +
-        ';border-color:' + p.bd + '" title="' + escapeHtml(key) + '">' +
-        '<span class="dot" style="background:' + p.c + '"></span>' +
-        '<span class="txt">' + escapeHtml(key) + '</span></span>';
+      var name = modelName(item);
+      if (!name) return '<span style="color:#94a3b8">\u2014</span>';
+      var color = modelColor(item);
+      return '<span class="model-chip" style="color:' + color + ';background:' + rgba(color, 0.08) +
+        ';border-color:' + rgba(color, 0.25) + '" title="' + escapeHtml(name) + '">' +
+        '<span class="dot" style="background:' + color + '"></span>' +
+        '<span class="txt">' + escapeHtml(name) + '</span></span>';
     }
 
     function entityTypeLabel(type) {
@@ -2162,18 +2274,10 @@
           '</td>' +
           '<td class="col-count">' + (item.event_count ?? '-') + '</td>' +
           '<td class="col-count">' + (item.text_word_count ?? '-') + '</td>' +
-          '<td class="col-model">' + escapeHtml(formatProviderModel(item)) +
-          (item.model_count > 1 && item.source_id
-            ? '<span class="src-chip" data-source-id="' + escapeHtml(item.source_id) + '" title="El mismo documento analizado por ' + item.model_count + ' modelos \u2014 clic para comparar">&#8644; ' + item.model_count + '</span>'
-            : '') + '</td>' +
+          '<td class="col-model">' + escapeHtml(formatProviderModel(item)) + '</td>' +
           '<td class="col-tokens" title="' + formatTokenTitle(item) + '">' + formatTokens(item) + '</td>' +
           '<td class="col-cost"' + (item.total_cost != null ? '' : ' style="color:#94a3b8"') + '>' + formatCost(item) + '</td>' +
           '<td class="col-actions">' +
-          (item.model_count > 1 && item.source_id
-            ? '<button class="btn-icon btn-compare" data-source-id="' + escapeHtml(item.source_id) + '" aria-label="Comparar modelos" title="Comparar eventos entre modelos sobre el mismo documento">' +
-            '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>' +
-            '</button>'
-            : '') +
           '<button class="btn-icon btn-logs" data-document-id="' + escapeHtml(item.document_id) + '" data-filename="' + escapeHtml(item.filename || '') + '" aria-label="Ver registros" title="Ver registros de procesamiento">' +
           '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>' +
           '</button>' +
@@ -2286,7 +2390,8 @@
     });
 
 // Refresh button handlers
-    document.getElementById('doc-refresh-btn').addEventListener('click', fetchDocuments);
+    // (The per-tab documents refresh button was removed — the universal nav
+    // refresh button dispatches to the active tab instead.)
 
     // ===== Logs tab =====
 
@@ -2741,14 +2846,6 @@
       openLogEntry(documentId, filename);
     });
 
-    // Wire up cross-model comparison buttons (event delegation on doc tbody)
-    docTbody.addEventListener('click', function(e) {
-      var btn = e.target.closest('.btn-compare, .src-chip');
-      if (!btn) return;
-      var sourceId = btn.getAttribute('data-source-id');
-      if (sourceId) openComparison(sourceId, 'documents');
-    });
-
     // Stop polling when switching away from logs — override switchTab to clean up
     var _origSwitchTab = switchTab;
     switchTab = function(tabName) {
@@ -2762,7 +2859,6 @@
     const eventosSearch = document.getElementById('eventos-search');
     const eventosSearchClear = document.getElementById('eventos-search-clear');
     const eventosDocFilter = document.getElementById('eventos-doc-filter');
-    const eventosRefreshBtn = document.getElementById('eventos-refresh-btn');
     const eventosTbody = document.getElementById('eventos-tbody');
     const eventosTableContainer = document.getElementById('eventos-table-container');
     const eventosLoading = document.getElementById('eventos-loading');
@@ -3071,7 +3167,7 @@
       laneOrder.forEach(function(k) {
         var laneItems = lanes[k];
         var rep = laneItems[0];
-        var pal = modelPalette(modelKey(rep));
+        var color = modelColor(rep);
         html += '<div class="tl-lane">';
         laneItems.forEach(function(item) {
           var t = item.time_start ? Date.parse(item.time_start) : NaN;
@@ -3079,7 +3175,7 @@
           var left = dotLeftPx(t);
           var tip = formatEventDate(item.time_start) + ' — ' + (item.title || '(sin título)');
           html += '<span class="tl-dot" data-event-id="' + escapeHtml(item.event_id) +
-            '" style="left:' + left.toFixed(1) + 'px;background:' + pal.c + '" title="' + escapeHtml(tip) + '"></span>';
+            '" style="left:' + left.toFixed(1) + 'px;background:' + color + '" title="' + escapeHtml(tip) + '"></span>';
         });
         html += '</div>';
       });
@@ -3114,9 +3210,9 @@
       if (undated.length) {
         html += '<div class="tl-undated"><h3>Sin fecha (' + undated.length + ')</h3>';
         undated.forEach(function(item) {
-          var pal = modelPalette(modelKey(item));
+          var color = modelColor(item);
           html += '<span class="tl-undated-item" data-event-id="' + escapeHtml(item.event_id) + '">' +
-            '<span class="dot" style="background:' + pal.c + '"></span>' +
+            '<span class="dot" style="background:' + color + '"></span>' +
             escapeHtml(truncateText(item.title || '(sin título)', 60)) + '</span>';
         });
         html += '</div>';
@@ -3167,17 +3263,26 @@
       e.preventDefault();
     }, { passive: false });
 
+    // Shared view-mode setter: used by the view-toggle click handler and by
+    // applyHash (which restores the mode without refetching).
+    function setEventosView(mode, opts) {
+      eventosViewMode = mode;
+      document.querySelectorAll('#eventos-view-toggle button[data-mode]').forEach(function(b) {
+        b.classList.toggle('active', b.getAttribute('data-mode') === mode);
+      });
+      if (!opts || opts.refetch !== false) {
+        eventosCurrentPage = 1;
+        fetchEventos();
+      }
+      syncHash();
+    }
+
     document.getElementById('eventos-view-toggle').addEventListener('click', function(e) {
       var btn = e.target.closest('button[data-mode]');
       if (!btn) return;
       var mode = btn.getAttribute('data-mode');
       if (mode === eventosViewMode) return;
-      eventosViewMode = mode;
-      this.querySelectorAll('button[data-mode]').forEach(function(b) {
-        b.classList.toggle('active', b === btn);
-      });
-      eventosCurrentPage = 1;
-      fetchEventos();
+      setEventosView(mode);
     });
 
     // Search with debounce
@@ -3229,6 +3334,7 @@
       eventosDocumentFilter = eventosDocFilter.value;
       eventosCurrentPage = 1;
       fetchEventos();
+      syncHash();
     });
 
     // Pagination
@@ -3241,12 +3347,6 @@
     eventosNextBtn.addEventListener('click', function() {
       if (eventosNextBtn.disabled) return;
       eventosCurrentPage = eventosCurrentPage + 1;
-      fetchEventos();
-    });
-
-    // Refresh button
-    eventosRefreshBtn.addEventListener('click', function() {
-      eventosCurrentPage = 1;
       fetchEventos();
     });
 
@@ -3273,11 +3373,13 @@
     const eventDetailRefsEmpty = document.getElementById('event-detail-refs-empty');
     const eventDetailRefsTableContainer = document.getElementById('event-detail-refs-table-container');
 
-    async function showEventDetail(eventId) {
-      currentEventId = eventId;
-      eventosContainer.style.display = 'none';
-      eventDetailPanel.style.display = 'block';
+    // Detail context: 'eventos' (panel lives in the eventos tab) or
+    // 'lineatiempo' (panel reparented into the timeline 50-50 split).
+    let detailContext = 'eventos';
+    let lineatiempoEventId = null;
+    const eventDetailOriginalParent = eventDetailPanel.parentElement;
 
+    async function loadEventDetail(eventId) {
       eventDetailRefsLoading.style.display = 'flex';
       eventDetailRefsTableContainer.style.display = 'none';
       eventDetailRefsEmpty.style.display = 'none';
@@ -3302,6 +3404,96 @@
         eventDetailRefsEmpty.querySelector('p').textContent = 'Error: ' + err.message;
         showBanner('Error al cargar evento: ' + err.message, 'error', false);
       }
+    }
+
+    function openEventDetail(eventId, context) {
+      detailContext = context;
+      currentEventId = eventId;
+      if (context === 'lineatiempo') {
+        lineatiempoEventId = eventId;
+        const splitDetail = document.getElementById('lineatiempo-split-detail');
+        const split = document.getElementById('lineatiempo-split');
+        if (splitDetail && eventDetailPanel.parentElement !== splitDetail) {
+          splitDetail.appendChild(eventDetailPanel);
+        }
+        if (split) split.classList.add('split-open');
+        eventDetailPanel.style.display = 'block';
+        if (typeof window.markLineaTiempoSelection === 'function') {
+          window.markLineaTiempoSelection(eventId);
+        }
+        syncHash();
+        loadEventDetail(eventId);
+        return;
+      }
+      // context === 'eventos': defend against a panel left in the timeline pane.
+      if (lineatiempoEventId) {
+        lineatiempoEventId = null;
+        if (typeof window.markLineaTiempoSelection === 'function') {
+          window.markLineaTiempoSelection(null);
+        }
+      }
+      const split = document.getElementById('lineatiempo-split');
+      if (split && split.classList.contains('split-open')) {
+        split.classList.remove('split-open');
+        if (eventDetailOriginalParent && eventDetailPanel.parentElement !== eventDetailOriginalParent) {
+          eventDetailOriginalParent.appendChild(eventDetailPanel);
+        }
+      }
+      syncHash();
+      eventosContainer.style.display = 'none';
+      eventDetailPanel.style.display = 'block';
+      loadEventDetail(eventId);
+    }
+
+    // Kept as the eventos-context entry point so every existing caller
+    // (table rows, Cronología cards, applyHash) is unchanged.
+    function showEventDetail(eventId) {
+      openEventDetail(eventId, 'eventos');
+    }
+
+    function closeTimelineEventDetail(opts) {
+      opts = opts || {};
+      lineatiempoEventId = null;
+      detailContext = 'eventos';
+      currentEventId = null;
+      currentEventDetail = null;
+      eventDetailPanel.style.display = 'none';
+      if (eventDetailOriginalParent && eventDetailPanel.parentElement !== eventDetailOriginalParent) {
+        eventDetailOriginalParent.appendChild(eventDetailPanel);
+      }
+      const split = document.getElementById('lineatiempo-split');
+      if (split) split.classList.remove('split-open');
+      if (typeof window.markLineaTiempoSelection === 'function') {
+        window.markLineaTiempoSelection(null);
+      }
+      if (!opts.skipSync) syncHash();
+    }
+
+    function hideEventDetail() {
+      if (detailContext === 'lineatiempo') {
+        closeTimelineEventDetail();
+        return;
+      }
+      currentEventId = null;
+      currentEventDetail = null;
+      syncHash();
+      eventDetailPanel.style.display = 'none';
+      eventosContainer.style.display = '';
+      fetchEventos();
+    }
+
+    function toggleEventDetailFromTimeline(eventId) {
+      if (currentTab === 'lineatiempo' && lineatiempoEventId === eventId) {
+        closeTimelineEventDetail();
+      } else {
+        openEventDetail(eventId, 'lineatiempo');
+      }
+    }
+    window.toggleEventDetailFromTimeline = toggleEventDetailFromTimeline;
+
+    const lineatiempoDetailClose = document.getElementById('lineatiempo-detail-close');
+    if (lineatiempoDetailClose) {
+      lineatiempoDetailClose.addEventListener('click', hideEventDetail);
     }
 
     function renderEventDetail(data) {
@@ -3386,239 +3578,7 @@
       }
     }
 
-    function hideEventDetail() {
-      currentEventId = null;
-      currentEventDetail = null;
-      eventDetailPanel.style.display = 'none';
-      eventosContainer.style.display = '';
-      fetchEventos();
-    }
-
     eventDetailBackBtn.addEventListener('click', hideEventDetail);
-
-    // ===== Cross-model comparison view =====
-
-    var cmpSourceId = null;
-    var cmpReturnTab = 'documents';
-    var cmpData = null;
-
-    function openComparison(sourceId, fromTab) {
-      if (!sourceId) return;
-      cmpSourceId = sourceId;
-      cmpReturnTab = fromTab || 'documents';
-      var btn = document.getElementById('tab-btn-compare');
-      if (btn) btn.style.display = '';
-      switchTab('compare');
-      fetchComparison();
-    }
-
-    async function fetchComparison() {
-      if (!cmpSourceId) return;
-      var loading = document.getElementById('cmp-loading');
-      var emptyEl = document.getElementById('cmp-empty');
-      var tableC = document.getElementById('cmp-table-container');
-      var metaEl = document.getElementById('cmp-meta');
-      loading.style.display = 'flex';
-      emptyEl.style.display = 'none';
-      tableC.style.display = 'none';
-      metaEl.style.display = 'none';
-
-      try {
-        var res = await fetchWithC('/comparisons/' + encodeURIComponent(cmpSourceId));
-        if (!res.ok) {
-          var detail = 'Error al cargar la comparación';
-          try {
-            var errData = await res.json();
-            if (errData && errData.detail) detail = errData.detail;
-          } catch (_pe) { /* ignore parse error */ }
-          throw new Error(detail);
-        }
-        var data = await res.json();
-        cmpData = data;
-        renderComparison(data);
-      } catch (err) {
-        console.error('fetchComparison error:', err);
-        loading.style.display = 'none';
-        emptyEl.style.display = 'block';
-        emptyEl.querySelector('p').textContent = 'Error: ' + err.message;
-        showBanner('Error al cargar la comparación: ' + err.message, 'error', false);
-      }
-    }
-
-    function cmpSortKey(ev) {
-      var chunk = ev.chunk_index == null ? 999999 : ev.chunk_index;
-      var span = ev.span_start == null ? 999999999 : ev.span_start;
-      return String(chunk).padStart(6, '0') + '|' +
-        String(span).padStart(10, '0') + '|' + (ev.time_start || '9999') + '|' + (ev.event_id || '');
-    }
-
-    function cmpSpanOverlap(a, b) {
-      if (a.chunk_index == null || b.chunk_index == null) return 0;
-      if (a.chunk_index !== b.chunk_index) return 0;
-      if (a.span_start == null || b.span_start == null) return 0;
-      if (a.span_end == null || b.span_end == null) return 0;
-      var ov = Math.min(a.span_end, b.span_end) - Math.max(a.span_start, b.span_start);
-      if (ov <= 0) return 0;
-      var la = Math.max(1, a.span_end - a.span_start);
-      var lb = Math.max(1, b.span_end - b.span_start);
-      return ov / Math.min(la, lb);
-    }
-
-    function clusterComparisonEvents(events) {
-      var n = events.length;
-      var parent = [];
-      var i, j;
-      for (i = 0; i < n; i++) parent.push(i);
-      function find(x) {
-        while (parent[x] !== x) { parent[x] = parent[parent[x]]; x = parent[x]; }
-        return x;
-      }
-      for (i = 0; i < n; i++) {
-        for (j = i + 1; j < n; j++) {
-          if (events[i].document_id === events[j].document_id) continue;
-          if (cmpSpanOverlap(events[i], events[j]) >= 0.5) {
-            var ri = find(i), rj = find(j);
-            if (ri !== rj) parent[rj] = ri;
-          }
-        }
-      }
-      var groups = {};
-      for (i = 0; i < n; i++) {
-        var r = find(i);
-        if (!groups[r]) groups[r] = [];
-        groups[r].push(events[i]);
-      }
-      var clusters = Object.keys(groups).map(function(k) { return groups[k]; });
-      clusters.sort(function(a, b) {
-        var ka = cmpSortKey(a[0]), kb = cmpSortKey(b[0]);
-        return ka < kb ? -1 : (ka > kb ? 1 : 0);
-      });
-      return clusters;
-    }
-
-    function renderComparison(data) {
-      var loading = document.getElementById('cmp-loading');
-      var emptyEl = document.getElementById('cmp-empty');
-      var tableC = document.getElementById('cmp-table-container');
-      var metaEl = document.getElementById('cmp-meta');
-      loading.style.display = 'none';
-
-      var docs = (data && data.documents) || [];
-      var events = (data && data.events) || [];
-
-      if (!docs.length) {
-        metaEl.style.display = 'none';
-        tableC.style.display = 'none';
-        emptyEl.style.display = 'block';
-        emptyEl.querySelector('p').textContent = 'No hay documentos para esta fuente';
-        return;
-      }
-
-      var allCount = docs.length;
-      var clusters = clusterComparisonEvents(events);
-      var agreeAll = 0, agreeSome = 0, uniqueOnly = 0;
-      clusters.forEach(function(c) {
-        var seen = {};
-        c.forEach(function(ev) { seen[ev.document_id] = true; });
-        var k = Object.keys(seen).length;
-        if (k === allCount) agreeAll++;
-        else if (k > 1) agreeSome++;
-        else uniqueOnly++;
-      });
-
-      var metaHtml =
-        '<div class="cmp-meta-item"><span class="label">Documento</span><span>' +
-          escapeHtml(data.filename || '—') + '</span></div>' +
-        '<div class="cmp-meta-item"><span class="label">Fuente</span><span style="font-family:monospace;font-size:13px">' +
-          escapeHtml((data.source_id || '').slice(0, 8)) + '</span></div>';
-      docs.forEach(function(d) {
-        metaHtml += '<div class="cmp-meta-item"><span class="label">Modelo</span>' +
-          '<span>' + modelChip(d) + ' <span class="' + statusClass(d.status) + '">' +
-          escapeHtml(statusLabel(d.status)) + '</span></span>' +
-          '<span style="font-size:12px;color:#64748b">' + d.event_count + ' eventos</span></div>';
-      });
-      metaHtml += '<div class="cmp-meta-item"><span class="label">Acuerdos</span><span style="display:flex;gap:6px;flex-wrap:wrap">' +
-        '<span class="cmp-agree-badge cmp-agree-all" title="Eventos encontrados por todos los modelos">' + agreeAll + ' coinciden</span>' +
-        (agreeSome ? '<span class="cmp-agree-badge cmp-agree-some" title="Eventos encontrados por algunos modelos">' + agreeSome + ' parcial</span>' : '') +
-        '<span class="cmp-agree-badge cmp-agree-one" title="Eventos encontrados por un solo modelo">' + uniqueOnly + ' \u00fanico</span>' +
-        '</span></div>';
-      metaEl.innerHTML = metaHtml;
-      metaEl.style.display = 'flex';
-
-      if (!events.length) {
-        tableC.style.display = 'none';
-        emptyEl.style.display = 'block';
-        emptyEl.querySelector('h2').textContent = 'Sin eventos aún';
-        emptyEl.querySelector('p').textContent = 'Ningún modelo ha producido eventos para este documento';
-        return;
-      }
-      emptyEl.style.display = 'none';
-
-      var html = '<table class="cmp-table"><thead><tr><th>Orden</th>';
-      docs.forEach(function(d) {
-        html += '<th>' + modelChip(d) + '<div class="cmp-event-sub">' + d.event_count + ' eventos</div></th>';
-      });
-      html += '</tr></thead><tbody>';
-
-      clusters.forEach(function(cluster, idx) {
-        var byDoc = {};
-        cluster.forEach(function(ev) {
-          if (!byDoc[ev.document_id]) byDoc[ev.document_id] = [];
-          byDoc[ev.document_id].push(ev);
-        });
-        var coverage = Object.keys(byDoc).length;
-        var rowCls, badgeCls;
-        if (coverage === allCount) { rowCls = 'cmp-row-agree-all'; badgeCls = 'cmp-agree-all'; }
-        else if (coverage > 1) { rowCls = 'cmp-row-agree-some'; badgeCls = 'cmp-agree-some'; }
-        else { rowCls = 'cmp-row-agree-one'; badgeCls = 'cmp-agree-one'; }
-
-        html += '<tr class="' + rowCls + '"><td><div class="cmp-order">#' + (idx + 1) + '</div>' +
-          '<span class="cmp-agree-badge ' + badgeCls + '">' + coverage + '/' + allCount + '</span></td>';
-        docs.forEach(function(d) {
-          var cellEvents = byDoc[d.document_id];
-          if (!cellEvents || !cellEvents.length) {
-            html += '<td><div class="cmp-cell-empty">—</div></td>';
-            return;
-          }
-          var pal = modelPalette(modelKey(d));
-          html += '<td>';
-          cellEvents.forEach(function(ev) {
-            var sub = [];
-            if (ev.time_start) sub.push(formatEventDate(ev.time_start));
-            if (ev.location_name) sub.push(ev.location_name);
-            if (ev.chunk_index != null) sub.push('parte ' + ev.chunk_index);
-            html += '<div class="cmp-event-card" data-event-id="' + escapeHtml(ev.event_id) +
-              '" style="border-left-color:' + pal.c + '">' +
-              '<div class="cmp-event-title">' + escapeHtml(truncateText(ev.title || '(sin título)', 90)) + '</div>' +
-              (sub.length ? '<div class="cmp-event-sub">' + escapeHtml(sub.join(' · ')) + '</div>' : '') +
-              '</div>';
-          });
-          html += '</td>';
-        });
-        html += '</tr>';
-      });
-      html += '</tbody></table>';
-      tableC.innerHTML = html;
-      tableC.style.display = '';
-    }
-
-    document.getElementById('cmp-table-container').addEventListener('click', function(e) {
-      var card = e.target.closest('.cmp-event-card');
-      if (!card) return;
-      switchTab('eventos');
-      showEventDetail(card.getAttribute('data-event-id'));
-    });
-
-    document.getElementById('cmp-back-btn').addEventListener('click', function() {
-      var btn = document.getElementById('tab-btn-compare');
-      if (btn) btn.style.display = 'none';
-      cmpSourceId = null;
-      cmpData = null;
-      switchTab(cmpReturnTab);
-      if (cmpReturnTab === 'documents') fetchDocuments();
-    });
-
-    document.getElementById('cmp-refresh-btn').addEventListener('click', fetchComparison);
 
     // ===== Document viewer =====
 
@@ -4207,8 +4167,15 @@
       var code = await ensurePasscode('C');
       applyPasscodeVisibility();
       if (!code) return; // cancelled — leave the view empty, no fetch
+      await loadModelColors();
       loadUploadProviders();
       fetchDocuments();
+      // Deep-link restore runs only after the passcode gate resolves so no
+      // data fetch fires pre-auth (260906-kj0 contract). A plain load with
+      // no s= in the hash leaves the default view untouched (no hash write
+      // on first paint).
+      hashReady = true;
+      if (location.hash) applyHash();
     })();
 
   </script>

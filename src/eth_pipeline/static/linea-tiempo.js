@@ -6,6 +6,25 @@
  * BEFORE this file: fetchWithC, showEventDetail, escapeHtml, showBanner,
  * truncateText.
  *
+ * Exposed hooks (called from index.html):
+ * - window.renderLineaTiempo()      — render (cached; force=true refetches)
+ * - window.refreshLineaTiempo()     — universal nav refresh button: clears
+ *                                     caches and re-renders
+ * - window.restoreLineaTiempoScroll() — onTabClick calls this after render;
+ *                                     scrolls back to the month the user
+ *                                     had scrolled to (lt2SavedMonth)
+ * - window.markLineaTiempoSelection(eventId) — index.html calls this on
+ *                                     detail open/close/refresh; toggles
+ *                                     lt2-selected on the matching card.
+ *                                     The id is remembered and re-applied
+ *                                     at the end of render() so the
+ *                                     highlight survives a refresh.
+ *
+ * Card clicks (lt2-event rectangles and lt2-undated-item rows) route
+ * through window.toggleEventDetailFromTimeline(id) — defined by index.html
+ * — which opens the 50-50 split detail, closes it when the SAME card is
+ * clicked again, and keeps the open card highlighted.
+ *
  * Layout: vertical months (old→new, top→bottom), one column per model
  * (149px + 16px gap), 149×92 event rectangles colored from the tableau20
  * palette (DB-stored color_index where available, string-hash fallback),
@@ -35,6 +54,78 @@
   var lt2ColorIndex = null;   /* model string -> DB color_index | null */
 
   var lt2Loading = false;
+
+  /* Scroll-month memory: the label of the top-most month visible when the
+   * user leaves the tab, restored on re-entry. */
+  var lt2SavedMonth = null;
+  var SCROLL_TRACK_OFFSET = 80;   /* px below the viewport top for tracking */
+  var SCROLL_RESTORE_OFFSET = 8;  /* px above the anchor when restoring */
+
+  /* Open-detail card highlight: set/cleared by index.html via
+   * window.markLineaTiempoSelection; re-applied at the end of render()
+   * because render() rebuilds the container DOM. */
+  var lt2SelectedId = null;
+
+  function applySelection() {
+    var container = document.getElementById('lineatiempo-container');
+    if (!container) return;
+    var nodes = container.querySelectorAll('.lt2-event, .lt2-undated-item');
+    for (var i = 0; i < nodes.length; i++) {
+      var match = lt2SelectedId !== null &&
+        nodes[i].getAttribute('data-event-id') === lt2SelectedId;
+      nodes[i].classList.toggle('lt2-selected', match);
+    }
+  }
+
+  /* Map each rendered .lt2-month-label to its document-space top and text. */
+  function getMonthAnchors() {
+    var container = document.getElementById('lineatiempo-container');
+    if (!container) return [];
+    var anchors = [];
+    var labels = container.querySelectorAll('.lt2-month-label');
+    for (var i = 0; i < labels.length; i++) {
+      var top = labels[i].getBoundingClientRect().top + window.scrollY;
+      anchors.push({ label: labels[i].textContent, docTop: top });
+    }
+    return anchors;
+  }
+
+  function lineatiempoActive() {
+    var section = document.getElementById('tab-lineatiempo');
+    return !!(section && section.classList.contains('active'));
+  }
+
+  /* Track the top-most visible month while the tab is active. Added once —
+   * a no-op whenever the Línea de tiempo is not the active tab. */
+  window.addEventListener('scroll', function () {
+    if (!lineatiempoActive()) return;
+    var anchors = getMonthAnchors();
+    if (!anchors.length) { lt2SavedMonth = null; return; }
+    var y = window.scrollY + SCROLL_TRACK_OFFSET;
+    var saved = null;
+    for (var i = 0; i < anchors.length; i++) {
+      if (anchors[i].docTop <= y) saved = anchors[i].label;
+      else break;
+    }
+    lt2SavedMonth = saved;
+  }, { passive: true });
+
+  /* Restore: called from index.html onTabClick AFTER window.renderLineaTiempo
+   * (renderLineaTiempo returns early on cache hits, so this must be a
+   * separate call). Restoring re-triggers the scroll listener, which simply
+   * re-records the same month. */
+  window.restoreLineaTiempoScroll = function () {
+    if (!lineatiempoActive()) return;
+    if (!lt2Events || !lt2Events.length) return;
+    if (!lt2SavedMonth) return;
+    var anchors = getMonthAnchors();
+    for (var i = 0; i < anchors.length; i++) {
+      if (anchors[i].label === lt2SavedMonth) {
+        window.scrollTo({ top: Math.max(0, anchors[i].docTop - SCROLL_RESTORE_OFFSET) });
+        return;
+      }
+    }
+  };
 
   /* ------------------------------------------------------------------ */
   /* CSS — injected once, class prefix lt2- (no clash with .tl-*).       */
@@ -81,6 +172,7 @@
       + '  color: #1e293b; cursor: pointer; background: #fff; }'
       + '.lt2-undated-item:hover { background: #f1f5f9; }'
       + '.lt2-undated-item .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }'
+      + '.lt2-event.lt2-selected, .lt2-undated-item.lt2-selected { box-shadow: 0 0 0 3px #2563eb; }'
       + '.lt2-empty { padding: 32px; text-align: center; color: #64748b; font-size: 14px; }';
     var style = document.createElement('style');
     style.id = 'lt2-styles';
@@ -364,6 +456,7 @@
 
     html += '</div></div>';
     container.innerHTML = html;
+    applySelection();
   }
 
   async function renderLineaTiempo(force) {
@@ -401,18 +494,25 @@
     }
   }
 
-  /* Click-through: rectangles and undated rows open the existing detail view. */
+  /* Click-through: rectangles and undated rows toggle the detail via
+   * index.html (same-card click closes it; open card is highlighted).
+   * Falls back to the old showEventDetail guard if index.html does not
+   * expose the toggle (defensive — keeps this file self-contained). */
   document.addEventListener('click', function (ev) {
     var target = ev.target;
     while (target && target !== document) {
       if (target.classList && target.classList.contains('lt2-event')) {
-        if (typeof showEventDetail === 'function') {
+        if (typeof window.toggleEventDetailFromTimeline === 'function') {
+          window.toggleEventDetailFromTimeline(target.getAttribute('data-event-id'));
+        } else if (typeof showEventDetail === 'function') {
           showEventDetail(target.getAttribute('data-event-id'));
         }
         return;
       }
       if (target.classList && target.classList.contains('lt2-undated-item')) {
-        if (typeof showEventDetail === 'function') {
+        if (typeof window.toggleEventDetailFromTimeline === 'function') {
+          window.toggleEventDetailFromTimeline(target.getAttribute('data-event-id'));
+        } else if (typeof showEventDetail === 'function') {
           showEventDetail(target.getAttribute('data-event-id'));
         }
         return;
@@ -421,17 +521,23 @@
     }
   });
 
-  /* Refresh button (declared in the tab-lineatiempo section of index.html). */
-  document.addEventListener('DOMContentLoaded', function () {
-    var btn = document.getElementById('lineatiempo-refresh-btn');
-    if (btn) {
-      btn.addEventListener('click', function () {
-        lt2Events = null;
-        lt2ColorIndex = null;
-        renderLineaTiempo(true);
-      });
-    }
-  });
+  /* Selection highlight — called from index.html on detail open/close and
+   * after a universal refresh (render() drops the class when it rebuilds
+   * the DOM; the id is remembered here and re-applied by render()). */
+  window.markLineaTiempoSelection = function (eventId) {
+    lt2SelectedId = eventId || null;
+    applySelection();
+  };
+
+  /* Refresh: clears the caches and refetches. Invoked from index.html's
+   * universal nav refresh button (window.refreshLineaTiempo) and from
+   * window.restoreLineaTiempoScroll (scroll-month memory on tab re-entry)
+   * which onTabClick calls after window.renderLineaTiempo. */
+  window.refreshLineaTiempo = function () {
+    lt2Events = null;
+    lt2ColorIndex = null;
+    renderLineaTiempo(true);
+  };
 
   window.renderLineaTiempo = renderLineaTiempo;
 })();

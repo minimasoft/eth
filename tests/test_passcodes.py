@@ -206,7 +206,6 @@ READ_ENDPOINTS: list[tuple[str, str]] = [
     ("eth_pipeline.api.routes.events_v2", "/events/{event_id}"),
     ("eth_pipeline.api.routes.geo", "/geo/events"),
     ("eth_pipeline.api.routes.providers", "/api/providers"),
-    ("eth_pipeline.api.routes.comparisons", "/comparisons/{source_id}"),
 ]
 
 #: Endpoints that must stay reachable WITHOUT any passcode.

@@ -6,7 +6,7 @@ endpoint is gated by passcodes.  Levels:
 - ``A``: add providers, send documents
 - ``B``: deletes (level A never satisfies B)
 - ``C``: read level — required by ALL data-returning GET endpoints
-  (documents, events, geo, providers, comparisons); asked once by the
+  (documents, events, geo, providers); asked once by the
   UI and reused for every read fetch
 
 Only liveness/bootstrap endpoints stay open: ``GET /health`` (docker

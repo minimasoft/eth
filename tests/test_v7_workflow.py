@@ -240,31 +240,29 @@ class TestV7WorkflowIntegration:
             await db_connection.execute("DELETE FROM llm_provider WHERE id = $1", prov_id)
 
     @pytest.mark.asyncio
-    async def test_fanout_creates_two_documents_with_distinct_models(
+    async def test_upload_creates_one_document_for_selected_provider(
         self, db_connection: asyncpg.Connection, _clean_pool: None
     ) -> None:
-        """One upload with two providers yields two rows sharing one blob, distinct models.
+        """One upload with one provider_id form field yields exactly ONE row.
 
-        A repeated provider id is de-duplicated at the API boundary.
+        Regression for the removed multi-provider fan-out: the upload
+        endpoint must insert a single document whose model matches the
+        selected provider.
         """
         import httpx
 
         from eth_pipeline.api import app
 
-        p1, p2 = uuid.uuid4().hex, uuid.uuid4().hex
-        m1, m2 = "fan/model-one", "fan/model-two"
+        p1 = uuid.uuid4().hex
+        m1 = "single/model-one"
         try:
-            for pid, name, model in (
-                (p1, f"fan-a-{p1[:8]}", m1),
-                (p2, f"fan-b-{p2[:8]}", m2),
-            ):
-                await db_connection.execute(
-                    "INSERT INTO llm_provider (id, name, model, base_url, is_default) "
-                    "VALUES ($1, $2, $3, $4, FALSE)",
-                    pid, name, model, "https://fan.example",
-                )
+            await db_connection.execute(
+                "INSERT INTO llm_provider (id, name, model, base_url, is_default) "
+                "VALUES ($1, $2, $3, $4, FALSE)",
+                p1, f"single-a-{p1[:8]}", m1, "https://single.example",
+            )
 
-            boundary = "----fanoutboundary1234"
+            boundary = "----singleboundary1234"
             file_bytes = b"El Sr. Juan Perez firmo el contrato en Buenos Aires."
 
             def field(name: str, value: str) -> str:
@@ -275,11 +273,9 @@ class TestV7WorkflowIntegration:
                 )
 
             body = (
-                field("provider_ids", p1)
-                + field("provider_ids", p1)
-                + field("provider_ids", p2)
+                field("provider_id", p1)
                 + f"--{boundary}\r\n"
-                'Content-Disposition: form-data; name="file"; filename="fan.txt"\r\n'
+                'Content-Disposition: form-data; name="file"; filename="single.txt"\r\n'
                 "Content-Type: text/plain\r\n\r\n"
             ).encode() + file_bytes + f"\r\n--{boundary}--\r\n".encode()
 
@@ -287,24 +283,72 @@ class TestV7WorkflowIntegration:
                 transport=httpx.ASGITransport(app=app), base_url="http://testserver"
             ) as client:
                 resp = await client.post(
-                    "/documents/upload",
+                    "/documents/upload?passcode=AAAAA",
+                    content=body,
+                    headers={"content-type": f"multipart/form-data; boundary={boundary}"},
+                )
+            assert resp.status_code == 201, resp.text
+
+            payload = resp.json()
+            assert len(payload["document_ids"]) == 1
+
+            rows = await db_connection.fetch(
+                "SELECT id, provider_id, model FROM document WHERE provider_id = $1",
+                p1,
+            )
+            assert len(rows) == 1, "upload must create exactly one document row"
+            assert rows[0]["model"] == m1
+            assert rows[0]["id"] == payload["document_ids"][0]
+        finally:
+            await db_connection.execute("DELETE FROM document WHERE provider_id = $1", p1)
+            await db_connection.execute("DELETE FROM llm_provider WHERE id = $1", p1)
+
+    @pytest.mark.asyncio
+    async def test_upload_without_provider_uses_default_provider(
+        self, db_connection: asyncpg.Connection, _clean_pool: None
+    ) -> None:
+        """One upload with no provider_id field falls back to the default provider."""
+        import httpx
+
+        from eth_pipeline.api import app
+        from eth_pipeline.providers import default_provider_model
+
+        try:
+            # The default provider row is normally seeded by the app lifespan,
+            # which ASGITransport does not run — seed it explicitly.
+            await db_connection.execute(
+                "INSERT INTO llm_provider (id, name, model, base_url, api_key, is_default) "
+                "VALUES ('default', 'default', $1, 'https://default.example', NULL, TRUE) "
+                "ON CONFLICT (id) DO NOTHING",
+                default_provider_model(),
+            )
+
+            boundary = "----defaultboundary1234"
+            file_bytes = b"El Sr. Juan Perez firmo el contrato en Buenos Aires."
+
+            body = (
+                f"--{boundary}\r\n"
+                'Content-Disposition: form-data; name="file"; filename="default.txt"\r\n'
+                "Content-Type: text/plain\r\n\r\n"
+            ).encode() + file_bytes + f"\r\n--{boundary}--\r\n".encode()
+
+            async with httpx.AsyncClient(
+                transport=httpx.ASGITransport(app=app), base_url="http://testserver"
+            ) as client:
+                resp = await client.post(
+                    "/documents/upload?passcode=AAAAA",
                     content=body,
                     headers={"content-type": f"multipart/form-data; boundary={boundary}"},
                 )
             assert resp.status_code == 201, resp.text
 
             rows = await db_connection.fetch(
-                "SELECT id, provider_id, model, blob_path FROM document "
-                "WHERE provider_id = ANY($1::text[])",
-                [p1, p2],
+                "SELECT id, provider_id, model FROM document WHERE provider_id = 'default'"
             )
-            assert len(rows) == 2, "duplicate provider id must be de-duplicated"
-            assert {r["model"] for r in rows} == {m1, m2}
-            assert len({r["blob_path"] for r in rows}) == 1, "fan-out rows must share one blob"
+            assert len(rows) == 1, "upload must create exactly one document row"
+            assert rows[0]["model"] == default_provider_model()
         finally:
             await db_connection.execute(
-                "DELETE FROM document WHERE provider_id = ANY($1::text[])", [p1, p2]
+                "DELETE FROM document WHERE provider_id = 'default' AND filename = 'default.txt'"
             )
-            await db_connection.execute(
-                "DELETE FROM llm_provider WHERE id = ANY($1::text[])", [p1, p2]
-            )
+            await db_connection.execute("DELETE FROM llm_provider WHERE id = 'default'")

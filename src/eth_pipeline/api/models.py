@@ -644,98 +644,6 @@ class ProviderTestResult(BaseModel):
 
 
 # =======================================================================
-# Cross-model comparison models
-# =======================================================================
-
-
-class ComparisonDocument(BaseModel):
-    """A document row participating in a cross-model comparison."""
-
-    document_id: str
-    """Unique identifier of the document row."""
-
-    filename: str
-    """Original filename of the document."""
-
-    status: str
-    """Processing status of the document row."""
-
-    provider_id: str | None = None
-    """ID of the provider assigned to this row."""
-
-    provider_name: str | None = None
-    """Display name of the provider assigned to this row."""
-
-    model: str | None = None
-    """Model assigned to this row."""
-
-    event_count: int = 0
-    """Number of events extracted by this row's model."""
-
-
-class ComparisonEvent(BaseModel):
-    """An event entry in a cross-model comparison, with source footprint."""
-
-    event_id: str
-    """Unique identifier of the event."""
-
-    document_id: str
-    """Document row (model run) this event came from."""
-
-    model: str | None = None
-    """Model that extracted this event."""
-
-    provider_name: str | None = None
-    """Display name of the provider that extracted this event."""
-
-    title: str
-    """Event title."""
-
-    description: str = ""
-    """Event description."""
-
-    time_start: str | None = None
-    """Earliest temporal bound as ISO-8601 datetime."""
-
-    time_end: str | None = None
-    """Latest temporal bound as ISO-8601 datetime."""
-
-    location_name: str | None = None
-    """Primary location name."""
-
-    participant_count: int = 0
-    """Number of participants."""
-
-    reference_count: int = 0
-    """Number of verbatim references."""
-
-    chunk_index: int | None = None
-    """Primary source chunk this event was extracted from."""
-
-    span_start: int | None = None
-    """Document-absolute start of the event's reference footprint."""
-
-    span_end: int | None = None
-    """Document-absolute end of the event's reference footprint."""
-
-
-class ComparisonResponse(BaseModel):
-    """Response body for ``GET /comparisons/{source_id}``."""
-
-    source_id: str
-    """The compared source group."""
-
-    filename: str | None = None
-    """Filename of the underlying uploaded document."""
-
-    documents: list[ComparisonDocument]
-    """One entry per model run (document row) of this source."""
-
-    events: list[ComparisonEvent]
-    """All events across every model run of this source."""
-
-
-# =======================================================================
 # Map / geo models
 # =======================================================================
 
@@ -793,9 +701,6 @@ class GeoEventsResponse(BaseModel):
 # Re-export all models for convenience
 __all__ = [
     "APIInfo",
-    "ComparisonDocument",
-    "ComparisonEvent",
-    "ComparisonResponse",
     "DocumentCreated",
     "DocumentDeleted",
     "DocumentInput",
