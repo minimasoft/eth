@@ -58,8 +58,9 @@ def test_linea_tiempo_js_contents():
         assert tuple_str in source, (
             f"tableau20 tuple {tuple_str} missing from linea-tiempo.js"
         )
-    assert "showEventDetail(" in source, (
-        "linea-tiempo.js must open the existing detail view on click"
+    assert "s=eventos&event=" in source, (
+        "linea-tiempo.js must navigate to the event via the hash "
+        "(#s=eventos&event=<id>) on card click"
     )
     assert "149" in source and "92" in source, (
         "linea-tiempo.js must keep the 149x92 event rectangle dimensions"
