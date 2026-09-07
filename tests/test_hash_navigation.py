@@ -333,3 +333,157 @@ def test_month_anchors_use_label_text_and_doc_top():
     assert "textContent" in body, (
         "Anchors must carry the label text (e.g. 'Ene 2026')"
     )
+
+
+# ---------------------------------------------------------------------------
+# Línea de tiempo event detail split (quick task 260906-t6c)
+# ---------------------------------------------------------------------------
+
+def test_timeline_split_markup_present():
+    source = _source(INDEX_HTML)
+    for element_id in (
+        "lineatiempo-split",
+        "lineatiempo-split-timeline",
+        "lineatiempo-split-detail",
+        "lineatiempo-detail-close",
+    ):
+        assert f'id="{element_id}"' in source, (
+            f"Missing #{element_id} in the timeline split markup"
+        )
+    assert 'aria-label="Cerrar detalle"' in source, (
+        "The timeline detail close button must have aria-label 'Cerrar detalle'"
+    )
+    split_start = source.index('id="lineatiempo-split"')
+    split_end = source.index("</section>", split_start)
+    split_region = source[split_start:split_end]
+    assert 'id="lineatiempo-detail-close"' in split_region, (
+        "The close button must live inside the split markup region"
+    )
+    assert 'id="lineatiempo-split-detail"' in split_region, (
+        "The detail pane must live inside the split markup region"
+    )
+
+
+def test_timeline_split_css_contract():
+    source = _source(INDEX_HTML)
+    # Flex split rule exists.
+    assert "#lineatiempo-split {" in source, (
+        "Missing #lineatiempo-split flex rule"
+    )
+    # 50-50 contract: .split-open gives each pane flex: 1 1 50%.
+    split_open_region = source[source.index("#lineatiempo-split.split-open"):]
+    assert "flex: 1 1 50%" in split_open_region, (
+        "The .split-open rule must give both panes flex: 1 1 50% (50-50 split)"
+    )
+    # Stacking on narrow screens via a media query.
+    media_start = source.index("@media (max-width: 900px)")
+    media_body = source[media_start:source.index("}", source.index("flex-direction: column", media_start))]
+    assert "#lineatiempo-split" in media_body, (
+        "A max-width media query must stack the timeline split "
+        "(flex-direction: column)"
+    )
+
+
+def test_timeline_split_script_guards():
+    script = _inline_app_script(_source(INDEX_HTML))
+    for identifier in (
+        "function openEventDetail",
+        "function closeTimelineEventDetail",
+        "function toggleEventDetailFromTimeline",
+        "window.toggleEventDetailFromTimeline",
+        "lineatiempoEventId",
+        "eventDetailOriginalParent",
+    ):
+        assert identifier in script, (
+            f"Missing {identifier} in the inline app script"
+        )
+
+
+def test_sync_hash_writes_timeline_event_option():
+    script = _inline_app_script(_source(INDEX_HTML))
+    start = script.index("function syncHash")
+    body = script[start:script.index("\n    }", start)]
+    assert "lineatiempoEventId" in body, (
+        "syncHash must write event=<id> while the timeline detail is open"
+    )
+
+
+def test_apply_hash_handles_timeline_event_option():
+    script = _inline_app_script(_source(INDEX_HTML))
+    start = script.index("function applyHash")
+    body = script[start:script.index("\n    function ", start)]
+    assert "/^[A-Za-z0-9-]+$/" in body, (
+        "applyHash must validate the event option (eventos + lineatiempo)"
+    )
+    assert "openEventDetail(" in body, (
+        "applyHash must open the timeline detail from #s=lineatiempo&event=<id>"
+    )
+    assert "closeTimelineEventDetail(" in body, (
+        "applyHash must close the timeline detail when the event option is "
+        "absent (browser back)"
+    )
+
+
+def test_on_tab_click_closes_timeline_detail():
+    script = _inline_app_script(_source(INDEX_HTML))
+    start = script.index("function onTabClick")
+    body = script[start:script.index("\n    }", start)]
+    assert "closeTimelineEventDetail(" in body, (
+        "Switching tabs must close the timeline detail"
+    )
+
+
+def test_detail_close_button_bound_to_hide_event_detail():
+    script = _inline_app_script(_source(INDEX_HTML))
+    start = script.index("lineatiempoDetailClose")
+    region = script[start:script.index("}", script.index("hideEventDetail", start))]
+    assert "addEventListener('click', hideEventDetail)" in region, (
+        "#lineatiempo-detail-close must be bound to hideEventDetail"
+    )
+
+
+def test_close_timeline_event_detail_never_refetches_eventos():
+    script = _inline_app_script(_source(INDEX_HTML))
+    start = script.index("function closeTimelineEventDetail")
+    body = script[start:script.index("\n    }", start)]
+    assert "fetchEventos" not in body, (
+        "Closing the timeline detail must never trigger an eventos refetch"
+    )
+    # The eventos path of hideEventDetail keeps the refetch.
+    start = script.index("function hideEventDetail")
+    body = script[start:script.index("\n    }", start)]
+    assert "fetchEventos()" in body, (
+        "hideEventDetail must keep the eventos refetch on its eventos path"
+    )
+
+
+def test_linea_tiempo_toggle_and_selection_hooks():
+    source = _source(LINEA_TIEMPO_JS)
+    click_start = source.index("document.addEventListener('click'")
+    click_body = source[click_start:source.index("});", click_start)]
+    assert "window.toggleEventDetailFromTimeline(" in click_body, (
+        "Card clicks must route through window.toggleEventDetailFromTimeline"
+    )
+    assert "window.markLineaTiempoSelection = function" in source, (
+        "window.markLineaTiempoSelection must be defined for index.html"
+    )
+    assert "lt2-selected" in click_body or "lt2-selected" in source, (
+        "The selection hook must toggle lt2-selected"
+    )
+    selection_start = source.index("window.markLineaTiempoSelection = function")
+    selection_body = source[selection_start:source.index("};", selection_start)]
+    if "lt2-selected" not in selection_body:
+        # Delegated form: the hook stores the id and calls applySelection(),
+        # whose body performs the class toggle.
+        apply_start = source.index("function applySelection")
+        apply_body = source[apply_start:source.index("\n  }", apply_start)]
+        assert "lt2-selected" in apply_body and "applySelection()" in selection_body, (
+            "markLineaTiempoSelection must toggle the lt2-selected class "
+            "(directly or via applySelection)"
+        )
+    # Highlight style lives in the ensureStyles CSS.
+    css_start = source.index("function ensureStyles")
+    css_body = source[css_start:source.index("document.head.appendChild", css_start)]
+    assert ".lt2-event.lt2-selected, .lt2-undated-item.lt2-selected" in css_body, (
+        "ensureStyles must define the selected-card highlight style"
+    )
